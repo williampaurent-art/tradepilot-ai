@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TradePilot AI</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: Arial, sans-serif;
+      background: #0b1020; color: #edf2ff;
+    }
+    header {
+      padding: 22px; border-bottom: 1px solid #29324a;
+      display: flex; justify-content: space-between;
+      align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+    h1 { margin: 0; font-size: 23px; }
+    .logo { color: #75e0b3; }
+    main { max-width: 1000px; margin: auto; padding: 22px; }
+    .status { color: #ffce76; font-size: 13px; }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit,minmax(240px,1fr));
+      gap: 16px; margin-top: 22px;
+    }
+    .card {
+      background: #151d31; border: 1px solid #293550;
+      border-radius: 15px; padding: 18px;
+    }
+    h2 { font-size: 17px; margin-top: 0; }
+    p { color: #b7c2d9; line-height: 1.5; }
+    textarea, input, select {
+      width: 100%; margin: 8px 0 12px; padding: 12px;
+      border-radius: 9px; border: 1px solid #384663;
+      background: #0b1020; color: white; font-size: 15px;
+    }
+    button {
+      border: 0; border-radius: 9px; padding: 12px 15px;
+      background: #75e0b3; color: #09150f;
+      font-weight: bold; cursor: pointer;
+    }
+    .secondary { background: #293550; color: white; }
+    .result { white-space: pre-wrap; font-size: 14px; }
+    footer { padding: 25px; color: #8e9ab3; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span class="logo">TradePilot</span> AI</h1>
+    <span class="status">● Mode démo — trading désactivé</span>
+  </header>
+
+  <main>
+    <h2>Ton espace de trading intelligent</h2>
+    <p>Conçois tes stratégies, prépare tes tests et garde le contrôle.</p>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Assistant de stratégie IA</h2>
+        <p>Décris la stratégie que tu souhaites étudier.</p>
+        <textarea id="idea" rows="4"
+          placeholder="Ex. : croisement de moyennes mobiles sur EURUSD en M15..."></textarea>
+        <button onclick="draft()">Préparer un brouillon</button>
+        <p id="draftResult" class="result"></p>
+      </section>
+
+      <section class="card">
+        <h2>Éditeur de stratégie</h2>
+        <label for="symbol">Instrument</label>
+        <select id="symbol">
+          <option>EURUSD</option>
+          <option>GBPUSD</option>
+          <option>USDJPY</option>
+          <option>XAUUSD</option>
+        </select>
+        <label for="timeframe">Unité de temps</label>
+        <select id="timeframe">
+          <option>M5</option>
+          <option selected>M15</option>
+          <option>M30</option>
+          <option>H1</option>
+          <option>H4</option>
+        </select>
+        <button class="secondary" onclick="showConfig()">Afficher la configuration</button>
+        <p id="configResult" class="result"></p>
+      </section>
+
+      <section class="card">
+        <h2>Backtests</h2>
+        <p>Les résultats apparaîtront ici lorsque le moteur de backtest sera connecté.</p>
+        <p>Statut : <strong>non configuré</strong></p>
+        <button class="secondary" onclick="alert('Le moteur de backtest reste à construire. Aucun résultat fictif ne sera affiché.')">Vérifier le statut</button>
+      </section>
+
+      <section class="card">
+        <h2>Connexion MT5</h2>
+        <p>État : <strong>non connecté</strong></p>
+        <p>La connexion sera ajoutée après sécurisation du backend.</p>
+        <button class="secondary" onclick="alert('Aucune connexion MT5 active. Aucun ordre ne peut être envoyé.')">Vérifier le statut</button>
+      </section>
+    </div>
+    <footer>
+      Prototype d'interface uniquement. Pas de véritable IA, de données de marché,
+      de backtest ou d'exécution d'ordres à ce stade.
+    </footer>
+  </main>
+
+  <script>
+    function draft() {
+      const idea = document.getElementById("idea").value.trim();
+      const result = document.getElementById("draftResult");
+      if (!idea) {
+        result.textContent = "Décris d'abord ton idée de stratégie.";
+        return;
+      }
+      result.textContent =
+        "Brouillon enregistré dans cette page (pas sur un serveur).\n\n" +
+        "Idée : " + idea +
+        "\n\nProchaine étape : connecter un véritable moteur IA.";
+    }
+
+    function showConfig() {
+      document.getElementById("configResult").textContent =
+        "Instrument : " + document.getElementById("symbol").value +
+        "\nUnité de temps : " + document.getElementById("timeframe").value +
+        "\nMode : démonstration uniquement.";
+    }
+  </script>
+</body>
+</html>
