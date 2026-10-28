@@ -36,14 +36,26 @@ def health():
     }
 
 
+
+
 @app.post("/api/strategies/drafts")
 def create_strategy_draft(strategy: StrategyDraft):
+    idea = strategy.description
+
+    draft = build_strategy(idea)
+
+    draft["name"] = strategy.name
+    draft["symbol"] = strategy.symbol.upper()
+    draft["timeframe"] = strategy.timeframe.upper()
+    draft["original_idea"] = idea
+
     return {
         "status": "draft_created",
-        "strategy": strategy.model_dump(),
+        "strategy": draft,
         "backtest_status": "not_started",
         "live_trading": False
     }
+
 
 
 from typing import Literal
