@@ -1,164 +1,346 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TradePilot AI</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 24px 16px;
-      background: #101522;
-      color: #f5f7ff;
-      font-family: Arial, sans-serif;
-    }
-    main {
-      max-width: 650px;
-      margin: 40px auto;
-      padding: 24px;
-      background: #1b2334;
-      border-radius: 16px;
-    }
-    h1 { margin-top: 0; }
-    p { color: #c3cbe0; line-height: 1.5; }
-    label {
-      display: block;
-      margin: 20px 0 8px;
-      font-weight: bold;
-    }
-    textarea, input, select, button {
-      box-sizing: border-box;
-      width: 100%;
-      padding: 13px;
-      margin-bottom: 14px;
-      border-radius: 8px;
-      font-size: 16px;
-    }
-    textarea, input, select {
-      background: #0e1421;
-      color: white;
-      border: 1px solid #495570;
-    }
-    textarea { min-height: 120px; resize: vertical; }
-    button {
-      background: #6d8cff;
-      color: #101522;
-      font-weight: bold;
-      border: 0;
-      cursor: pointer;
-    }
-    button:disabled { opacity: 0.6; }
-    pre {
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      background: #0e1421;
-      padding: 16px;
-      border-radius: 8px;
-      color: #dce5ff;
-    }
-    .status { color: #a8f0c6; }
-    .warning { font-size: 13px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TradePilot AI</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0b1020;color:#e8edf8;font-family:Arial,sans-serif}
+header{padding:24px 18px;background:#121a30;border-bottom:1px solid #293653}
+header h1{margin:0;color:#63e6be;font-size:27px}
+header p{color:#aebbd2;margin-bottom:0}
+main{max-width:850px;margin:24px auto;padding:0 15px}
+.card{background:#121a30;border:1px solid #293653;border-radius:14px;padding:20px;margin-bottom:18px}
+h2{margin-top:0;font-size:20px}
+label{display:block;margin:15px 0 7px;font-weight:bold}
+input,select,textarea,button{width:100%;padding:12px;border-radius:8px;font-size:16px}
+input,select,textarea{background:#0b1020;border:1px solid #405071;color:white}
+textarea{min-height:105px;resize:vertical}
+button{margin-top:16px;border:0;background:#63e6be;color:#071a17;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.5;cursor:wait}
+.secondary{background:#263652;color:white}
+.notice{color:#aebbd2;font-size:13px;line-height:1.5}
+.result{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d19;padding:14px;border-radius:8px;font-size:14px;line-height:1.6}
+.status{color:#63e6be}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.metric{background:#0b1020;padding:13px;border-radius:8px}
+.metric strong{display:block;font-size:20px;margin-top:8px}
+.error{color:#ff9999}
+@media(max-width:550px){.grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
-<main>
+<header>
   <h1>TradePilot AI</h1>
-  <p>Transforme une idée en brouillon de stratégie de trading.</p>
+  <p>Crée et teste tes stratégies de trading.</p>
+</header>
 
-  <form id="strategyForm">
-    <label for="idea">Décris ta stratégie</label>
-    <textarea id="idea" required minlength="5"
-      maxlength="2000"
-      placeholder="Ex. : Croisement de moyennes mobiles sur EURUSD en M15"></textarea>
+<main>
+  <section class="card">
+    <h2>1. Générateur de stratégie</h2>
 
-    <label for="symbol">Instrument</label>
-    <input id="symbol" value="EURUSD" required>
+    <form id="strategyForm">
+      <label for="idea">Décris ta stratégie</label>
+      <textarea id="idea" required>La moyenne mobile 10 croise la moyenne mobile 20. Acheter au croisement haussier et vendre au croisement baissier.</textarea>
 
-    <label for="timeframe">Unité de temps</label>
-    <select id="timeframe">
-      <option>M5</option>
-      <option>M15</option>
-      <option>M30</option>
-      <option>H1</option>
-      <option>H4</option>
-      <option>D1</option>
-    </select>
+      <div class="grid">
+        <div>
+          <label for="symbol">Instrument</label>
+          <select id="symbol">
+            <option value="EUR_USD">EUR/USD</option>
+            <option value="GBP_USD">GBP/USD</option>
+            <option value="USD_JPY">USD/JPY</option>
+            <option value="XAU_USD">Or (XAU/USD)</option>
+          </select>
+        </div>
+        <div>
+          <label for="timeframe">Unité de temps</label>
+          <select id="timeframe">
+            <option value="M1">M1</option>
+            <option value="M5">M5</option>
+            <option value="M15" selected>M15</option>
+            <option value="M30">M30</option>
+            <option value="H1">H1</option>
+            <option value="H4">H4</option>
+            <option value="D1">D1</option>
+          </select>
+        </div>
+      </div>
 
-    <button id="draftButton" type="submit">
-      Préparer un brouillon
-    </button>
-  </form>
+      <button id="generateBtn" type="submit">Générer la stratégie</button>
+    </form>
 
-  <h2>Résultat</h2>
-  <p id="status" class="status" role="status" aria-live="polite">
-    Prêt.
-  </p>
-  <pre id="draftResult">Ta stratégie apparaîtra ici.</pre>
-  <p class="warning">
-    Mode démo : aucun backtest n'est exécuté et aucun ordre réel n'est envoyé.
-    Les paramètres générés ne sont pas validés pour un usage financier.
-  </p>
+    <p class="notice">Le serveur crée un brouillon. Le trading réel reste désactivé.</p>
+    <div id="serverStatus" role="status"></div>
+    <div id="strategyResult" class="result" hidden></div>
+  </section>
+
+  <section class="card">
+    <h2>2. Backtest historique</h2>
+    <p>Importe un fichier CSV contenant les bougies historiques de ton instrument.</p>
+
+    <label for="csvFile">Fichier CSV des données historiques</label>
+    <input id="csvFile" type="file" accept=".csv,text/csv">
+
+    <p class="notice">
+      Le CSV doit contenir une colonne de clôture nommée close.
+      Les noms de colonnes reconnus sont timestamp/date/time, open, high, low et close.
+      Les bougies doivent être triées de la plus ancienne à la plus récente.
+      Utilise des données correspondant à l'instrument et à l'unité de temps choisis.
+    </p>
+
+    <div class="grid">
+      <div>
+        <label for="fastPeriod">Moyenne rapide</label>
+        <input id="fastPeriod" type="number" min="1" max="500" value="10">
+      </div>
+      <div>
+        <label for="slowPeriod">Moyenne lente</label>
+        <input id="slowPeriod" type="number" min="2" max="1000" value="20">
+      </div>
+    </div>
+
+    <label for="initialCapital">Capital de départ</label>
+    <input id="initialCapital" type="number" min="1" step="any" value="10000">
+
+    <button id="backtestBtn" type="button">Lancer le backtest</button>
+    <div id="backtestStatus" role="status"></div>
+    <div id="backtestResult"></div>
+
+    <p class="notice">
+      Backtest indicatif sur les prix de clôture : les frais, le spread,
+      le slippage et les contraintes d'exécution ne sont pas inclus.
+      Les résultats historiques ne garantissent pas les résultats futurs.
+    </p>
+  </section>
 </main>
 
 <script>
-const API_URL =
-  "https://tradepilot-ai.williampaurent.workers.dev";
+const API_URL = "https://tradepilot-ai.williampaurent.workers.dev";
 
-const form = document.getElementById("strategyForm");
-const button = document.getElementById("draftButton");
-const statusText = document.getElementById("status");
-const result = document.getElementById("draftResult");
+const $ = id => document.getElementById(id);
 
-form.addEventListener("submit", async function(event) {
+$("strategyForm").addEventListener("submit", async event => {
   event.preventDefault();
 
-  const idea = document.getElementById("idea").value.trim();
-  const symbol = document.getElementById("symbol").value.trim();
-  const timeframe = document.getElementById("timeframe").value;
-
-  if (idea.length < 5 || !symbol) {
-    statusText.textContent = "Complète les champs demandés.";
-    return;
-  }
+  const button = $("generateBtn");
+  const status = $("serverStatus");
+  const output = $("strategyResult");
 
   button.disabled = true;
-  statusText.textContent = "Envoi de la demande...";
-  result.textContent = "";
+  status.className = "";
+  status.textContent = "Connexion au serveur…";
+  output.hidden = true;
+
+  const payload = {
+    name: "Ma stratégie",
+    description: $("idea").value.trim(),
+    symbol: $("symbol").value,
+    timeframe: $("timeframe").value
+  };
 
   try {
-    const response = await fetch(
-      API_URL + "/api/strategies/drafts",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          name: "Ma stratégie",
-          description: idea,
-          symbol: symbol,
-          timeframe: timeframe
-        })
-      }
-    );
+    const response = await fetch(API_URL + "/api/strategies/drafts", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
 
     const data = await response.json();
 
-    if (!response.ok || data.status !== "draft_created") {
-      throw new Error(
-        data.message || "Le serveur n'a pas créé le brouillon."
-      );
+    if (!response.ok) {
+      throw new Error(data.message || "Le serveur a refusé la demande.");
     }
 
-    statusText.textContent = "Brouillon reçu du serveur.";
-    result.textContent = JSON.stringify(data, null, 2);
+    status.className = "status";
+    status.textContent = "Brouillon généré.";
 
+    output.textContent = JSON.stringify(data, null, 2);
+    output.hidden = false;
+
+    if (data.strategy) {
+      const p = data.strategy.parameters || {};
+      if (p.fast_ma_period) $("fastPeriod").value = p.fast_ma_period;
+      if (p.slow_ma_period) $("slowPeriod").value = p.slow_ma_period;
+    }
   } catch (error) {
-    statusText.textContent = "La demande a échoué.";
-    result.textContent =
-      error.message +
-      "\n\nVérifie la connexion et la configuration du serveur Cloudflare.";
+    status.className = "error";
+    status.textContent =
+      "Impossible de générer la stratégie : " + error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+function parseCSV(text) {
+  const lines = text.trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 3) throw new Error("Le fichier contient trop peu de lignes.");
+
+  function splitLine(line) {
+    // Prend en charge les CSV séparés par virgules ou points-virgules.
+    const delimiter = line.includes(";") ? ";" : ",";
+    return line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, ""));
+  }
+
+  const headers = splitLine(lines[0]).map(h => h.toLowerCase());
+  const closeIndex = headers.indexOf("close");
+
+  if (closeIndex < 0) {
+    throw new Error("Colonne close introuvable dans le CSV.");
+  }
+
+  const rows = lines.slice(1).map((line, index) => {
+    const fields = splitLine(line);
+    const close = Number(fields[closeIndex].replace(",", "."));
+
+    if (!Number.isFinite(close) || close <= 0) {
+      throw new Error("Prix de clôture invalide à la ligne " + (index + 2) + ".");
+    }
+
+    return {close, index};
+  });
+
+  return rows;
+}
+
+function movingAverage(values, period, end) {
+  if (end + 1 < period) return null;
+  let sum = 0;
+  for (let i = end - period + 1; i <= end; i++) sum += values[i];
+  return sum / period;
+}
+
+$("backtestBtn").addEventListener("click", async () => {
+  const button = $("backtestBtn");
+  const status = $("backtestStatus");
+  const output = $("backtestResult");
+
+  try {
+    button.disabled = true;
+    status.className = "";
+    status.textContent = "Lecture des données…";
+    output.replaceChildren();
+
+    const file = $("csvFile").files[0];
+    if (!file) throw new Error("Choisis d'abord un fichier CSV.");
+
+    const fast = Number($("fastPeriod").value);
+    const slow = Number($("slowPeriod").value);
+    const capital = Number($("initialCapital").value);
+
+    if (!Number.isInteger(fast) || !Number.isInteger(slow) ||
+        fast < 1 || slow <= fast || slow > 1000) {
+      throw new Error("Les périodes doivent être valides et la rapide inférieure à la lente.");
+    }
+    if (!Number.isFinite(capital) || capital <= 0) {
+      throw new Error("Le capital doit être supérieur à zéro.");
+    }
+
+    const rows = parseCSV(await file.text());
+    const prices = rows.map(r => r.close);
+
+    if (prices.length < slow + 2) {
+      throw new Error("Il faut davantage de bougies pour tester ces périodes.");
+    }
+
+    status.textContent = "Calcul des moyennes mobiles et simulation…";
+
+    let equity = capital;
+    let peak = capital;
+    let maxDrawdown = 0;
+    let position = 0;
+    let entryPrice = 0;
+    let trades = [];
+    let previousDifference = null;
+
+    // Signal observé à la clôture ; exécution simulée à la clôture
+    // suivante pour limiter le biais d'anticipation.
+    for (let i = 0; i < prices.length - 1; i++) {
+      const fastMA = movingAverage(prices, fast, i);
+      const slowMA = movingAverage(prices, slow, i);
+
+      if (fastMA === null || slowMA === null) continue;
+
+      const difference = fastMA - slowMA;
+
+      if (previousDifference !== null) {
+        const bullishCross = previousDifference <= 0 && difference > 0;
+        const bearishCross = previousDifference >= 0 && difference < 0;
+        const nextPrice = prices[i + 1];
+
+        if (position === 0 && bullishCross) {
+          position = 1;
+          entryPrice = nextPrice;
+        } else if (position === 1 && bearishCross) {
+          const tradeReturn = (nextPrice - entryPrice) / entryPrice;
+          const pnl = equity * tradeReturn;
+          equity += pnl;
+
+          trades.push({pnl, returnPct: tradeReturn * 100});
+          position = 0;
+          entryPrice = 0;
+
+          peak = Math.max(peak, equity);
+          maxDrawdown = Math.max(maxDrawdown, (peak - equity) / peak);
+        }
+      }
+
+      previousDifference = difference;
+    }
+
+    // Clôture de la position restante au dernier prix disponible.
+    if (position === 1) {
+      const lastPrice = prices[prices.length - 1];
+      const tradeReturn = (lastPrice - entryPrice) / entryPrice;
+      const pnl = equity * tradeReturn;
+      equity += pnl;
+      trades.push({pnl, returnPct: tradeReturn * 100});
+      peak = Math.max(peak, equity);
+      maxDrawdown = Math.max(maxDrawdown, (peak - equity) / peak);
+    }
+
+    const wins = trades.filter(t => t.pnl > 0);
+    const losses = trades.filter(t => t.pnl < 0);
+    const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
+    const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
+    const profitFactor = grossLoss === 0
+      ? (grossProfit > 0 ? "∞" : "—")
+      : (grossProfit / grossLoss).toFixed(2);
+
+    const metrics = [
+      ["Capital initial", capital.toFixed(2)],
+      ["Capital final", equity.toFixed(2)],
+      ["Rendement", ((equity / capital - 1) * 100).toFixed(2) + "%"],
+      ["Nombre de trades clôturés", String(trades.length)],
+      ["Trades gagnants", trades.length ? (wins.length / trades.length * 100).toFixed(1) + "%" : "—"],
+      ["Drawdown maximal observé", (maxDrawdown * 100).toFixed(2) + "%"],
+      ["Profit factor", profitFactor],
+      ["Instrument / unité choisie", $("symbol").value + " / " + $("timeframe").value]
+    ];
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+
+    for (const [label, value] of metrics) {
+      const box = document.createElement("div");
+      box.className = "metric";
+      const title = document.createElement("span");
+      title.textContent = label;
+      const strong = document.createElement("strong");
+      strong.textContent = value;
+      box.append(title, strong);
+      grid.appendChild(box);
+    }
+
+    output.appendChild(grid);
+    status.className = "status";
+    status.textContent =
+      "Calcul terminé sur " + prices.length +
+      " bougies. Résultats indicatifs avant frais et spread.";
+  } catch (error) {
+    status.className = "error";
+    status.textContent = error.message;
   } finally {
     button.disabled = false;
   }
@@ -166,4 +348,3 @@ form.addEventListener("submit", async function(event) {
 </script>
 </body>
 </html>
-
