@@ -45,3 +45,56 @@ def create_strategy_draft(strategy: StrategyDraft):
         "live_trading": False
     }
 
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class StrategyRequest(BaseModel):
+    idea: str = Field(min_length=5, max_length=1000)
+
+
+def build_strategy(idea: str) -> dict:
+    """Génère un brouillon structuré, sans envoyer d'ordres."""
+    text = idea.lower()
+
+    if "moyenne mobile" in text or "croisement" in text:
+        return {
+            "name": "Croisement de moyennes mobiles",
+            "symbol": "EURUSD",
+            "timeframe": "M15",
+            "type": "trend_following",
+            "entry_rules": {
+                "buy": "La moyenne mobile rapide croise au-dessus de la lente.",
+                "sell": "La moyenne mobile rapide croise au-dessous de la lente."
+            },
+            "exit_rules": {
+                "buy": "Sortie lorsque le signal inverse apparaît ou qu'une limite de risque est atteinte.",
+                "sell": "Sortie lorsque le signal inverse apparaît ou qu'une limite de risque est atteinte."
+            },
+            "parameters": {
+                "fast_ma_period": 20,
+                "slow_ma_period": 50,
+                "ma_type": "EMA",
+                "stop_loss_pips": 20,
+                "take_profit_pips": 40
+            },
+            "risk_management": {
+                "risk_per_trade_percent": 1,
+                "max_open_positions": 1
+            },
+            "original_idea": idea,
+            "status": "draft",
+            "trading_enabled": False,
+            "backtest_completed": False
+        }
+
+    return {
+        "name": "Brouillon de stratégie",
+        "original_idea": idea,
+        "status": "needs_configuration",
+        "message": "Cette idée nécessite des règles d'entrée et de sortie plus précises.",
+        "trading_enabled": False,
+        "backtest_completed": False
+    }
