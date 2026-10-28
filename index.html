@@ -6,215 +6,394 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TradePilot AI</title>
 <style>
-:root{color-scheme:dark;--bg:#0b1020;--panel:#141c30;--line:#293650;--text:#edf2ff;--muted:#9baac5;--green:#42d6a0;--red:#ff7585}
+:root{color-scheme:dark;--bg:#080d18;--panel:#111b2d;--line:#26354d;--text:#edf3ff;--muted:#9eacc3;--green:#37d69a;--red:#ff737d;--blue:#75a7ff}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,sans-serif}
-main{max-width:850px;margin:auto;padding:22px}
-h1{font-size:30px;margin-bottom:4px}
-h2{font-size:20px}
-p,.muted{color:var(--muted);line-height:1.5}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin:18px 0}
-label{display:block;margin:12px 0 6px;color:var(--muted)}
-input,select,textarea,button{width:100%;font:inherit;border-radius:9px;padding:12px}
-input,select,textarea{background:#0b1325;color:var(--text);border:1px solid var(--line)}
-button{background:var(--green);color:#062319;font-weight:750;border:0;margin-top:14px;cursor:pointer}
-.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-.stat{background:#0b1325;padding:13px;border-radius:10px;overflow-wrap:anywhere}
-.stat small{display:block;color:var(--muted)}
-.stat strong{font-size:21px;display:block;margin-top:5px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,-apple-system,sans-serif}
+main{max-width:1000px;margin:auto;padding:22px 15px 50px}
+header{padding:12px 0 24px}
+h1{margin:0;font-size:30px}
+h2{font-size:20px;margin-top:0}
+p{color:var(--muted);line-height:1.5}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+label{display:block;color:var(--muted);font-size:13px;margin-bottom:6px}
+input,select,textarea,button{width:100%;padding:12px;border-radius:9px;border:1px solid var(--line);background:#091222;color:var(--text);font:inherit}
+button{background:#245cce;border:0;font-weight:700;cursor:pointer;margin-top:12px}
+button:disabled{opacity:.5}
+.secondary{background:#25354c}
+.status{white-space:pre-wrap;color:var(--muted);font-size:13px;margin-top:12px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.metric{padding:13px;background:#091222;border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}
+.metric span{display:block;color:var(--muted);font-size:12px}
+.metric strong{display:block;font-size:20px;margin-top:5px}
 .good{color:var(--green)}.bad{color:var(--red)}
-pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1325;padding:12px;border-radius:9px}
-@media(max-width:500px){main{padding:14px}.grid{grid-template-columns:1fr 1fr}.panel{padding:14px}}
+small{color:var(--muted)}
 </style>
 </head>
 <body>
 <main>
-<h1>TradePilot AI</h1>
-<p>Création de stratégies et backtests historiques en simulation.</p>
+<header>
+<h1>🚀 TradePilot AI</h1>
+<p>Générateur de stratégies et backtest historique — mode simulation uniquement.</p>
+</header>
 
 <section class="panel">
-<h2>1. Générateur de stratégie</h2>
-<label for="idea">Ton idée de stratégie</label>
-<textarea id="idea" rows="3">Acheter lorsque la moyenne mobile rapide 10 croise au-dessus de la moyenne lente 20. Sortir lorsque la rapide passe en dessous.</textarea>
-<label for="symbol">Instrument</label>
-<select id="symbol">
-<option value="XAUUSD">GOLD / XAUUSD</option>
-<option value="EUR_USD">EUR/USD</option>
-</select>
-<label for="timeframe">Unité de temps</label>
-<select id="timeframe">
-<option>M15</option><option>M5</option><option>M30</option>
-<option>H1</option><option>H4</option><option>D1</option>
-</select>
-<button id="generate">Générer une fiche stratégie</button>
-<div id="draft" class="muted" aria-live="polite"></div>
-</section>
-
-<section class="panel">
-<h2>2. Backtest CSV</h2>
-<p>Importe ton historique Dukascopy. Les colonnes reconnues incluent Etc/UTC, Open, High, Low, Close et Volume.</p>
-<label for="csv">Fichier historique CSV</label>
-<input id="csv" type="file" accept=".csv,.txt">
-<label for="fast">Moyenne rapide</label>
-<input id="fast" type="number" min="2" max="500" value="10">
-<label for="slow">Moyenne lente</label>
-<input id="slow" type="number" min="3" max="1000" value="20">
-<label for="capital">Capital de départ ($)</label>
-<input id="capital" type="number" min="1" value="10000">
-<label for="market">Instrument correspondant au fichier</label>
-<select id="market">
-<option value="XAUUSD">GOLD / XAUUSD</option>
-<option value="EUR_USD">EUR/USD</option>
-</select>
-<label for="tf">Unité de temps du fichier</label>
-<select id="tf"><option>M15</option><option>M5</option><option>M30</option><option>H1</option><option>H4</option><option>D1</option></select>
-<button id="run">Lancer le backtest</button>
-<div id="status" class="muted" aria-live="polite"></div>
-<div id="results" hidden>
-<h2>Résultats du test</h2>
+<h2>🤖 Générateur de stratégie</h2>
 <div class="grid">
-<div class="stat"><small>Capital initial</small><strong id="initial"></strong></div>
-<div class="stat"><small>Capital final</small><strong id="final"></strong></div>
-<div class="stat"><small>Rendement</small><strong id="return"></strong></div>
-<div class="stat"><small>Trades clôturés</small><strong id="trades"></strong></div>
-<div class="stat"><small>Trades gagnants</small><strong id="wins"></strong></div>
-<div class="stat"><small>Drawdown maximal</small><strong id="dd"></strong></div>
-<div class="stat"><small>Profit factor</small><strong id="pf"></strong></div>
-<div class="stat"><small>Prix analysés</small><strong id="bars"></strong></div>
+<div><label for="genSymbol">Instrument</label>
+<select id="genSymbol"><option>XAUUSD</option><option>EUR_USD</option></select></div>
+<div><label for="genTf">Timeframe</label>
+<select id="genTf"><option>M15</option><option>M5</option><option>H1</option><option>H4</option></select></div>
+<div><label for="risk">Risque théorique (%)</label>
+<input id="risk" type="number" value="1" min="0.1" max="5" step="0.1"></div>
 </div>
-<p id="details"></p>
-</div>
+<button id="generate">Générer une stratégie</button>
+<div id="strategy" class="status">Ta stratégie apparaîtra ici.</div>
 </section>
-<p class="muted">Mode simulation uniquement. Aucun ordre réel n'est envoyé. Les résultats ne garantissent pas les performances futures et ne déduisent pas les frais, le spread ni le slippage.</p>
+
+<section class="panel">
+<h2>📂 Importer les données historiques</h2>
+<p>Choisis ton fichier GOLD/XAUUSD M15. Les fichiers CSV et JSON sont acceptés, y compris les fichiers JSON compressés en .gz si ton navigateur prend en charge la décompression.</p>
+<label for="historyFile">Fichier historique</label>
+<input id="historyFile" type="file" accept=".csv,.txt,.json,.gz,.json.gz">
+<div class="grid" style="margin-top:14px">
+<div><label for="symbol">Instrument</label>
+<select id="symbol"><option value="XAU_USD">GOLD / XAUUSD</option><option value="EUR_USD">EUR/USD</option></select></div>
+<div><label for="timeframe">Timeframe</label>
+<select id="timeframe"><option>M15</option><option>M5</option><option>H1</option><option>H4</option><option>D1</option></select></div>
+<div><label for="fastMA">Moyenne rapide</label>
+<input id="fastMA" type="number" value="10" min="2"></div>
+<div><label for="slowMA">Moyenne lente</label>
+<input id="slowMA" type="number" value="20" min="3"></div>
+<div><label for="capital">Capital initial ($)</label>
+<input id="capital" type="number" value="10000" min="1"></div>
+</div>
+<button id="runBacktest">Lancer le backtest</button>
+<button id="clear" class="secondary">Effacer les résultats</button>
+<div id="importStatus" class="status">Aucun fichier importé.</div>
+</section>
+
+<section class="panel">
+<h2>📊 Résultats du backtest</h2>
+<div id="results"><p>Importe ton historique puis lance le backtest.</p></div>
+</section>
+
+<section class="panel">
+<h2>⚠️ Limites</h2>
+<p>Ce backtest est une simulation indicative utilisant les clôtures et un croisement de moyennes mobiles. Il ne reproduit pas fidèlement les frais, le spread, le slippage, le financement, la liquidité ou les contraintes d'exécution. Le dimensionnement du risque n'est pas modélisé. Les résultats historiques ne garantissent aucun résultat futur.</p>
+</section>
 </main>
 
 <script>
-const $ = id => document.getElementById(id);
-const money = n => n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' $';
+"use strict";
 
-$('generate').addEventListener('click', async()=>{
-  const symbol=$('symbol').value;
-  const timeframe=$('timeframe').value;
-  const idea=$('idea').value.trim();
-  $('draft').textContent='Création de la fiche stratégie…';
-  try{
-    const r=await fetch('https://tradepilot-ai.williampaurent.workers.dev/api/strategies/drafts',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name:'Ma stratégie',description:idea,symbol,timeframe})
-    });
-    const data=await r.json();
-    if(!r.ok) throw new Error(data.error||'Erreur API');
-    $('draft').innerHTML='';
-    const pre=document.createElement('pre');
-    pre.textContent=JSON.stringify(data,null,2);
-    $('draft').appendChild(pre);
-  }catch(e){
-    $('draft').textContent='Fiche non générée par le serveur : '+e.message+
-      '. Tu peux quand même utiliser le backtest CSV ci-dessous.';
+const WORKER_URL = "https://tradepilot-ai.williampaurent.workers.dev";
+let historyBars = [];
+
+const $ = id => document.getElementById(id);
+
+function setStatus(id, message) {
+  $(id).textContent = message;
+}
+
+function normalizeKey(key) {
+  return String(key ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function numberValue(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+  let s = String(value ?? "").trim().replace(/\s/g, "");
+  if (!s) return NaN;
+  if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
+  else s = s.replace(/,(?=\d{3}(\D|$))/g, "");
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function parseCSV(text) {
+  const firstLine = text.split(/\r?\n/, 1)[0] || "";
+  const delimiter = firstLine.includes("\t") ? "\t" :
+                    firstLine.includes(";") ? ";" : ",";
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (quoted && text[i + 1] === '"') {
+        cell += '"'; i++;
+      } else quoted = !quoted;
+    } else if (ch === delimiter && !quoted) {
+      row.push(cell); cell = "";
+    } else if ((ch === "\n" || ch === "\r") && !quoted) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      if (row.some(v => String(v).trim() !== "")) rows.push(row);
+      row = []; cell = "";
+    } else cell += ch;
+  }
+  row.push(cell);
+  if (row.some(v => String(v).trim() !== "")) rows.push(row);
+  if (rows.length < 2) throw new Error("Le CSV est vide ou incomplet.");
+
+  const headers = rows[0].map(normalizeKey);
+  const findIndex = names => headers.findIndex(h => names.includes(h));
+  const closeIndex = findIndex(["close", "c", "closingprice", "last"]);
+  const openIndex = findIndex(["open", "o"]);
+  const highIndex = findIndex(["high", "h"]);
+  const lowIndex = findIndex(["low", "l"]);
+  const timeIndex = findIndex(["time", "timestamp", "date", "datetime", "etcutc", "gmt time"]);
+
+  if (closeIndex < 0) {
+    throw new Error("Colonne Close introuvable. Vérifie les en-têtes du CSV.");
+  }
+
+  return rows.slice(1).map(r => ({
+    time: timeIndex >= 0 ? r[timeIndex] : "",
+    open: openIndex >= 0 ? numberValue(r[openIndex]) : NaN,
+    high: highIndex >= 0 ? numberValue(r[highIndex]) : NaN,
+    low: lowIndex >= 0 ? numberValue(r[lowIndex]) : NaN,
+    close: numberValue(r[closeIndex])
+  })).filter(b => Number.isFinite(b.close));
+}
+
+function parseJSON(data) {
+  let items = data;
+  if (items && !Array.isArray(items)) {
+    if (Array.isArray(items.data)) items = items.data;
+    else if (Array.isArray(items.bars)) items = items.bars;
+    else if (Array.isArray(items.candles)) items = items.candles;
+    else throw new Error("Format JSON non reconnu : tableau de bougies introuvable.");
+  }
+
+  if (!Array.isArray(items) || !items.length) {
+    throw new Error("Le fichier JSON ne contient aucune bougie.");
+  }
+
+  return items.map(b => ({
+    time: b.ts ?? b.time ?? b.timestamp ?? b.date ?? "",
+    open: numberValue(b.o ?? b.open),
+    high: numberValue(b.h ?? b.high),
+    low: numberValue(b.l ?? b.low),
+    close: numberValue(b.c ?? b.close)
+  })).filter(b => Number.isFinite(b.close));
+}
+
+async function readHistoryFile(file) {
+  let buffer = await file.arrayBuffer();
+  let name = file.name.toLowerCase();
+  let text;
+
+  if (name.endsWith(".gz")) {
+    if (!("DecompressionStream" in window)) {
+      throw new Error("Ce navigateur ne sait pas décompresser ce fichier. Il faut convertir le .gz en CSV ou JSON non compressé.");
+    }
+    const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+    text = await new Response(stream).text();
+  } else {
+    text = new TextDecoder("utf-8").decode(buffer);
+  }
+
+  text = text.replace(/^\uFEFF/, "").trim();
+  if (!text) throw new Error("Le fichier est vide.");
+
+  if (text.startsWith("{") || text.startsWith("[")) {
+    return parseJSON(JSON.parse(text));
+  }
+  return parseCSV(text);
+}
+
+$("historyFile").addEventListener("change", async event => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  setStatus("importStatus", "Lecture du fichier en cours…");
+  try {
+    const bars = await readHistoryFile(file);
+    if (bars.length < 30) {
+      throw new Error("Seulement " + bars.length + " bougies valides. Il en faut au moins 30.");
+    }
+    historyBars = bars;
+    setStatus("importStatus",
+      "Fichier chargé : " + file.name + "\n" +
+      bars.length.toLocaleString("fr-FR") + " bougies valides.\n" +
+      "Tu peux maintenant lancer le backtest.");
+  } catch (err) {
+    historyBars = [];
+    setStatus("importStatus", "Erreur : " + err.message);
   }
 });
 
-function parseCSV(text){
-  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(s=>s.trim());
-  if(lines.length<3) throw Error('Le fichier doit contenir un en-tête et au moins deux lignes de données.');
-  const delimiter=(lines[0].split(';').length>lines[0].split(',').length)?';':
-    (lines[0].split('\t').length>lines[0].split(',').length?'\t':',');
-  function splitLine(line){
-    const out=[];let cur='',quoted=false;
-    for(let i=0;i<line.length;i++){
-      const c=line[i];
-      if(c==='"'&&line[i+1]==='"'&&quoted){cur+='"';i++;}
-      else if(c==='"') quoted=!quoted;
-      else if(c===delimiter&&!quoted){out.push(cur.trim());cur='';}
-      else cur+=c;
+function sma(values, period, index) {
+  if (index + 1 < period) return NaN;
+  let sum = 0;
+  for (let i = index - period + 1; i <= index; i++) sum += values[i];
+  return sum / period;
+}
+
+function money(n) {
+  return n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:2}) + " $";
+}
+
+function pct(n) {
+  return n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:2}) + "%";
+}
+
+function renderResults(stats) {
+  const profitClass = stats.returnPct >= 0 ? "good" : "bad";
+  $("results").innerHTML = `
+    <div class="metrics">
+      <div class="metric"><span>Capital initial</span><strong>${money(stats.initial)}</strong></div>
+      <div class="metric"><span>Capital final</span><strong>${money(stats.final)}</strong></div>
+      <div class="metric"><span>Rendement</span><strong class="${profitClass}">${pct(stats.returnPct)}</strong></div>
+      <div class="metric"><span>Trades clôturés</span><strong>${stats.trades}</strong></div>
+      <div class="metric"><span>Trades gagnants</span><strong>${pct(stats.winRate)}</strong></div>
+      <div class="metric"><span>Drawdown maximal</span><strong class="bad">${pct(stats.drawdown)}</strong></div>
+      <div class="metric"><span>Profit factor</span><strong>${stats.profitFactor === Infinity ? "∞" : stats.profitFactor.toFixed(2)}</strong></div>
+      <div class="metric"><span>Nombre de bougies</span><strong>${stats.bars.toLocaleString("fr-FR")}</strong></div>
+    </div>
+    <p>${stats.trades === 0 ? "Aucun trade clôturé avec ces paramètres." : "Simulation terminée. Les frais et le spread ne sont pas inclus."}</p>
+    <small>${$("symbol").selectedOptions[0].text} · ${$("timeframe").value} · Moyennes ${stats.fast}/${stats.slow}</small>`;
+}
+
+$("runBacktest").addEventListener("click", () => {
+  try {
+    if (historyBars.length < 30) {
+      throw new Error("Choisis d'abord un fichier historique valide.");
     }
-    out.push(cur.trim());return out;
-  }
-  const headers=splitLine(lines[0]).map(x=>x.toLowerCase().replace(/^\ufeff/,'').trim());
-  const findHeader=names=>headers.findIndex(h=>names.some(n=>h===n||h.includes(n)));
-  const ci=findHeader(['close','closing price','last']);
-  const ti=findHeader(['etc/utc','timestamp','datetime','date','time']);
-  if(ci<0) throw Error('Colonne Close introuvable. Vérifie que le fichier contient bien les prix de clôture.');
-  const rows=[];
-  for(let i=1;i<lines.length;i++){
-    const cells=splitLine(lines[i]);
-    let raw=(cells[ci]||'').replace(/\s/g,'');
-    if(delimiter===';'&&raw.includes(',')&&!raw.includes('.')) raw=raw.replace(',','.');
-    const close=Number(raw);
-    if(!Number.isFinite(close)||close<=0) continue;
-    rows.push({close,time:ti>=0?cells[ti]:'Ligne '+(i+1)});
-  }
-  if(rows.length<3) throw Error('Pas assez de prix Close numériques pour faire un test.');
-  return rows;
-}
 
-function sma(values,period){
-  const out=Array(values.length).fill(null);
-  let sum=0;
-  for(let i=0;i<values.length;i++){
-    sum+=values[i];
-    if(i>=period) sum-=values[i-period];
-    if(i>=period-1) out[i]=sum/period;
-  }
-  return out;
-}
+    const fast = Math.floor(Number($("fastMA").value));
+    const slow = Math.floor(Number($("slowMA").value));
+    const initial = Number($("capital").value);
 
-$('run').addEventListener('click',async()=>{
-  $('results').hidden=true;
-  try{
-    const file=$('csv').files[0];
-    if(!file) throw Error('Sélectionne d’abord ton fichier CSV.');
-    const fast=Number($('fast').value), slow=Number($('slow').value);
-    const initial=Number($('capital').value);
-    if(!Number.isInteger(fast)||!Number.isInteger(slow)||fast<2||slow<=fast)
-      throw Error('La moyenne lente doit être un entier supérieur à la moyenne rapide.');
-    if(!Number.isFinite(initial)||initial<=0) throw Error('Le capital doit être supérieur à zéro.');
-    $('status').textContent='Lecture et analyse du fichier…';
-    const rows=parseCSV(await file.text());
-    const prices=rows.map(r=>r.close);
-    if(prices.length<slow+2) throw Error('Il faut au moins '+(slow+2)+' prix de clôture pour ces paramètres.');
-    const f=sma(prices,fast), s=sma(prices,slow);
-    let capital=initial, peak=initial, maxDD=0, entry=null;
-    let wins=0, losses=0, grossWin=0, grossLoss=0, closed=0;
-    for(let i=1;i<prices.length;i++){
-      if(f[i-1]===null||s[i-1]===null||f[i]===null||s[i]===null) continue;
-      const crossUp=f[i-1]<=s[i-1]&&f[i]>s[i];
-      const crossDown=f[i-1]>=s[i-1]&&f[i]<s[i];
-      if(entry===null&&crossUp){
-        entry=prices[i];
-      }else if(entry!==null&&crossDown){
-        const pnl=capital*(prices[i]/entry-1);
-        capital+=pnl;
-        closed++;
-        if(pnl>0){wins++;grossWin+=pnl;}
-        else if(pnl<0){losses++;grossLoss+=Math.abs(pnl);}
-        entry=null;
+    if (!Number.isFinite(fast) || !Number.isFinite(slow) || fast < 2 || slow <= fast) {
+      throw new Error("La moyenne lente doit être supérieure à la moyenne rapide.");
+    }
+    if (!Number.isFinite(initial) || initial <= 0) {
+      throw new Error("Le capital initial doit être supérieur à zéro.");
+    }
+    if (historyBars.length < slow + 2) {
+      throw new Error("Pas assez de bougies pour calculer la moyenne lente.");
+    }
+
+    const closes = historyBars.map(b => b.close);
+    let cash = initial;
+    let units = 0;
+    let entryPrice = 0;
+    let peak = initial;
+    let maxDD = 0;
+    let grossProfit = 0;
+    let grossLoss = 0;
+    let trades = 0;
+    let wins = 0;
+    let previousFast = NaN;
+    let previousSlow = NaN;
+    let position = false;
+
+    for (let i = 0; i < closes.length; i++) {
+      const price = closes[i];
+      const f = sma(closes, fast, i);
+      const s = sma(closes, slow, i);
+      if (!Number.isFinite(f) || !Number.isFinite(s)) continue;
+
+      const crossUp = Number.isFinite(previousFast) &&
+                      previousFast <= previousSlow && f > s;
+      const crossDown = Number.isFinite(previousFast) &&
+                        previousFast >= previousSlow && f < s;
+
+      if (!position && crossUp) {
+        units = cash / price;
+        entryPrice = price;
+        position = true;
+      } else if (position && crossDown) {
+        const pnl = units * (price - entryPrice);
+        cash += pnl;
+        trades++;
+        if (pnl > 0) { wins++; grossProfit += pnl; }
+        else if (pnl < 0) grossLoss += Math.abs(pnl);
+        units = 0;
+        position = false;
       }
-      peak=Math.max(peak,capital);
-      if(peak>0) maxDD=Math.max(maxDD,(peak-capital)/peak*100);
+
+      previousFast = f;
+      previousSlow = s;
+
+      const equity = position ? cash + units * (price - entryPrice) : cash;
+      peak = Math.max(peak, equity);
+      if (peak > 0) maxDD = Math.max(maxDD, (peak - equity) / peak * 100);
     }
-    if(entry!==null){
-      $('details').textContent='Un trade est encore ouvert à la dernière bougie : il n’est pas compté dans les trades clôturés ni dans le capital final. Les positions ouvertes ne sont pas valorisées dans ce résumé.';
-    }else{
-      $('details').textContent='Simulation longue uniquement, entrée/sortie sur croisements des moyennes simples (SMA). Capital entièrement exposé à chaque entrée, sans frais ni effet de levier. Ce modèle est simplifié.';
+
+    if (position) {
+      const price = closes[closes.length - 1];
+      const pnl = units * (price - entryPrice);
+      cash += pnl;
+      trades++;
+      if (pnl > 0) { wins++; grossProfit += pnl; }
+      else if (pnl < 0) grossLoss += Math.abs(pnl);
     }
-    $('initial').textContent=money(initial);
-    $('final').textContent=money(capital);
-    const ret=(capital/initial-1)*100;
-    $('return').textContent=ret.toFixed(2)+'%';
-    $('return').className=ret>=0?'good':'bad';
-    $('trades').textContent=String(closed);
-    $('wins').textContent=closed?(wins/closed*100).toFixed(1)+'% ('+wins+')':'0 (aucun trade clôturé)';
-    $('dd').textContent=maxDD.toFixed(2)+'%';
-    $('pf').textContent=grossLoss===0?(grossWin>0?'∞ (aucune perte)':'—'): (grossWin/grossLoss).toFixed(2);
-    $('bars').textContent=String(prices.length);
-    $('status').textContent='Fichier lu : '+file.name+' — '+rows.length+' prix valides.';
-    $('results').hidden=false;
-  }catch(e){
-    $('status').textContent='Impossible de lancer le test : '+e.message;
+
+    renderResults({
+      initial, final: cash,
+      returnPct: (cash / initial - 1) * 100,
+      trades, winRate: trades ? wins / trades * 100 : 0,
+      drawdown: maxDD,
+      profitFactor: grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss,
+      bars: closes.length, fast, slow
+    });
+
+    setStatus("importStatus",
+      "Calcul terminé sur " + historyBars.length.toLocaleString("fr-FR") +
+      " bougies. Résultats indicatifs avant frais et spread.");
+  } catch (err) {
+    $("results").textContent = "Erreur : " + err.message;
+  }
+});
+
+$("clear").addEventListener("click", () => {
+  historyBars = [];
+  $("historyFile").value = "";
+  $("results").innerHTML = "<p>Importe ton historique puis lance le backtest.</p>";
+  setStatus("importStatus", "Résultats effacés. Aucun fichier chargé.");
+});
+
+$("generate").addEventListener("click", async () => {
+  const button = $("generate");
+  const output = $("strategy");
+  button.disabled = true;
+  output.textContent = "Génération en cours…";
+
+  const payload = {
+    symbol: $("genSymbol").value,
+    timeframe: $("genTf").value,
+    risk_percent: Number($("risk").value)
+  };
+
+  try {
+    const response = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    const body = await response.text();
+    let data;
+    try { data = JSON.parse(body); }
+    catch { data = {result: body}; }
+
+    if (!response.ok) {
+      throw new Error(data.error || data.message || "Erreur API HTTP " + response.status);
+    }
+
+    output.textContent = typeof data === "string"
+      ? data
+      : JSON.stringify(data, null, 2);
+  } catch (err) {
+    output.textContent =
+      "Impossible de contacter le générateur : " + err.message +
+      "\nLe backtest local reste utilisable. Vérifie que le Worker est en ligne.";
+  } finally {
+    button.disabled = false;
   }
 });
 </script>
 </body>
 </html>
+
