@@ -107,18 +107,40 @@
   </main>
 
   <script>
-    function draft() {
-      const idea = document.getElementById("idea").value.trim();
-      const result = document.getElementById("draftResult");
-      if (!idea) {
-        result.textContent = "Décris d'abord ton idée de stratégie.";
-        return;
-      }
-      result.textContent =
-        "Brouillon enregistré dans cette page (pas sur un serveur).\n\n" +
-        "Idée : " + idea +
-        "\n\nProchaine étape : connecter un véritable moteur IA.";
+    
+async function draft() {
+  const idea = document.getElementById("idea").value.trim();
+  const result = document.getElementById("draftResult");
+
+  if (!idea) {
+    result.textContent = "Décris d'abord ton idée de stratégie.";
+    return;
+  }
+
+  result.textContent = "Connexion à TradePilot AI...";
+
+  try {
+    const response = await fetch(
+      "https://tradepilot-ai.williampaurent.workers.dev/api/health"
+    );
+
+    if (!response.ok) {
+      throw new Error("Le serveur ne répond pas correctement.");
     }
+
+    const data = await response.json();
+
+    result.textContent =
+      "Serveur TradePilot AI : " + data.status +
+      "\nMode : " + data.mode +
+      "\n\nTon idée : " + idea +
+      "\n\nLe serveur est connecté. Le moteur IA reste à ajouter.";
+  } catch (error) {
+    result.textContent =
+      "Impossible de joindre le serveur. Réessaie plus tard.";
+  }
+}
+
 
     function showConfig() {
       document.getElementById("configResult").textContent =
