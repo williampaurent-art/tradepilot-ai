@@ -108,37 +108,90 @@
 
   <script>
     
+. Réessaie plus 
+
+    
+
 async function draft() {
+
   const idea = document.getElementById("idea").value.trim();
+
   const result = document.getElementById("draftResult");
 
   if (!idea) {
+
     result.textContent = "Décris d'abord ton idée de stratégie.";
+
     return;
+
   }
 
-  result.textContent = "Connexion à TradePilot AI...";
+  result.textContent = "Génération du brouillon en cours...";
 
   try {
-    const response = await fetch(
-      "https://tradepilot-ai.williampaurent.workers.dev/api/health"
-    );
 
-    if (!response.ok) {
-      throw new Error("Le serveur ne répond pas correctement.");
-    }
+    const response = await fetch(
+
+      "https://tradepilot-ai.williampaurent.workers.dev/api/strategies/drafts",
+
+      {
+
+        method: "POST",
+
+        headers: {
+
+          "Content-Type": "application/json"
+
+        },
+
+        body: JSON.stringify({
+
+          name: "Ma stratégie",
+
+          description: idea,
+
+          symbol: "EURUSD",
+
+          timeframe: "M15"
+
+        })
+
+      }
+
+    );
 
     const data = await response.json();
 
+    if (!response.ok || data.status !== "draft_created") {
+
+      throw new Error(
+
+        data.message || "Impossible de générer le brouillon."
+
+      );
+
+    }
+
     result.textContent =
-      "Serveur TradePilot AI : " + data.status +
-      "\nMode : " + data.mode +
-      "\n\nTon idée : " + idea +
-      "\n\nLe serveur est connecté. Le moteur IA reste à ajouter.";
+
+      "Brouillon généré avec succès !\n\n" +
+
+      JSON.stringify(data.strategy, null, 2) +
+
+      "\n\nBacktest : " + data.backtest_status +
+
+      "\nTrading réel : désactivé";
+
   } catch (error) {
+
     result.textContent =
-      "Impossible de joindre le serveur. Réessaie plus tard.";
+
+      "Erreur : " + error.message +
+
+      "\n\nVérifie que l'API accepte les requêtes POST et que le serveur est opérationnel.";
+
   }
+
 }
 
 
