@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -5,344 +6,213 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TradePilot AI</title>
 <style>
+:root{color-scheme:dark;--bg:#0b1020;--panel:#141c30;--line:#293650;--text:#edf2ff;--muted:#9baac5;--green:#42d6a0;--red:#ff7585}
 *{box-sizing:border-box}
-body{margin:0;background:#0b1020;color:#e8edf8;font-family:Arial,sans-serif}
-header{padding:24px 18px;background:#121a30;border-bottom:1px solid #293653}
-header h1{margin:0;color:#63e6be;font-size:27px}
-header p{color:#aebbd2;margin-bottom:0}
-main{max-width:850px;margin:24px auto;padding:0 15px}
-.card{background:#121a30;border:1px solid #293653;border-radius:14px;padding:20px;margin-bottom:18px}
-h2{margin-top:0;font-size:20px}
-label{display:block;margin:15px 0 7px;font-weight:bold}
-input,select,textarea,button{width:100%;padding:12px;border-radius:8px;font-size:16px}
-input,select,textarea{background:#0b1020;border:1px solid #405071;color:white}
-textarea{min-height:105px;resize:vertical}
-button{margin-top:16px;border:0;background:#63e6be;color:#071a17;font-weight:bold;cursor:pointer}
-button:disabled{opacity:.5;cursor:wait}
-.secondary{background:#263652;color:white}
-.notice{color:#aebbd2;font-size:13px;line-height:1.5}
-.result{white-space:pre-wrap;overflow-wrap:anywhere;background:#080d19;padding:14px;border-radius:8px;font-size:14px;line-height:1.6}
-.status{color:#63e6be}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.metric{background:#0b1020;padding:13px;border-radius:8px}
-.metric strong{display:block;font-size:20px;margin-top:8px}
-.error{color:#ff9999}
-@media(max-width:550px){.grid{grid-template-columns:1fr}}
+body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,sans-serif}
+main{max-width:850px;margin:auto;padding:22px}
+h1{font-size:30px;margin-bottom:4px}
+h2{font-size:20px}
+p,.muted{color:var(--muted);line-height:1.5}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin:18px 0}
+label{display:block;margin:12px 0 6px;color:var(--muted)}
+input,select,textarea,button{width:100%;font:inherit;border-radius:9px;padding:12px}
+input,select,textarea{background:#0b1325;color:var(--text);border:1px solid var(--line)}
+button{background:var(--green);color:#062319;font-weight:750;border:0;margin-top:14px;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.stat{background:#0b1325;padding:13px;border-radius:10px;overflow-wrap:anywhere}
+.stat small{display:block;color:var(--muted)}
+.stat strong{font-size:21px;display:block;margin-top:5px}
+.good{color:var(--green)}.bad{color:var(--red)}
+pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b1325;padding:12px;border-radius:9px}
+@media(max-width:500px){main{padding:14px}.grid{grid-template-columns:1fr 1fr}.panel{padding:14px}}
 </style>
 </head>
 <body>
-<header>
-  <h1>TradePilot AI</h1>
-  <p>Crée et teste tes stratégies de trading.</p>
-</header>
-
 <main>
-  <section class="card">
-    <h2>1. Générateur de stratégie</h2>
+<h1>TradePilot AI</h1>
+<p>Création de stratégies et backtests historiques en simulation.</p>
 
-    <form id="strategyForm">
-      <label for="idea">Décris ta stratégie</label>
-      <textarea id="idea" required>La moyenne mobile 10 croise la moyenne mobile 20. Acheter au croisement haussier et vendre au croisement baissier.</textarea>
+<section class="panel">
+<h2>1. Générateur de stratégie</h2>
+<label for="idea">Ton idée de stratégie</label>
+<textarea id="idea" rows="3">Acheter lorsque la moyenne mobile rapide 10 croise au-dessus de la moyenne lente 20. Sortir lorsque la rapide passe en dessous.</textarea>
+<label for="symbol">Instrument</label>
+<select id="symbol">
+<option value="XAUUSD">GOLD / XAUUSD</option>
+<option value="EUR_USD">EUR/USD</option>
+</select>
+<label for="timeframe">Unité de temps</label>
+<select id="timeframe">
+<option>M15</option><option>M5</option><option>M30</option>
+<option>H1</option><option>H4</option><option>D1</option>
+</select>
+<button id="generate">Générer une fiche stratégie</button>
+<div id="draft" class="muted" aria-live="polite"></div>
+</section>
 
-      <div class="grid">
-        <div>
-          <label for="symbol">Instrument</label>
-          <select id="symbol">
-            <option value="EUR_USD">EUR/USD</option>
-            <option value="GBP_USD">GBP/USD</option>
-            <option value="USD_JPY">USD/JPY</option>
-            <option value="XAU_USD">Or (XAU/USD)</option>
-          </select>
-        </div>
-        <div>
-          <label for="timeframe">Unité de temps</label>
-          <select id="timeframe">
-            <option value="M1">M1</option>
-            <option value="M5">M5</option>
-            <option value="M15" selected>M15</option>
-            <option value="M30">M30</option>
-            <option value="H1">H1</option>
-            <option value="H4">H4</option>
-            <option value="D1">D1</option>
-          </select>
-        </div>
-      </div>
-
-      <button id="generateBtn" type="submit">Générer la stratégie</button>
-    </form>
-
-    <p class="notice">Le serveur crée un brouillon. Le trading réel reste désactivé.</p>
-    <div id="serverStatus" role="status"></div>
-    <div id="strategyResult" class="result" hidden></div>
-  </section>
-
-  <section class="card">
-    <h2>2. Backtest historique</h2>
-    <p>Importe un fichier CSV contenant les bougies historiques de ton instrument.</p>
-
-    <label for="csvFile">Fichier CSV des données historiques</label>
-    <input id="csvFile" type="file" accept=".csv,text/csv">
-
-    <p class="notice">
-      Le CSV doit contenir une colonne de clôture nommée close.
-      Les noms de colonnes reconnus sont timestamp/date/time, open, high, low et close.
-      Les bougies doivent être triées de la plus ancienne à la plus récente.
-      Utilise des données correspondant à l'instrument et à l'unité de temps choisis.
-    </p>
-
-    <div class="grid">
-      <div>
-        <label for="fastPeriod">Moyenne rapide</label>
-        <input id="fastPeriod" type="number" min="1" max="500" value="10">
-      </div>
-      <div>
-        <label for="slowPeriod">Moyenne lente</label>
-        <input id="slowPeriod" type="number" min="2" max="1000" value="20">
-      </div>
-    </div>
-
-    <label for="initialCapital">Capital de départ</label>
-    <input id="initialCapital" type="number" min="1" step="any" value="10000">
-
-    <button id="backtestBtn" type="button">Lancer le backtest</button>
-    <div id="backtestStatus" role="status"></div>
-    <div id="backtestResult"></div>
-
-    <p class="notice">
-      Backtest indicatif sur les prix de clôture : les frais, le spread,
-      le slippage et les contraintes d'exécution ne sont pas inclus.
-      Les résultats historiques ne garantissent pas les résultats futurs.
-    </p>
-  </section>
+<section class="panel">
+<h2>2. Backtest CSV</h2>
+<p>Importe ton historique Dukascopy. Les colonnes reconnues incluent Etc/UTC, Open, High, Low, Close et Volume.</p>
+<label for="csv">Fichier historique CSV</label>
+<input id="csv" type="file" accept=".csv,.txt">
+<label for="fast">Moyenne rapide</label>
+<input id="fast" type="number" min="2" max="500" value="10">
+<label for="slow">Moyenne lente</label>
+<input id="slow" type="number" min="3" max="1000" value="20">
+<label for="capital">Capital de départ ($)</label>
+<input id="capital" type="number" min="1" value="10000">
+<label for="market">Instrument correspondant au fichier</label>
+<select id="market">
+<option value="XAUUSD">GOLD / XAUUSD</option>
+<option value="EUR_USD">EUR/USD</option>
+</select>
+<label for="tf">Unité de temps du fichier</label>
+<select id="tf"><option>M15</option><option>M5</option><option>M30</option><option>H1</option><option>H4</option><option>D1</option></select>
+<button id="run">Lancer le backtest</button>
+<div id="status" class="muted" aria-live="polite"></div>
+<div id="results" hidden>
+<h2>Résultats du test</h2>
+<div class="grid">
+<div class="stat"><small>Capital initial</small><strong id="initial"></strong></div>
+<div class="stat"><small>Capital final</small><strong id="final"></strong></div>
+<div class="stat"><small>Rendement</small><strong id="return"></strong></div>
+<div class="stat"><small>Trades clôturés</small><strong id="trades"></strong></div>
+<div class="stat"><small>Trades gagnants</small><strong id="wins"></strong></div>
+<div class="stat"><small>Drawdown maximal</small><strong id="dd"></strong></div>
+<div class="stat"><small>Profit factor</small><strong id="pf"></strong></div>
+<div class="stat"><small>Prix analysés</small><strong id="bars"></strong></div>
+</div>
+<p id="details"></p>
+</div>
+</section>
+<p class="muted">Mode simulation uniquement. Aucun ordre réel n'est envoyé. Les résultats ne garantissent pas les performances futures et ne déduisent pas les frais, le spread ni le slippage.</p>
 </main>
 
 <script>
-const API_URL = "https://tradepilot-ai.williampaurent.workers.dev";
-
 const $ = id => document.getElementById(id);
+const money = n => n.toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' $';
 
-$("strategyForm").addEventListener("submit", async event => {
-  event.preventDefault();
-
-  const button = $("generateBtn");
-  const status = $("serverStatus");
-  const output = $("strategyResult");
-
-  button.disabled = true;
-  status.className = "";
-  status.textContent = "Connexion au serveur…";
-  output.hidden = true;
-
-  const payload = {
-    name: "Ma stratégie",
-    description: $("idea").value.trim(),
-    symbol: $("symbol").value,
-    timeframe: $("timeframe").value
-  };
-
-  try {
-    const response = await fetch(API_URL + "/api/strategies/drafts", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload)
+$('generate').addEventListener('click', async()=>{
+  const symbol=$('symbol').value;
+  const timeframe=$('timeframe').value;
+  const idea=$('idea').value.trim();
+  $('draft').textContent='Création de la fiche stratégie…';
+  try{
+    const r=await fetch('https://tradepilot-ai.williampaurent.workers.dev/api/strategies/drafts',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:'Ma stratégie',description:idea,symbol,timeframe})
     });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || "Le serveur a refusé la demande.");
-    }
-
-    status.className = "status";
-    status.textContent = "Brouillon généré.";
-
-    output.textContent = JSON.stringify(data, null, 2);
-    output.hidden = false;
-
-    if (data.strategy) {
-      const p = data.strategy.parameters || {};
-      if (p.fast_ma_period) $("fastPeriod").value = p.fast_ma_period;
-      if (p.slow_ma_period) $("slowPeriod").value = p.slow_ma_period;
-    }
-  } catch (error) {
-    status.className = "error";
-    status.textContent =
-      "Impossible de générer la stratégie : " + error.message;
-  } finally {
-    button.disabled = false;
+    const data=await r.json();
+    if(!r.ok) throw new Error(data.error||'Erreur API');
+    $('draft').innerHTML='';
+    const pre=document.createElement('pre');
+    pre.textContent=JSON.stringify(data,null,2);
+    $('draft').appendChild(pre);
+  }catch(e){
+    $('draft').textContent='Fiche non générée par le serveur : '+e.message+
+      '. Tu peux quand même utiliser le backtest CSV ci-dessous.';
   }
 });
 
-function parseCSV(text) {
-  const lines = text.trim().split(/\r?\n/).filter(Boolean);
-  if (lines.length < 3) throw new Error("Le fichier contient trop peu de lignes.");
-
-  function splitLine(line) {
-    // Prend en charge les CSV séparés par virgules ou points-virgules.
-    const delimiter = line.includes(";") ? ";" : ",";
-    return line.split(delimiter).map(v => v.trim().replace(/^"|"$/g, ""));
-  }
-
-  const headers = splitLine(lines[0]).map(h => h.toLowerCase());
-  const closeIndex = headers.indexOf("close");
-
-  if (closeIndex < 0) {
-    throw new Error("Colonne close introuvable dans le CSV.");
-  }
-
-  const rows = lines.slice(1).map((line, index) => {
-    const fields = splitLine(line);
-    const close = Number(fields[closeIndex].replace(",", "."));
-
-    if (!Number.isFinite(close) || close <= 0) {
-      throw new Error("Prix de clôture invalide à la ligne " + (index + 2) + ".");
+function parseCSV(text){
+  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(s=>s.trim());
+  if(lines.length<3) throw Error('Le fichier doit contenir un en-tête et au moins deux lignes de données.');
+  const delimiter=(lines[0].split(';').length>lines[0].split(',').length)?';':
+    (lines[0].split('\t').length>lines[0].split(',').length?'\t':',');
+  function splitLine(line){
+    const out=[];let cur='',quoted=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'&&line[i+1]==='"'&&quoted){cur+='"';i++;}
+      else if(c==='"') quoted=!quoted;
+      else if(c===delimiter&&!quoted){out.push(cur.trim());cur='';}
+      else cur+=c;
     }
-
-    return {close, index};
-  });
-
+    out.push(cur.trim());return out;
+  }
+  const headers=splitLine(lines[0]).map(x=>x.toLowerCase().replace(/^\ufeff/,'').trim());
+  const findHeader=names=>headers.findIndex(h=>names.some(n=>h===n||h.includes(n)));
+  const ci=findHeader(['close','closing price','last']);
+  const ti=findHeader(['etc/utc','timestamp','datetime','date','time']);
+  if(ci<0) throw Error('Colonne Close introuvable. Vérifie que le fichier contient bien les prix de clôture.');
+  const rows=[];
+  for(let i=1;i<lines.length;i++){
+    const cells=splitLine(lines[i]);
+    let raw=(cells[ci]||'').replace(/\s/g,'');
+    if(delimiter===';'&&raw.includes(',')&&!raw.includes('.')) raw=raw.replace(',','.');
+    const close=Number(raw);
+    if(!Number.isFinite(close)||close<=0) continue;
+    rows.push({close,time:ti>=0?cells[ti]:'Ligne '+(i+1)});
+  }
+  if(rows.length<3) throw Error('Pas assez de prix Close numériques pour faire un test.');
   return rows;
 }
 
-function movingAverage(values, period, end) {
-  if (end + 1 < period) return null;
-  let sum = 0;
-  for (let i = end - period + 1; i <= end; i++) sum += values[i];
-  return sum / period;
+function sma(values,period){
+  const out=Array(values.length).fill(null);
+  let sum=0;
+  for(let i=0;i<values.length;i++){
+    sum+=values[i];
+    if(i>=period) sum-=values[i-period];
+    if(i>=period-1) out[i]=sum/period;
+  }
+  return out;
 }
 
-$("backtestBtn").addEventListener("click", async () => {
-  const button = $("backtestBtn");
-  const status = $("backtestStatus");
-  const output = $("backtestResult");
-
-  try {
-    button.disabled = true;
-    status.className = "";
-    status.textContent = "Lecture des données…";
-    output.replaceChildren();
-
-    const file = $("csvFile").files[0];
-    if (!file) throw new Error("Choisis d'abord un fichier CSV.");
-
-    const fast = Number($("fastPeriod").value);
-    const slow = Number($("slowPeriod").value);
-    const capital = Number($("initialCapital").value);
-
-    if (!Number.isInteger(fast) || !Number.isInteger(slow) ||
-        fast < 1 || slow <= fast || slow > 1000) {
-      throw new Error("Les périodes doivent être valides et la rapide inférieure à la lente.");
-    }
-    if (!Number.isFinite(capital) || capital <= 0) {
-      throw new Error("Le capital doit être supérieur à zéro.");
-    }
-
-    const rows = parseCSV(await file.text());
-    const prices = rows.map(r => r.close);
-
-    if (prices.length < slow + 2) {
-      throw new Error("Il faut davantage de bougies pour tester ces périodes.");
-    }
-
-    status.textContent = "Calcul des moyennes mobiles et simulation…";
-
-    let equity = capital;
-    let peak = capital;
-    let maxDrawdown = 0;
-    let position = 0;
-    let entryPrice = 0;
-    let trades = [];
-    let previousDifference = null;
-
-    // Signal observé à la clôture ; exécution simulée à la clôture
-    // suivante pour limiter le biais d'anticipation.
-    for (let i = 0; i < prices.length - 1; i++) {
-      const fastMA = movingAverage(prices, fast, i);
-      const slowMA = movingAverage(prices, slow, i);
-
-      if (fastMA === null || slowMA === null) continue;
-
-      const difference = fastMA - slowMA;
-
-      if (previousDifference !== null) {
-        const bullishCross = previousDifference <= 0 && difference > 0;
-        const bearishCross = previousDifference >= 0 && difference < 0;
-        const nextPrice = prices[i + 1];
-
-        if (position === 0 && bullishCross) {
-          position = 1;
-          entryPrice = nextPrice;
-        } else if (position === 1 && bearishCross) {
-          const tradeReturn = (nextPrice - entryPrice) / entryPrice;
-          const pnl = equity * tradeReturn;
-          equity += pnl;
-
-          trades.push({pnl, returnPct: tradeReturn * 100});
-          position = 0;
-          entryPrice = 0;
-
-          peak = Math.max(peak, equity);
-          maxDrawdown = Math.max(maxDrawdown, (peak - equity) / peak);
-        }
+$('run').addEventListener('click',async()=>{
+  $('results').hidden=true;
+  try{
+    const file=$('csv').files[0];
+    if(!file) throw Error('Sélectionne d’abord ton fichier CSV.');
+    const fast=Number($('fast').value), slow=Number($('slow').value);
+    const initial=Number($('capital').value);
+    if(!Number.isInteger(fast)||!Number.isInteger(slow)||fast<2||slow<=fast)
+      throw Error('La moyenne lente doit être un entier supérieur à la moyenne rapide.');
+    if(!Number.isFinite(initial)||initial<=0) throw Error('Le capital doit être supérieur à zéro.');
+    $('status').textContent='Lecture et analyse du fichier…';
+    const rows=parseCSV(await file.text());
+    const prices=rows.map(r=>r.close);
+    if(prices.length<slow+2) throw Error('Il faut au moins '+(slow+2)+' prix de clôture pour ces paramètres.');
+    const f=sma(prices,fast), s=sma(prices,slow);
+    let capital=initial, peak=initial, maxDD=0, entry=null;
+    let wins=0, losses=0, grossWin=0, grossLoss=0, closed=0;
+    for(let i=1;i<prices.length;i++){
+      if(f[i-1]===null||s[i-1]===null||f[i]===null||s[i]===null) continue;
+      const crossUp=f[i-1]<=s[i-1]&&f[i]>s[i];
+      const crossDown=f[i-1]>=s[i-1]&&f[i]<s[i];
+      if(entry===null&&crossUp){
+        entry=prices[i];
+      }else if(entry!==null&&crossDown){
+        const pnl=capital*(prices[i]/entry-1);
+        capital+=pnl;
+        closed++;
+        if(pnl>0){wins++;grossWin+=pnl;}
+        else if(pnl<0){losses++;grossLoss+=Math.abs(pnl);}
+        entry=null;
       }
-
-      previousDifference = difference;
+      peak=Math.max(peak,capital);
+      if(peak>0) maxDD=Math.max(maxDD,(peak-capital)/peak*100);
     }
-
-    // Clôture de la position restante au dernier prix disponible.
-    if (position === 1) {
-      const lastPrice = prices[prices.length - 1];
-      const tradeReturn = (lastPrice - entryPrice) / entryPrice;
-      const pnl = equity * tradeReturn;
-      equity += pnl;
-      trades.push({pnl, returnPct: tradeReturn * 100});
-      peak = Math.max(peak, equity);
-      maxDrawdown = Math.max(maxDrawdown, (peak - equity) / peak);
+    if(entry!==null){
+      $('details').textContent='Un trade est encore ouvert à la dernière bougie : il n’est pas compté dans les trades clôturés ni dans le capital final. Les positions ouvertes ne sont pas valorisées dans ce résumé.';
+    }else{
+      $('details').textContent='Simulation longue uniquement, entrée/sortie sur croisements des moyennes simples (SMA). Capital entièrement exposé à chaque entrée, sans frais ni effet de levier. Ce modèle est simplifié.';
     }
-
-    const wins = trades.filter(t => t.pnl > 0);
-    const losses = trades.filter(t => t.pnl < 0);
-    const grossProfit = wins.reduce((s, t) => s + t.pnl, 0);
-    const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
-    const profitFactor = grossLoss === 0
-      ? (grossProfit > 0 ? "∞" : "—")
-      : (grossProfit / grossLoss).toFixed(2);
-
-    const metrics = [
-      ["Capital initial", capital.toFixed(2)],
-      ["Capital final", equity.toFixed(2)],
-      ["Rendement", ((equity / capital - 1) * 100).toFixed(2) + "%"],
-      ["Nombre de trades clôturés", String(trades.length)],
-      ["Trades gagnants", trades.length ? (wins.length / trades.length * 100).toFixed(1) + "%" : "—"],
-      ["Drawdown maximal observé", (maxDrawdown * 100).toFixed(2) + "%"],
-      ["Profit factor", profitFactor],
-      ["Instrument / unité choisie", $("symbol").value + " / " + $("timeframe").value]
-    ];
-
-    const grid = document.createElement("div");
-    grid.className = "grid";
-
-    for (const [label, value] of metrics) {
-      const box = document.createElement("div");
-      box.className = "metric";
-      const title = document.createElement("span");
-      title.textContent = label;
-      const strong = document.createElement("strong");
-      strong.textContent = value;
-      box.append(title, strong);
-      grid.appendChild(box);
-    }
-
-    output.appendChild(grid);
-    status.className = "status";
-    status.textContent =
-      "Calcul terminé sur " + prices.length +
-      " bougies. Résultats indicatifs avant frais et spread.";
-  } catch (error) {
-    status.className = "error";
-    status.textContent = error.message;
-  } finally {
-    button.disabled = false;
+    $('initial').textContent=money(initial);
+    $('final').textContent=money(capital);
+    const ret=(capital/initial-1)*100;
+    $('return').textContent=ret.toFixed(2)+'%';
+    $('return').className=ret>=0?'good':'bad';
+    $('trades').textContent=String(closed);
+    $('wins').textContent=closed?(wins/closed*100).toFixed(1)+'% ('+wins+')':'0 (aucun trade clôturé)';
+    $('dd').textContent=maxDD.toFixed(2)+'%';
+    $('pf').textContent=grossLoss===0?(grossWin>0?'∞ (aucune perte)':'—'): (grossWin/grossLoss).toFixed(2);
+    $('bars').textContent=String(prices.length);
+    $('status').textContent='Fichier lu : '+file.name+' — '+rows.length+' prix valides.';
+    $('results').hidden=false;
+  }catch(e){
+    $('status').textContent='Impossible de lancer le test : '+e.message;
   }
 });
 </script>
