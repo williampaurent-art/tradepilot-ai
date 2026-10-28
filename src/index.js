@@ -32,8 +32,8 @@ function buildStrategy(idea, name, symbol, timeframe) {
         sell: "La moyenne mobile rapide croise au-dessous de la lente."
       },
       parameters: {
-        fast_ma_period: 20,
-        slow_ma_period: 50,
+        fast_ma_period: fastPeriod,
+slow_ma_period: slowPeriod,
         ma_type: "EMA",
         stop_loss_pips: 20,
         take_profit_pips: 40
