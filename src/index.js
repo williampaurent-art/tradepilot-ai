@@ -1,4 +1,5 @@
 
+
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -45,8 +46,7 @@ function rsi(values, period = 14) {
   }
 
   if (losses === 0) return gains === 0 ? 50 : 100;
-  const rs = gains / losses;
-  return 100 - 100 / (1 + rs);
+  return 100 - 100 / (1 + gains / losses);
 }
 
 function normalizeBars(bars) {
@@ -189,11 +189,13 @@ function fullRSI(values, period = 14) {
     if (i < period) return null;
     let gains = 0;
     let losses = 0;
+
     for (let j = i - period + 1; j <= i; j++) {
       const d = values[j] - values[j - 1];
       if (d > 0) gains += d;
       else losses -= d;
     }
+
     if (losses === 0) return gains === 0 ? 50 : 100;
     return 100 - 100 / (1 + gains / losses);
   });
@@ -233,6 +235,7 @@ function backtest(candles, strategy, options = {}) {
     const fees = (position.entry + price) *
       position.units * feePercent / 100;
     const pnl = gross - fees;
+
     capital += pnl;
     trades++;
     if (pnl > 0) wins++;
@@ -242,8 +245,6 @@ function backtest(candles, strategy, options = {}) {
   for (let i = 21; i < candles.length; i++) {
     const c = candles[i];
 
-    // Approximation prudente : si stop et objectif sont touchés
-    // dans la même bougie, le stop est considéré touché en premier.
     if (position) {
       const stopHit = position.direction === 1
         ? c.low <= position.stop
@@ -258,6 +259,7 @@ function backtest(candles, strategy, options = {}) {
 
     if (!position) {
       const sig = signalFor(candles, i, strategy, fast, slow, momentum);
+
       if (sig !== 0) {
         const entry = c.close;
         const stopDistance = entry * 0.005;
@@ -275,8 +277,10 @@ function backtest(candles, strategy, options = {}) {
     }
 
     peak = Math.max(peak, capital);
-    maxDrawdown = Math.max(maxDrawdown,
-      peak > 0 ? (peak - capital) / peak * 100 : 0);
+    maxDrawdown = Math.max(
+      maxDrawdown,
+      peak > 0 ? (peak - capital) / peak * 100 : 0
+    );
   }
 
   if (position) closePosition(candles[candles.length - 1].close);
@@ -313,7 +317,7 @@ function validCandles(candles) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
@@ -326,9 +330,107 @@ export default {
         ok: true,
         service: "TradePilot AI",
         status: "online",
-        endpoints: ["/health", "/gold?timeframe=M15", "/analyze", "/backtest"],
+        endpoints: [
+          "/health",
+          "/gold?timeframe=M15",
+          "/analyze",
+          "/backtest",
+          "/chat",
+        ],
         timeframes: Object.keys(TIMEFRAMES),
       });
+    }
+
+    // CHAT IA : nécessite le secret OPENAI_API_KEY dans Cloudflare.
+    if (url.pathname === "/chat") {
+      if (request.method !== "POST") {
+        return respond({
+          ok: false,
+          error: "Utilise POST avec un message.",
+        }, 405);
+      }
+
+      if (!env || !env.OPENAI_API_KEY) {
+        return respond({
+          ok: false,
+          error: "Le secret OPENAI_API_KEY est absent des secrets Cloudflare.",
+        }, 500);
+      }
+
+      try {
+        const body = await request.json();
+
+        if (typeof body.message !== "string" ||
+            !body.message.trim() ||
+            body.message.length > 4000) {
+          return respond({
+            ok: false,
+            error: "Le message doit contenir entre 1 et 4000 caractères.",
+          }, 400);
+        }
+
+        const aiResponse = await fetch(
+          "https://api.openai.com/v1/responses",
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "gpt-4.1-mini",
+              instructions:
+                "Tu es TradePilot AI, un assistant spécialisé en analyse " +
+                "technique et en stratégies de trading sur l'or XAUUSD. " +
+                "Réponds en français, clairement et de façon structurée. " +
+                "Tu peux expliquer les stratégies, les indicateurs, le " +
+                "backtesting, la gestion du risque et les unités M1, M5, " +
+                "M15, M30, H1, H4, D1 et W1. " +
+                "Ne prétends jamais connaître le prix en temps réel si " +
+                "aucune donnée ne t'a été fournie. Ne garantis jamais " +
+                "un profit. Distingue les faits, hypothèses et simulations. " +
+                "Tu ne passes aucun ordre et ne peux pas garantir les résultats.",
+              input: body.message.trim(),
+              max_output_tokens: 800,
+            }),
+          }
+        );
+
+        const result = await aiResponse.json();
+
+        if (!aiResponse.ok) {
+          return respond({
+            ok: false,
+            error: "L'API OpenAI a refusé la requête.",
+            details: result.error?.message || "Erreur API.",
+          }, 502);
+        }
+
+        const reply = (result.output || [])
+          .filter(item => item.type === "message")
+          .flatMap(item => item.content || [])
+          .filter(item => item.type === "output_text")
+          .map(item => item.text)
+          .join("\n");
+
+        if (!reply) {
+          return respond({
+            ok: false,
+            error: "L'IA n'a renvoyé aucune réponse textuelle.",
+          }, 502);
+        }
+
+        return respond({
+          ok: true,
+          reply,
+        });
+      } catch (error) {
+        return respond({
+          ok: false,
+          error: "Impossible de contacter l'IA.",
+          details: String(error),
+        }, 502);
+      }
     }
 
     if (url.pathname === "/backtest") {
@@ -341,13 +443,20 @@ export default {
 
       try {
         const body = await request.json();
-        if (!validCandles(body.candles) || body.candles.length < 50 ||
+
+        if (!validCandles(body.candles) ||
+            body.candles.length < 50 ||
             body.candles.length > 10000) {
           return respond({
             ok: false,
             error: "Fournis entre 50 et 10000 bougies OHLC numériques valides.",
             format: {
-              candles: [{ open: 4000, high: 4010, low: 3990, close: 4005 }],
+              candles: [{
+                open: 4000,
+                high: 4010,
+                low: 3990,
+                close: 4005,
+              }],
               capital: 10000,
               riskPercent: 1,
               feePercent: 0.02,
@@ -355,8 +464,7 @@ export default {
           }, 400);
         }
 
-        const candles = body.candles;
-        const results = compareStrategies(candles, {
+        const results = compareStrategies(body.candles, {
           capital: body.capital,
           riskPercent: body.riskPercent,
           feePercent: body.feePercent,
@@ -366,7 +474,7 @@ export default {
           ok: true,
           instrument: "GOLD / XAUUSD",
           timeframe: body.timeframe || "M15",
-          candlesUsed: candles.length,
+          candlesUsed: body.candles.length,
           results,
           warning: "Simulation historique uniquement, sans garantie de performance.",
         });
@@ -405,6 +513,7 @@ export default {
         }
 
         const data = await upstream.json();
+
         if (!Array.isArray(data.bars)) {
           return respond({
             ok: false,
@@ -425,8 +534,13 @@ export default {
     return respond({
       ok: false,
       error: "Route introuvable.",
-      available: ["/health", "/gold", "/analyze", "/backtest"],
+      available: [
+        "/health",
+        "/gold",
+        "/analyze",
+        "/backtest",
+        "/chat",
+      ],
     }, 404);
   },
 };
-
