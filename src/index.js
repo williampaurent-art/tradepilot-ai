@@ -384,3 +384,519 @@ function detectScalpSignal(m1, m5, options = {}) {
       "Spread, slippage, frais et exécution du courtier ne sont pas simulés.",
   };
 }
+// ------------------------------------------------------
+// BACKTEST
+// ------------------------------------------------------
+
+function fullSMA(values, period) {
+  if (values.length < period) return null;
+
+  const slice = values.slice(-period);
+  return slice.reduce((sum, value) => sum + value, 0) / period;
+}
+
+function fullRSI(values, period = 14) {
+  if (values.length <= period) return null;
+
+  let gains = 0;
+  let losses = 0;
+
+  for (let i = values.length - period; i < values.length; i++) {
+    const change = values[i] - values[i - 1];
+
+    if (change > 0) gains += change;
+    else losses += Math.abs(change);
+  }
+
+  if (losses === 0) return 100;
+
+  const averageGain = gains / period;
+  const averageLoss = losses / period;
+  const rs = averageGain / averageLoss;
+
+  return 100 - 100 / (1 + rs);
+}
+
+function signalFor(candles, strategy = "trend") {
+  if (!Array.isArray(candles) || candles.length < 30) {
+    return "ATTENDRE";
+  }
+
+  const closes = candles.map((candle) => candle.close);
+  const last = candles[candles.length - 1];
+  const previous = candles[candles.length - 2];
+
+  const sma10 = fullSMA(closes, 10);
+  const sma20 = fullSMA(closes, 20);
+  const rsiValue = fullRSI(closes, 14);
+
+  if (
+    sma10 === null ||
+    sma20 === null ||
+    rsiValue === null ||
+    !Number.isFinite(last.close) ||
+    !Number.isFinite(previous.close)
+  ) {
+    return "ATTENDRE";
+  }
+
+  if (strategy === "trend") {
+    if (sma10 > sma20 && last.close > sma10 && rsiValue >= 50 && rsiValue <= 70) {
+      return "ACHAT";
+    }
+
+    if (sma10 < sma20 && last.close < sma10 && rsiValue >= 30 && rsiValue <= 50) {
+      return "VENTE";
+    }
+
+    return "ATTENDRE";
+  }
+
+  if (strategy === "breakout") {
+    const recent = candles.slice(-21, -1);
+
+    const highest = Math.max(...recent.map((candle) => candle.high));
+    const lowest = Math.min(...recent.map((candle) => candle.low));
+
+    if (last.close > highest) return "ACHAT";
+    if (last.close < lowest) return "VENTE";
+
+    return "ATTENDRE";
+  }
+
+  if (strategy === "reversal") {
+    if (rsiValue < 30 && last.close > previous.close) {
+      return "ACHAT";
+    }
+
+    if (rsiValue > 70 && last.close < previous.close) {
+      return "VENTE";
+    }
+
+    return "ATTENDRE";
+  }
+
+  return "ATTENDRE";
+}
+
+function validCandles(input) {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((candle) => ({
+      time: candle.time ?? candle.timestamp ?? null,
+      open: Number(candle.open),
+      high: Number(candle.high),
+      low: Number(candle.low),
+      close: Number(candle.close),
+      volume: Number(candle.volume ?? 0),
+    }))
+    .filter((candle) => {
+      const timeIsValid =
+        candle.time !== null &&
+        Number.isFinite(Date.parse(candle.time));
+
+      return (
+        timeIsValid &&
+        Number.isFinite(candle.open) &&
+        Number.isFinite(candle.high) &&
+        Number.isFinite(candle.low) &&
+        Number.isFinite(candle.close) &&
+        candle.high >= candle.low &&
+        candle.high >= Math.max(candle.open, candle.close) &&
+        candle.low <= Math.min(candle.open, candle.close)
+      );
+    })
+    .sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+}
+
+function backtest(candles, strategy = "trend") {
+  const results = [];
+  const warmup = 30;
+
+  let position = null;
+  let equity = 0;
+  let wins = 0;
+  let losses = 0;
+  let trades = 0;
+
+  for (let i = warmup; i < candles.length - 1; i++) {
+    const history = candles.slice(0, i + 1);
+    const signal = signalFor(history, strategy);
+    const current = candles[i];
+    const next = candles[i + 1];
+
+    if (position) {
+      let exitPrice = null;
+      let exitReason = null;
+
+      // Approximation : les frais, le spread et le slippage
+      // ne sont pas intégrés dans ce modèle simplifié.
+      if (position.side === "ACHAT") {
+        if (next.low <= position.stop) {
+          exitPrice = position.stop;
+          exitReason = "STOP";
+        } else if (next.high >= position.target) {
+          exitPrice = position.target;
+          exitReason = "TARGET";
+        }
+      } else {
+        if (next.high >= position.stop) {
+          exitPrice = position.stop;
+          exitReason = "STOP";
+        } else if (next.low <= position.target) {
+          exitPrice = position.target;
+          exitReason = "TARGET";
+        }
+      }
+
+      if (exitPrice !== null) {
+        const pnl =
+          position.side === "ACHAT"
+            ? exitPrice - position.entry
+            : position.entry - exitPrice;
+
+        equity += pnl;
+        trades++;
+
+        if (pnl > 0) wins++;
+        else losses++;
+
+        results.push({
+          entryTime: position.time,
+          exitTime: next.time,
+          side: position.side,
+          entry: position.entry,
+          exit: exitPrice,
+          pnl: Number(pnl.toFixed(2)),
+          reason: exitReason,
+        });
+
+        position = null;
+      }
+    }
+
+    if (!position && signal !== "ATTENDRE") {
+      const entry = current.close;
+
+      position = {
+        side: signal,
+        entry,
+        time: current.time,
+        target: signal === "ACHAT" ? entry + 2 : entry - 2,
+        stop: signal === "ACHAT" ? entry - 7 : entry + 7,
+      };
+    }
+  }
+
+  return {
+    strategy,
+    candlesTested: candles.length,
+    trades,
+    wins,
+    losses,
+    winRate: trades > 0 ? Number(((wins / trades) * 100).toFixed(2)) : 0,
+    netPriceMove: Number(equity.toFixed(2)),
+    results,
+    disclaimer:
+      "Simulation simplifiée en mouvement de prix, sans frais, spread, slippage ni taille de contrat. Les résultats ne représentent pas un profit garanti.",
+  };
+}
+
+function compareStrategies(candles) {
+  return {
+    instrument: INSTRUMENT,
+    mode: "BACKTEST_SIMPLIFIE",
+    results: [
+      backtest(candles, "trend"),
+      backtest(candles, "breakout"),
+      backtest(candles, "reversal"),
+    ],
+  };
+}
+
+// ------------------------------------------------------
+// WORKER CLOUDFLARE
+// ------------------------------------------------------
+
+export default {
+  async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+    const path = url.pathname;
+    const method = request.method.toUpperCase();
+
+    if (method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    if (path === "/health") {
+      return respond({
+        ok: true,
+        service: "TradePilot AI",
+        status: "online",
+        instrument: INSTRUMENT,
+        liveTrading: false,
+        automaticPushNotifications: false,
+        endpoints: [
+          "/health",
+          "/gold",
+          "/analyze",
+          "/scalp",
+          "/backtest",
+        ],
+        defaults: {
+          target: DEFAULT_TARGET,
+          stopDistance: DEFAULT_STOP,
+          riskPercent: DEFAULT_RISK_PERCENT,
+          capital: DEFAULT_CAPITAL,
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    if (path === "/gold" || path === "/analyze") {
+      try {
+        const timeframe = url.searchParams.get("timeframe") || "M1";
+        const candles = await fetchGoldCandles(timeframe, 100);
+        const result = analyze(candles, timeframe);
+
+        return respond({
+          ...result,
+          candlesReceived: candles.length,
+        }, result.ok ? 200 : 503);
+      } catch (error) {
+        return respond({
+          ok: false,
+          instrument: INSTRUMENT,
+          error: "Impossible de récupérer les données du marché.",
+          details: String(error?.message || error),
+        }, 502);
+      }
+    }
+
+    if (path === "/scalp") {
+      try {
+        const target = numberParam(
+          url.searchParams.get("target"),
+          DEFAULT_TARGET
+        );
+
+        const stopDistance = numberParam(
+          url.searchParams.get("stopDistance"),
+          DEFAULT_STOP
+        );
+
+        const riskPercent = numberParam(
+          url.searchParams.get("riskPercent"),
+          DEFAULT_RISK_PERCENT
+        );
+
+        const capital = numberParam(
+          url.searchParams.get("capital"),
+          DEFAULT_CAPITAL
+        );
+
+        if (
+          target <= 0 ||
+          stopDistance <= 0 ||
+          riskPercent <= 0 ||
+          riskPercent > 100 ||
+          capital <= 0
+        ) {
+          return respond({
+            ok: false,
+            error:
+              "Paramètres invalides : target, stopDistance et capital doivent être positifs, riskPercent doit être entre 0 et 100.",
+          }, 400);
+        }
+
+        const [m1, m5] = await Promise.all([
+          fetchGoldCandles("M1", 100),
+          fetchGoldCandles("M5", 100),
+        ]);
+
+        const freshnessM1 = checkCandleFreshness(m1, "M1");
+        const freshnessM5 = checkCandleFreshness(m5, "M5");
+
+        if (!freshnessM1.fresh || !freshnessM5.fresh) {
+          return respond({
+            ok: false,
+            instrument: INSTRUMENT,
+            signal: "ATTENDRE",
+            reason:
+              "Analyse bloquée : données de marché périmées ou invalides.",
+            freshness: {
+              M1: freshnessM1,
+              M5: freshnessM5,
+            },
+            status: "STALE_DATA_BLOCKED",
+          }, 503);
+        }
+
+        const result = detectScalpSignal(m1, m5, {
+          target,
+          stopDistance,
+          riskPercent,
+          capital,
+        });
+
+        return respond({
+          ...result,
+          freshness: {
+            M1: freshnessM1,
+            M5: freshnessM5,
+          },
+          candlesReceived: {
+            M1: m1.length,
+            M5: m5.length,
+          },
+          liveTrading: false,
+          automaticPushNotifications: false,
+        });
+      } catch (error) {
+        return respond({
+          ok: false,
+          instrument: INSTRUMENT,
+          signal: "ATTENDRE",
+          error: "Erreur pendant l'analyse du signal.",
+          details: String(error?.message || error),
+        }, 502);
+      }
+    }
+
+    if (path === "/backtest") {
+      if (method !== "POST") {
+        return respond({
+          ok: false,
+          error: "Utilise une requête POST avec un tableau candles.",
+        }, 405);
+      }
+
+      try {
+        const body = await request.json();
+        const candles = validCandles(body?.candles);
+
+        if (candles.length < 50 || candles.length > 10000) {
+          return respond({
+            ok: false,
+            error:
+              "Le backtest nécessite entre 50 et 10000 bougies valides.",
+            validCandles: candles.length,
+          }, 400);
+        }
+
+        return respond({
+          ok: true,
+          ...compareStrategies(candles),
+        });
+      } catch (error) {
+        return respond({
+          ok: false,
+          error: "Corps JSON invalide ou backtest impossible.",
+          details: String(error?.message || error),
+        }, 400);
+      }
+    }
+
+    return respond({
+      ok: false,
+      error: "Route introuvable.",
+      availableRoutes: [
+        "/health",
+        "/gold",
+        "/analyze",
+        "/scalp",
+        "/backtest",
+      ],
+    }, 404);
+  },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runScheduledCheck(env));
+  },
+};
+
+// ------------------------------------------------------
+// VERIFICATION AUTOMATIQUE PROGRAMMEE
+// ------------------------------------------------------
+
+async function runScheduledCheck(env) {
+  try {
+    const [m1, m5] = await Promise.all([
+      fetchGoldCandles("M1", 100),
+      fetchGoldCandles("M5", 100),
+    ]);
+
+    const freshnessM1 = checkCandleFreshness(m1, "M1");
+    const freshnessM5 = checkCandleFreshness(m5, "M5");
+
+    if (!freshnessM1.fresh || !freshnessM5.fresh) {
+      console.log("TradePilot AI : vérification ignorée, données périmées.");
+      return;
+    }
+
+    const result = detectScalpSignal(m1, m5, {
+      target: DEFAULT_TARGET,
+      stopDistance: DEFAULT_STOP,
+      riskPercent: DEFAULT_RISK_PERCENT,
+      capital: DEFAULT_CAPITAL,
+    });
+
+    if (!result.ok || result.signal === "ATTENDRE") {
+      console.log("TradePilot AI : aucun signal exploitable.");
+      return;
+    }
+
+    if (!env.TP_STATE) {
+      console.log(
+        "TradePilot AI : signal détecté, mais le binding KV TP_STATE n'est pas configuré.",
+        result
+      );
+      return;
+    }
+
+    const key = `last-signal:${result.lastClosedCandle}:${result.signal}`;
+    const alreadySent = await env.TP_STATE.get(key);
+
+    if (alreadySent) {
+      console.log("TradePilot AI : signal déjà enregistré, doublon ignoré.");
+      return;
+    }
+
+    await env.TP_STATE.put(
+      key,
+      JSON.stringify({
+        signal: result.signal,
+        instrument: INSTRUMENT,
+        candle: result.lastClosedCandle,
+        createdAt: new Date().toISOString(),
+      }),
+      { expirationTtl: 604800 }
+    );
+
+    console.log("TradePilot AI : nouveau signal détecté.", {
+      signal: result.signal,
+      instrument: INSTRUMENT,
+      entry: result.entry,
+      target: result.target,
+      stopLoss: result.stopLoss,
+      candle: result.lastClosedCandle,
+    });
+
+    // Important : cette fonction journalise le signal.
+    // Elle n'envoie pas de notification push et ne passe aucun ordre.
+  } catch (error) {
+    console.error(
+      "TradePilot AI : erreur de vérification programmée.",
+      String(error?.message || error)
+    );
+  }
+}
