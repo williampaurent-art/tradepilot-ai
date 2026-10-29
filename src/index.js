@@ -1,159 +1,255 @@
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
 
-function jsonResponse(data, status = 200) {
+function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
       ...corsHeaders,
-      "Content-Type": "application/json; charset=UTF-8",
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
     },
   });
 }
 
-function extractPeriods(idea) {
-  // Reconnaît par exemple :
-  // "moyenne mobile 10 croise moyenne mobile 20"
-  // "MM 10 et MM 20"
-  // "EMA 10 croise EMA 20"
-  const text = idea.toLowerCase();
+function sma(values, period) {
+  if (values.length < period) return null;
 
-  const patterns = [
-    /(?:moyenne[s]? mobile[s]?|mm|ema|sma|ma)\s*(?:de\s*)?(\d+)[\s\S]{0,100}?(?:moyenne[s]? mobile[s]?|mm|ema|sma|ma)\s*(?:de\s*)?(\d+)/i,
-    /(\d+)\s*(?:et|contre|\/|,)\s*(\d+)\s*(?:périodes?|periods?)?/i,
-  ];
+  const recent = values.slice(-period);
+  return recent.reduce((sum, value) => sum + value, 0) / period;
+}
 
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (match) {
-      const fast = Number(match[1]);
-      const slow = Number(match[2]);
+function calculateRSI(closes, period = 14) {
+  if (closes.length <= period) return null;
 
-      if (
-        Number.isInteger(fast) &&
-        Number.isInteger(slow) &&
-        fast >= 1 &&
-        slow >= 2 &&
-        fast < slow &&
-        slow <= 1000
-      ) {
-        return { fast, slow };
-      }
+  let gains = 0;
+  let losses = 0;
+
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const change = closes[i] - closes[i - 1];
+
+    if (change > 0) gains += change;
+    else losses -= change;
+  }
+
+  if (losses === 0) return gains === 0 ? 50 : 100;
+
+  const averageGain = gains / period;
+  const averageLoss = losses / period;
+  const rs = averageGain / averageLoss;
+
+  return 100 - 100 / (1 + rs);
+}
+
+function normalizeCandles(input) {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((candle) => ({
+      time: candle.time ?? candle.timestamp ?? candle.datetime ?? null,
+      open: Number(candle.open ?? candle.o),
+      high: Number(candle.high ?? candle.h),
+      low: Number(candle.low ?? candle.l),
+      close: Number(candle.close ?? candle.c),
+    }))
+    .filter((c) =>
+      Number.isFinite(c.open) &&
+      Number.isFinite(c.high) &&
+      Number.isFinite(c.low) &&
+      Number.isFinite(c.close) &&
+      c.high >= c.low &&
+      c.high >= c.open &&
+      c.high >= c.close &&
+      c.low <= c.open &&
+      c.low <= c.close &&
+      c.close > 0
+    )
+    .sort((a, b) => {
+      if (!a.time || !b.time) return 0;
+      return new Date(a.time).getTime() - new Date(b.time).getTime();
+    });
+}
+
+function analyzeCandles(rawCandles) {
+  const candles = normalizeCandles(rawCandles);
+
+  if (candles.length < 30) {
+    return {
+      ok: false,
+      error: "Pas assez de bougies pour analyser le marché.",
+      required: 30,
+      received: candles.length,
+    };
+  }
+
+  const closes = candles.map((c) => c.close);
+  const last = candles[candles.length - 1];
+
+  const sma10 = sma(closes, 10);
+  const sma20 = sma(closes, 20);
+  const previousSma10 = sma(closes.slice(0, -1), 10);
+  const previousSma20 = sma(closes.slice(0, -1), 20);
+  const rsi14 = calculateRSI(closes, 14);
+
+  let signal = "ATTENDRE";
+  let reason = "Les conditions ne confirment pas de signal suffisamment clair.";
+
+  const bullishCross =
+    previousSma10 !== null &&
+    previousSma20 !== null &&
+    previousSma10 <= previousSma20 &&
+    sma10 > sma20;
+
+  const bearishCross =
+    previousSma10 !== null &&
+    previousSma20 !== null &&
+    previousSma10 >= previousSma20 &&
+    sma10 < sma20;
+
+  if (bullishCross && rsi14 !== null && rsi14 >= 50 && rsi14 < 70) {
+    signal = "ACHAT";
+    reason = "Croisement haussier SMA 10/20 avec RSI entre 50 et 70.";
+  } else if (
+    bearishCross &&
+    rsi14 !== null &&
+    rsi14 <= 50 &&
+    rsi14 > 30
+  ) {
+    signal = "VENTE";
+    reason = "Croisement baissier SMA 10/20 avec RSI entre 30 et 50.";
+  }
+
+  const recent = candles.slice(-14);
+  const recentLow = Math.min(...recent.map((c) => c.low));
+  const recentHigh = Math.max(...recent.map((c) => c.high));
+
+  let stopLoss = null;
+  let takeProfit = null;
+  let riskReward = null;
+
+  if (signal === "ACHAT") {
+    stopLoss = recentLow;
+    const risk = last.close - stopLoss;
+
+    if (risk > 0) {
+      takeProfit = last.close + risk * 2;
+      riskReward = "1:2";
+    } else {
+      signal = "ATTENDRE";
+      reason = "Risque invalide : aucun achat proposé.";
+    }
+  } else if (signal === "VENTE") {
+    stopLoss = recentHigh;
+    const risk = stopLoss - last.close;
+
+    if (risk > 0) {
+      takeProfit = last.close - risk * 2;
+      riskReward = "1:2";
+    } else {
+      signal = "ATTENDRE";
+      reason = "Risque invalide : aucune vente proposée.";
     }
   }
 
-  return null;
+  return {
+    ok: true,
+    instrument: "GOLD / XAUUSD",
+    timeframe: "M15",
+    candleCount: candles.length,
+    lastCandleTime: last.time,
+    lastClose: last.close,
+    indicators: {
+      SMA10: Number(sma10.toFixed(4)),
+      SMA20: Number(sma20.toFixed(4)),
+      RSI14: Number(rsi14.toFixed(2)),
+    },
+    signal,
+    reason,
+    stopLoss: stopLoss === null ? null : Number(stopLoss.toFixed(4)),
+    takeProfit: takeProfit === null ? null : Number(takeProfit.toFixed(4)),
+    riskReward,
+    disclaimer:
+      "Signal technique indicatif, non garanti. Vérifier la fraîcheur des bougies, le spread, les frais et le risque avant toute décision.",
+  };
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
+
     const url = new URL(request.url);
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: corsHeaders,
+    if (url.pathname === "/" || url.pathname === "/health") {
+      return json({
+        ok: true,
+        service: "TradePilot AI",
+        status: "online",
+        endpoints: {
+          health: "/health",
+          analyze: "/analyze",
+        },
+        note:
+          "L'analyse nécessite des bougies M15 valides envoyées à /analyze.",
       });
     }
 
-    if (url.pathname === "/api/health" && request.method === "GET") {
-      return jsonResponse({
-        status: "ok",
-        application: "TradePilot AI",
-        mode: "demo",
-        trading_enabled: false,
-      });
-    }
+    if (url.pathname === "/analyze") {
+      if (request.method !== "POST") {
+        return json(
+          {
+            ok: false,
+            error: "Utilisez POST avec un tableau JSON de bougies.",
+            example: {
+              candles: [
+                {
+                  time: "2026-10-27T10:00:00Z",
+                  open: 4000,
+                  high: 4005,
+                  low: 3998,
+                  close: 4003,
+                },
+              ],
+            },
+          },
+          405
+        );
+      }
 
-    if (
-      url.pathname === "/api/strategies/drafts" &&
-      request.method === "POST"
-    ) {
       let body;
 
       try {
         body = await request.json();
       } catch {
-        return jsonResponse(
-          { status: "error", message: "Le corps de la requête doit être du JSON valide." },
-          400
-        );
+        return json({ ok: false, error: "JSON invalide." }, 400);
       }
 
-      const idea = String(body.description || "").trim();
-      const symbol = String(body.symbol || "EUR_USD")
-        .trim()
-        .toUpperCase()
-        .slice(0, 30);
-      const timeframe = String(body.timeframe || "M15")
-        .trim()
-        .toUpperCase()
-        .slice(0, 10);
+      const candles = body.candles;
 
-      if (!idea) {
-        return jsonResponse(
-          { status: "error", message: "Décris ta stratégie avant de continuer." },
-          400
-        );
-      }
-
-      const periods = extractPeriods(idea);
-
-      if (!periods) {
-        return jsonResponse(
+      if (!Array.isArray(candles)) {
+        return json(
           {
-            status: "needs_configuration",
-            message:
-              "Je n'ai pas pu identifier deux périodes valides. Écris par exemple : moyenne mobile 10 croise moyenne mobile 20.",
-            original_idea: idea,
-            live_trading: false,
+            ok: false,
+            error: "Le champ candles doit être un tableau de bougies OHLC.",
           },
           400
         );
       }
 
-      const strategy = {
-        name: String(body.name || "Ma stratégie").slice(0, 100),
-        symbol,
-        timeframe,
-        type: "trend_following",
-        entry_rules: {
-          buy: `La moyenne mobile rapide ${periods.fast} croise au-dessus de la moyenne mobile lente ${periods.slow}.`,
-          sell: `La moyenne mobile rapide ${periods.fast} croise au-dessous de la moyenne mobile lente ${periods.slow}.`,
-        },
-        parameters: {
-          fast_ma_period: periods.fast,
-          slow_ma_period: periods.slow,
-          ma_type: "EMA",
-          stop_loss_pips: 20,
-          take_profit_pips: 40,
-        },
-        risk_management: {
-          risk_per_trade_percent: 1,
-          max_open_positions: 1,
-        },
-        original_idea: idea,
-        status: "draft",
-        backtest_completed: false,
-        live_trading: false,
-      };
-
-      return jsonResponse({
-        status: "draft_created",
-        strategy,
-        backtest_status: "not_started",
-        live_trading: false,
-      });
+      return json(analyzeCandles(candles));
     }
 
-    return jsonResponse(
-      { status: "error", message: "Route introuvable." },
+    return json(
+      {
+        ok: false,
+        error: "Route introuvable.",
+        availableRoutes: ["/health", "/analyze"],
+      },
       404
     );
   },
 };
-
-    
