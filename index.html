@@ -2,349 +2,1069 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#080d18">
-<meta name="description" content="TradePilot AI - Analyse technique XAUUSD">
-<title>TradePilot AI | GOLD</title>
-<style>
-:root {
-  color-scheme:dark;
-  --bg:#080d18;--panel:#111a2b;--panel2:#0c1423;
-  --border:#293750;--text:#eef3ff;--muted:#96a5bd;
-  --gold:#f4c95d;--green:#48d6a0;--red:#ff7185;
-  --orange:#ffbd69;
-}
-*{box-sizing:border-box}
-body {
-  margin:0;background:radial-gradient(ellipse at top,#1b2942,var(--bg) 65%);
-  color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-  min-height:100vh
-}
-.container{max-width:1100px;margin:auto;padding:22px 14px 40px}
-header{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
-.brand{display:flex;align-items:center;gap:12px}
-.logo{width:46px;height:46px;display:grid;place-items:center;border-radius:14px;background:linear-gradient(135deg,#ffe8a1,#d59a28);color:#171208;font-size:22px;font-weight:900}
-h1{font-size:23px;margin:0}
-.subtitle{color:var(--muted);font-size:13px;margin-top:5px}
-.status{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:30px;padding:9px 12px;font-size:12px;background:var(--panel2);color:var(--muted)}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--orange)}
-.dot.online{background:var(--green)}.dot.offline{background:var(--red)}
-.hero{border:1px solid #354660;border-radius:22px;padding:24px;background:linear-gradient(135deg,#1b2a42,#111a2b);margin-bottom:15px;position:relative;overflow:hidden}
-.hero:after{content:"Au";position:absolute;right:18px;top:-30px;font-size:140px;font-weight:900;color:rgba(244,201,93,.05);pointer-events:none}
-.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:2px;color:var(--gold);font-weight:800}
-.price{font-size:clamp(36px,8vw,60px);font-weight:850;letter-spacing:-2px;margin:12px 0;overflow-wrap:anywhere}
-.muted,.price-label{color:var(--muted);font-size:13px}
-.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
-.pill{font-size:12px;color:var(--muted);border:1px solid var(--border);background:#0c1423;border-radius:30px;padding:8px 11px}
-.card{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:18px;min-width:0}
-.signalrow{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
-.label{font-size:12px;color:var(--muted);margin-bottom:12px}
-.signal{display:inline-block;border:1px solid #66562e;background:#282315;color:var(--orange);border-radius:12px;padding:12px 15px;font-size:20px;font-weight:850}
-.signal.buy{color:var(--green);background:#10271f;border-color:#245b47}
-.signal.sell{color:var(--red);background:#2b1720;border-color:#703545}
-.reason{font-size:13px;color:var(--muted);line-height:1.6;margin-top:13px}
-.heading{font-size:16px;font-weight:800;margin:23px 0 12px}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px}
-.value{font-size:clamp(20px,4vw,28px);font-weight:800;overflow-wrap:anywhere}
-.note{font-size:12px;color:var(--muted);margin-top:8px}
-.gold{color:var(--gold)}.green{color:var(--green)}.red{color:var(--red)}
-.levels{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.level{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:15px}
-.level .value{font-size:20px;margin-top:8px}
-button,select,textarea{font:inherit}
-button{cursor:pointer;border:1px solid #66562e;background:#282315;color:var(--gold);padding:11px 14px;border-radius:10px;font-weight:750}
-button:disabled{opacity:.6;cursor:wait}
-select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:10px;max-width:100%}
-.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0}
-.notice{border:1px solid #554628;background:#211d13;border-radius:14px;padding:15px;color:#dfd0a5;font-size:12px;line-height:1.65;margin-top:18px}
-.error{display:none;background:#28131c;border:1px solid #703545;color:#ffb1bd;border-radius:12px;padding:13px;font-size:13px;line-height:1.5;margin-top:14px;overflow-wrap:anywhere}
-footer{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:11px;margin-top:22px}
-.chat{margin-top:28px}
-.chat-intro{font-size:13px;color:var(--muted);line-height:1.6}
-.chat-messages{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow-y:auto;margin:16px 0}
-.message{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55;font-size:14px;padding:12px 14px;border-radius:14px;max-width:95%}
-.message.user{align-self:flex-end;background:#273754;border:1px solid #40577a}
-.message.assistant{align-self:flex-start;background:var(--panel2);border:1px solid var(--border)}
-.message.error-message{border-color:#703545;color:#ffb1bd}
-.chat-form{display:flex;gap:10px;align-items:stretch}
-.chat-form textarea{flex:1;min-width:0;resize:vertical;min-height:48px;max-height:160px;padding:13px;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:12px}
-.chat-form button{align-self:stretch}
-@media(max-width:650px){
- .container{padding:17px 12px 30px}
- .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
- .levels{grid-template-columns:1fr}
- .card{padding:14px}.hero{padding:20px}
- .chat-form{flex-direction:column}
- .chat-form button{width:100%}
-}
-@media(max-width:350px){.grid{grid-template-columns:1fr}}
-</style>
-</head>
-<body>
-<main class="container">
-  <header>
-    <div class="brand">
-      <div class="logo">Au</div>
-      <div>
-        <h1>TradePilot AI</h1>
-        <div class="subtitle">Assistant d'analyse technique · GOLD / XAUUSD</div>
-      </div>
-    </div>
-    <div class="status">
-      <span id="statusDot" class="dot"></span>
-      <span id="statusText">Connexion en cours…</span>
-    </div>
-  </header>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b0f17">
+  <title>TradePilot AI — XAUUSD</title>
 
-  <div class="toolbar">
-    <label for="timeframe">Unité de temps :</label>
-    <select id="timeframe">
-      <option>M1</option>
-      <option>M5</option>
-      <option selected>M15</option>
-      <option>M30</option>
-      <option>H1</option>
-      <option>H4</option>
-      <option>D1</option>
-      <option>W1</option>
-    </select>
-    <button id="refreshButton" type="button">↻ Actualiser</button>
-  </div>
-
-  <section class="hero">
-    <div class="eyebrow">Prix de l'or · Unité <span id="displayTimeframe">M15</span></div>
-    <div class="price" id="price">Chargement…</div>
-    <div class="price-label">Dernier prix retourné par la source · devise fournie par l'API</div>
-    <div class="pills">
-      <span class="pill">Source : <strong id="source">—</strong></span>
-      <span class="pill">Bougie clôturée : <strong id="candleTime">—</strong></span>
-      <span class="pill">Mise à jour : <strong id="updatedAt">—</strong></span>
-    </div>
-  </section>
-
-  <section class="card">
-    <div class="signalrow">
-      <div>
-        <div class="label">Signal technique actuel</div>
-        <div id="signal" class="signal">● ATTENDRE</div>
-      </div>
-    </div>
-    <div id="reason" class="reason">Récupération des données…</div>
-  </section>
-
-  <div class="heading">Indicateurs techniques</div>
-  <section class="grid">
-    <article class="card"><div class="label">SMA 10</div><div class="value gold" id="sma10">—</div><div class="note">Moyenne mobile courte</div></article>
-    <article class="card"><div class="label">SMA 20</div><div class="value" id="sma20">—</div><div class="note">Moyenne mobile longue</div></article>
-    <article class="card"><div class="label">RSI 14</div><div class="value" id="rsi">—</div><div class="note" id="rsiNote">Momentum du marché</div></article>
-    <article class="card"><div class="label">Bougies analysées</div><div class="value" id="candles">—</div><div class="note">Données reçues par le serveur</div></article>
-    <article class="card"><div class="label">Ratio risque / rendement</div><div class="value" id="rr">—</div><div class="note">Si fourni par la stratégie</div></article>
-    <article class="card"><div class="label">Dernier contrôle</div><div class="value" id="lastCheck">—</div><div class="note">Heure locale de vérification</div></article>
-  </section>
-
-  <div class="heading">Niveaux de trading</div>
-  <section class="levels">
-    <article class="level"><div class="label">Prix de référence</div><div class="value gold" id="referencePrice">—</div></article>
-    <article class="level"><div class="label">Stop-loss</div><div class="value red" id="stopLoss">Non défini</div></article>
-    <article class="level"><div class="label">Take-profit</div><div class="value green" id="takeProfit">Non défini</div></article>
-  </section>
-
-  <div class="error" id="errorBox" role="alert"></div>
-
-  <section class="chat card">
-    <h2 style="margin:0;font-size:19px">Assistant IA TradePilot</h2>
-    <p class="chat-intro">Pose tes questions sur XAUUSD, les indicateurs, les stratégies ou le backtesting. L'assistant ne passe aucun ordre. Les réponses ne disposent pas automatiquement du prix affiché : précise les données du marché si tu souhaites les faire analyser.</p>
-    <div id="chatMessages" class="chat-messages" aria-live="polite">
-      <div class="message assistant">Bonjour ! Je suis l'assistant TradePilot AI. Que souhaites-tu analyser ?</div>
-    </div>
-    <form id="chatForm" class="chat-form">
-      <textarea id="chatInput" maxlength="4000" placeholder="Ex. : explique-moi une stratégie de scalping XAUUSD sur M5…" required></textarea>
-      <button id="sendButton" type="submit">Envoyer</button>
-    </form>
-    <p class="chat-intro">Les réponses de l'IA peuvent être inexactes. Vérifie toujours les données et gère ton risque.</p>
-  </section>
-
-  <div class="notice">
-    <strong>Important :</strong> TradePilot AI affiche des indications techniques, pas des garanties de gain. Aucun ordre n'est exécuté. Les prix proviennent de BiQuote, pas directement de VT Markets. Vérifie l'horodatage, le spread, les frais et les conditions de ton courtier avant toute décision.
-  </div>
-
-  <footer>
-    <span>TradePilot AI · Version de démonstration</span>
-    <span>Actualisation automatique toutes les 60 secondes</span>
-  </footer>
-</main>
-
-<script>
-"use strict";
-
-const WORKER = "https://tradepilot-ai.williampaurent.workers.dev";
-const REFRESH_MS = 60000;
-const $ = id => document.getElementById(id);
-let loadingMarket = false;
-let loadingChat = false;
-
-function number(value, digits = 3) {
-  if (value === null || value === undefined || value === "" ||
-      !Number.isFinite(Number(value))) return "—";
-  return Number(value).toLocaleString("fr-FR", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits
-  });
-}
-
-function dateTime(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString("fr-FR", {
-    day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit",
-    timeZone:"Europe/Paris"
-  });
-}
-
-function setStatus(kind, message) {
-  $("statusDot").className = "dot " + kind;
-  $("statusText").textContent = message;
-}
-
-function renderMarket(data) {
-  $("price").textContent = number(data.price);
-  $("source").textContent = data.source || "—";
-  $("candleTime").textContent = dateTime(data.lastClosedCandle);
-  $("updatedAt").textContent = dateTime(data.updatedAt);
-  $("referencePrice").textContent = number(data.price);
-  $("displayTimeframe").textContent = data.timeframe || $("timeframe").value;
-
-  const ind = data.indicators || {};
-  $("sma10").textContent = number(ind.SMA10);
-  $("sma20").textContent = number(ind.SMA20);
-  $("rsi").textContent = number(ind.RSI14, 2);
-  $("candles").textContent = data.candlesAnalyzed ?? "—";
-  $("rr").textContent = data.riskReward || "—";
-
-  const rsiValue = Number(ind.RSI14);
-  $("rsiNote").textContent = !Number.isFinite(rsiValue)
-    ? "Momentum du marché"
-    : rsiValue >= 70 ? "Zone de surachat indicative"
-    : rsiValue <= 30 ? "Zone de survente indicative"
-    : "Zone intermédiaire";
-
-  $("stopLoss").textContent = data.stopLoss == null
-    ? "Non défini" : number(data.stopLoss);
-  $("takeProfit").textContent = data.takeProfit == null
-    ? "Non défini" : number(data.takeProfit);
-
-  const signal = String(data.signal || "ATTENDRE").toUpperCase();
-  $("signal").className = "signal";
-  if (signal.includes("ACHAT") || signal.includes("BUY")) {
-    $("signal").classList.add("buy");
-  } else if (signal.includes("VENTE") || signal.includes("SELL")) {
-    $("signal").classList.add("sell");
-  }
-  $("signal").textContent = "● " + signal;
-  $("reason").textContent = data.reason || data.warning || "Analyse reçue.";
-
-  $("lastCheck").textContent = new Date().toLocaleTimeString("fr-FR", {
-    hour:"2-digit", minute:"2-digit", second:"2-digit",
-    timeZone:"Europe/Paris"
-  });
-
-  $("errorBox").style.display = "none";
-  setStatus("online", "API connectée");
-}
-
-async function updateMarket() {
-  if (loadingMarket) return;
-  loadingMarket = true;
-  $("refreshButton").disabled = true;
-  setStatus("", "Actualisation…");
-
-  const timeframe = $("timeframe").value;
-
-  try {
-    const response = await fetch(
-      WORKER + "/gold?timeframe=" + encodeURIComponent(timeframe),
-      { method:"GET", cache:"no-store", headers:{Accept:"application/json"} }
-    );
-
-    const data = await response.json();
-    if (!response.ok || !data || data.ok !== true ||
-        !Number.isFinite(Number(data.price))) {
-      throw new Error(data.error || "Réponse de l'API invalide.");
+  <style>
+    :root {
+      --bg: #0b0f17;
+      --panel: #121925;
+      --panel2: #182233;
+      --border: #263247;
+      --text: #edf2fa;
+      --muted: #8998ae;
+      --green: #32d69a;
+      --red: #ff647c;
+      --blue: #6d9cff;
+      --gold: #f5c96a;
     }
 
-    renderMarket(data);
-  } catch (error) {
-    setStatus("offline", "Connexion indisponible");
-    $("errorBox").style.display = "block";
-    $("errorBox").textContent =
-      "Impossible de récupérer les données : " +
-      (error.message || "erreur inconnue");
-  } finally {
-    loadingMarket = false;
-    $("refreshButton").disabled = false;
-  }
-}
+    * {
+      box-sizing: border-box;
+    }
 
-function addMessage(text, type) {
-  const el = document.createElement("div");
-  el.className = "message " + type;
-  el.textContent = text;
-  $("chatMessages").appendChild(el);
-  $("chatMessages").scrollTop = $("chatMessages").scrollHeight;
-  return el;
-}
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+        Roboto, sans-serif;
+      font-size: 14px;
+    }
 
-async function sendChat(event) {
-  event.preventDefault();
-  if (loadingChat) return;
+    button, input {
+      font: inherit;
+    }
 
-  const input = $("chatInput");
-  const message = input.value.trim();
-  if (!message) return;
+    button {
+      cursor: pointer;
+    }
 
-  addMessage(message, "user");
-  input.value = "";
-  loadingChat = true;
-  $("sendButton").disabled = true;
-  const waiting = addMessage("TradePilot réfléchit…", "assistant");
+    .app {
+      max-width: 1200px;
+      margin: auto;
+      padding: 22px;
+    }
 
-  try {
-    const response = await fetch(WORKER + "/chat", {
-      method:"POST",
-      headers:{"Content-Type":"application/json", "Accept":"application/json"},
-      body:JSON.stringify({message})
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+      margin-bottom: 26px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo {
+      display: grid;
+      place-items: center;
+      width: 45px;
+      height: 45px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #f5c96a, #b88631);
+      color: #17120a;
+      font-weight: 900;
+      font-size: 22px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 21px;
+      letter-spacing: -0.6px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 5px;
+    }
+
+    .connection {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--gold);
+    }
+
+    .dot.online {
+      background: var(--green);
+    }
+
+    .dot.offline {
+      background: var(--red);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 17px;
+      padding: 22px;
+      min-width: 0;
+    }
+
+    .eyebrow {
+      text-transform: uppercase;
+      letter-spacing: 1.1px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .price {
+      font-size: clamp(32px, 5vw, 48px);
+      font-weight: 750;
+      letter-spacing: -1.5px;
+      margin: 15px 0 7px;
+    }
+
+    .price-caption {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 12px;
+      border-radius: 9px;
+      background: var(--panel2);
+      color: var(--muted);
+      font-weight: 750;
+      font-size: 12px;
+    }
+
+    .badge.buy {
+      color: var(--green);
+      background: #12352d;
+    }
+
+    .badge.sell {
+      color: var(--red);
+      background: #3a202b;
+    }
+
+    .signal-title {
+      margin: 16px 0 8px;
+      font-size: 29px;
+      font-weight: 800;
+    }
+
+    .signal-title.buy {
+      color: var(--green);
+    }
+
+    .signal-title.sell {
+      color: var(--red);
+    }
+
+    .reason {
+      color: var(--muted);
+      line-height: 1.6;
+      min-height: 42px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .metric {
+      background: var(--panel2);
+      border-radius: 11px;
+      padding: 13px;
+      min-width: 0;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 11px;
+      margin-bottom: 9px;
+    }
+
+    .metric-value {
+      font-size: 17px;
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .green {
+      color: var(--green);
+    }
+
+    .red {
+      color: var(--red);
+    }
+
+    .gold {
+      color: var(--gold);
+    }
+
+    .section-title {
+      margin: 0 0 19px;
+      font-size: 16px;
+      font-weight: 750;
+    }
+
+    .settings {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 15px;
+    }
+
+    .field label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    input {
+      width: 100%;
+      padding: 13px 12px;
+      color: var(--text);
+      background: #0c121d;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--blue);
+    }
+
+    .help {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 19px;
+    }
+
+    .btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 13px 17px;
+      font-weight: 750;
+      transition: opacity .2s;
+    }
+
+    .btn:disabled {
+      opacity: .55;
+      cursor: wait;
+    }
+
+    .btn-primary {
+      color: #07120e;
+      background: var(--green);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: var(--panel2);
+      border: 1px solid var(--border);
+    }
+
+    .two-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+
+    .level {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 13px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .level:last-child {
+      border-bottom: 0;
+    }
+
+    .level span:first-child {
+      color: var(--muted);
+    }
+
+    .level strong {
+      text-align: right;
+      overflow-wrap: anywhere;
+    }
+
+    .notice {
+      border: 1px solid #66532b;
+      background: #241f14;
+      color: #e7d7a7;
+      padding: 14px;
+      border-radius: 11px;
+      line-height: 1.6;
+      font-size: 12px;
+      margin-top: 18px;
+    }
+
+    .status-message {
+      margin-top: 13px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .history {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .history th, .history td {
+      padding: 13px 9px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    .history th {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .history-wrap {
+      overflow-x: auto;
+    }
+
+    .empty {
+      padding: 24px 0;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 11px;
+      padding: 23px 0 8px;
+      line-height: 1.8;
+    }
+
+    .error-box {
+      color: #ffc1cb;
+      background: #321b25;
+      border: 1px solid #65303f;
+      border-radius: 10px;
+      padding: 12px;
+      margin-top: 14px;
+      overflow-wrap: anywhere;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 760px) {
+      .app {
+        padding: 15px;
+      }
+
+      header {
+        align-items: flex-start;
+      }
+
+      .hero, .two-columns {
+        grid-template-columns: 1fr;
+      }
+
+      .card {
+        padding: 17px;
+      }
+
+      .metrics {
+        gap: 7px;
+      }
+
+      .metric {
+        padding: 10px;
+      }
+
+      .metric-value {
+        font-size: 14px;
+      }
+
+      .settings {
+        gap: 12px;
+      }
+
+      .connection {
+        font-size: 10px;
+      }
+
+      h1 {
+        font-size: 18px;
+      }
+    }
+
+    @media (max-width: 380px) {
+      .settings {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app">
+
+    <header>
+      <div class="brand">
+        <div class="logo">T</div>
+        <div>
+          <h1>TradePilot AI</h1>
+          <div class="subtitle">Scalping intelligent · XAUUSD</div>
+        </div>
+      </div>
+
+      <div class="connection">
+        <span id="connectionDot" class="dot"></span>
+        <span id="connectionText">Connexion...</span>
+      </div>
+    </header>
+
+    <section class="hero">
+
+      <article class="card">
+        <div class="eyebrow">Or · XAUUSD</div>
+
+        <div id="price" class="price">—</div>
+
+        <div id="priceCaption" class="price-caption">
+          En attente des données du marché
+        </div>
+
+        <div style="margin-top: 22px">
+          <span id="signalBadge" class="badge">
+            SIGNAL EN ATTENTE
+          </span>
+        </div>
+
+        <div id="signalTitle" class="signal-title">
+          —
+        </div>
+
+        <div id="signalReason" class="reason">
+          Lance une analyse pour détecter une opportunité.
+        </div>
+
+        <div class="buttons">
+          <button id="refreshButton" class="btn btn-primary">
+            ↻ Analyser le marché
+          </button>
+
+          <button id="clearHistoryButton" class="btn btn-secondary">
+            Effacer l'historique
+          </button>
+        </div>
+
+        <div id="statusMessage" class="status-message">
+          Aucun ordre réel n'est envoyé.
+        </div>
+
+        <div id="errorBox" class="error-box" hidden></div>
+      </article>
+
+      <article class="card">
+        <div class="eyebrow">Paramètres du signal</div>
+        <h2 class="section-title" style="margin-top: 12px">
+          Gestion du risque
+        </h2>
+
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Capital</div>
+            <div id="summaryCapital" class="metric-value">1 000 $</div>
+          </div>
+
+          <div class="metric">
+            <div class="metric-label">Risque choisi</div>
+            <div id="summaryRisk" class="metric-value gold">1 %</div>
+          </div>
+
+          <div class="metric">
+            <div class="metric-label">Risque théorique</div>
+            <div id="summaryRiskAmount" class="metric-value">10 $</div>
+          </div>
+        </div>
+
+        <div class="level">
+          <span>Objectif de prix</span>
+          <strong id="summaryTarget" class="green">+2,00 $</strong>
+        </div>
+
+        <div class="level">
+          <span>Distance du stop</span>
+          <strong id="summaryStop">1,00 $</strong>
+        </div>
+
+        <div class="level">
+          <span>Tendance M5</span>
+          <strong id="summaryTrend">—</strong>
+        </div>
+
+        <div class="level">
+          <span>Source des données</span>
+          <strong>BiQuote</strong>
+        </div>
+      </article>
+
+    </section>
+
+    <section class="two-columns">
+
+      <article class="card">
+        <h2 class="section-title">Configuration du robot</h2>
+
+        <div class="settings">
+
+          <div class="field">
+            <label for="capital">Capital ($)</label>
+            <input id="capital" type="number" min="1"
+              step="100" value="1000">
+            <div class="help">Capital utilisé pour estimer le risque.</div>
+          </div>
+
+          <div class="field">
+            <label for="riskPercent">Risque (%)</label>
+            <input id="riskPercent" type="number" min="0.1"
+              max="100" step="0.1" value="1">
+            <div class="help">Pourcentage de capital choisi par toi.</div>
+          </div>
+
+          <div class="field">
+            <label for="target">Objectif de variation ($)</label>
+            <input id="target" type="number" min="0.01"
+              step="0.1" value="2">
+            <div class="help">Variation visée du prix XAUUSD.</div>
+          </div>
+
+          <div class="field">
+            <label for="stopDistance">Stop-loss ($)</label>
+            <input id="stopDistance" type="number" min="0.01"
+              step="0.1" value="1">
+            <div class="help">Distance entre entrée et stop.</div>
+          </div>
+
+        </div>
+
+        <div class="buttons">
+          <button id="saveSettingsButton" class="btn btn-secondary">
+            Enregistrer les réglages
+          </button>
+        </div>
+
+        <div id="settingsMessage" class="status-message"></div>
+      </article>
+
+      <article class="card">
+        <h2 class="section-title">Niveaux de trading</h2>
+
+        <div class="level">
+          <span>Entrée indicative</span>
+          <strong id="entry">—</strong>
+        </div>
+
+        <div class="level">
+          <span>Stop-loss</span>
+          <strong id="stopLoss" class="red">—</strong>
+        </div>
+
+        <div class="level">
+          <span>Take-profit</span>
+          <strong id="takeProfit" class="green">—</strong>
+        </div>
+
+        <div class="level">
+          <span>Dernière bougie clôturée</span>
+          <strong id="lastCandle">—</strong>
+        </div>
+
+        <div class="level">
+          <span>RSI / indicateurs</span>
+          <strong id="indicators">—</strong>
+        </div>
+
+        <div class="notice">
+          <strong>Important :</strong> un signal n'est pas une garantie de
+          résultat. Les prix proviennent de BiQuote et peuvent différer
+          de ceux de ton courtier. Le risque financier réel dépend notamment
+          de la taille de position, du contrat, du spread et du slippage.
+          Cette interface ne passe aucun ordre.
+        </div>
+      </article>
+
+    </section>
+
+    <section class="card">
+      <h2 class="section-title">Historique des signaux</h2>
+
+      <div class="history-wrap">
+        <table class="history">
+          <thead>
+            <tr>
+              <th>Heure</th>
+              <th>Signal</th>
+              <th>Entrée</th>
+              <th>Stop</th>
+              <th>Objectif</th>
+            </tr>
+          </thead>
+
+          <tbody id="historyBody">
+            <tr>
+              <td colspan="5" class="empty">
+                Aucun signal enregistré pour le moment.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer>
+      TRADEPILOT AI · XAUUSD SCALPING<br>
+      Analyse indicative uniquement · Aucun ordre réel exécuté
+    </footer>
+
+  </main>
+
+  <script>
+    const API_BASE =
+      "https://tradepilot-ai.williampaurent.workers.dev";
+
+    const STORAGE_SETTINGS = "tradepilot_settings_v1";
+    const STORAGE_HISTORY = "tradepilot_history_v1";
+
+    const $ = id => document.getElementById(id);
+
+    let busy = false;
+    let latestSignal = null;
+
+    function readSettings() {
+      const settings = {
+        capital: Number($("capital").value),
+        riskPercent: Number($("riskPercent").value),
+        target: Number($("target").value),
+        stopDistance: Number($("stopDistance").value)
+      };
+
+      if (
+        !Number.isFinite(settings.capital) ||
+        settings.capital <= 0 ||
+        !Number.isFinite(settings.riskPercent) ||
+        settings.riskPercent <= 0 ||
+        settings.riskPercent > 100 ||
+        !Number.isFinite(settings.target) ||
+        settings.target <= 0 ||
+        !Number.isFinite(settings.stopDistance) ||
+        settings.stopDistance <= 0
+      ) {
+        throw new Error(
+          "Vérifie les réglages : toutes les valeurs doivent être positives."
+        );
+      }
+
+      return settings;
+    }
+
+    function money(value) {
+      if (value === null || value === undefined ||
+          !Number.isFinite(Number(value))) {
+        return "—";
+      }
+
+      return Number(value).toLocaleString("fr-FR", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      }) + " $";
+    }
+
+    function showConnection(state, text) {
+      $("connectionDot").className =
+        "dot " + (state || "");
+
+      $("connectionText").textContent = text;
+    }
+
+    function setError(message) {
+      const box = $("errorBox");
+
+      if (!message) {
+        box.hidden = true;
+        box.textContent = "";
+        return;
+      }
+
+      box.hidden = false;
+      box.textContent = message;
+    }
+
+    function updateSummary() {
+      try {
+        const s = readSettings();
+
+        $("summaryCapital").textContent = money(s.capital);
+        $("summaryRisk").textContent = s.riskPercent + " %";
+        $("summaryRiskAmount").textContent =
+          money(s.capital * s.riskPercent / 100);
+
+        $("summaryTarget").textContent =
+          "+" + money(s.target);
+
+        $("summaryStop").textContent = money(s.stopDistance);
+      } catch (error) {
+        // Les champs sont validés avant toute analyse.
+      }
+    }
+
+    function saveSettings() {
+      try {
+        const s = readSettings();
+
+        localStorage.setItem(
+          STORAGE_SETTINGS,
+          JSON.stringify(s)
+        );
+
+        updateSummary();
+
+        $("settingsMessage").textContent =
+          "Réglages enregistrés sur cet appareil.";
+
+        $("settingsMessage").className = "status-message green";
+      } catch (error) {
+        $("settingsMessage").textContent = error.message;
+        $("settingsMessage").className = "status-message red";
+      }
+    }
+
+    function loadSettings() {
+      try {
+        const s = JSON.parse(
+          localStorage.getItem(STORAGE_SETTINGS) || "null"
+        );
+
+        if (s) {
+          $("capital").value = s.capital ?? 1000;
+          $("riskPercent").value = s.riskPercent ?? 1;
+          $("target").value = s.target ?? 2;
+          $("stopDistance").value = s.stopDistance ?? 1;
+        }
+      } catch (error) {
+        console.warn("Réglages locaux indisponibles.");
+      }
+
+      updateSummary();
+    }
+
+    function loadHistory() {
+      try {
+        const history = JSON.parse(
+          localStorage.getItem(STORAGE_HISTORY) || "[]"
+        );
+
+        return Array.isArray(history) ? history : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveHistory(history) {
+      try {
+        localStorage.setItem(
+          STORAGE_HISTORY,
+          JSON.stringify(history.slice(0, 30))
+        );
+      } catch (error) {
+        console.warn("Historique local indisponible.");
+      }
+    }
+
+    function addHistory(result) {
+      if (!result || !result.signal) return;
+
+      const history = loadHistory();
+
+      const item = {
+        time: new Date().toISOString(),
+        signal: result.signal,
+        entry: result.entry,
+        stopLoss: result.stopLoss,
+        takeProfit: result.takeProfit,
+        candle: result.lastClosedCandle
+      };
+
+      // Évite de répéter le même signal pour la même bougie.
+      const exists = history.some(old =>
+        old.candle === item.candle &&
+        old.signal === item.signal
+      );
+
+      if (!exists) {
+        history.unshift(item);
+        saveHistory(history);
+      }
+
+      renderHistory();
+    }
+
+    function renderHistory() {
+      const history = loadHistory();
+      const tbody = $("historyBody");
+
+      tbody.replaceChildren();
+
+      if (history.length === 0) {
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+
+        cell.colSpan = 5;
+        cell.className = "empty";
+        cell.textContent = "Aucun signal enregistré pour le moment.";
+
+        row.appendChild(cell);
+        tbody.appendChild(row);
+        return;
+      }
+
+      history.slice(0, 30).forEach(item => {
+        const row = document.createElement("tr");
+
+        const time = document.createElement("td");
+        const signal = document.createElement("td");
+        const entry = document.createElement("td");
+        const stop = document.createElement("td");
+        const target = document.createElement("td");
+
+        const date = new Date(item.time);
+
+        time.textContent = Number.isNaN(date.getTime())
+          ? "—"
+          : date.toLocaleString("fr-FR");
+
+        signal.textContent = item.signal;
+        signal.className =
+          item.signal === "ACHAT"
+            ? "green"
+            : item.signal === "VENTE"
+              ? "red"
+              : "";
+
+        entry.textContent = money(item.entry);
+        stop.textContent = money(item.stopLoss);
+        target.textContent = money(item.takeProfit);
+
+        row.append(time, signal, entry, stop, target);
+        tbody.appendChild(row);
+      });
+    }
+
+    function renderSignal(data) {
+      latestSignal = data;
+
+      const signal = data.signal || "ATTENDRE";
+      const isBuy = signal === "ACHAT";
+      const isSell = signal === "VENTE";
+
+      $("price").textContent = money(data.entry);
+
+      $("priceCaption").textContent =
+        "Dernière analyse · " +
+        new Date().toLocaleTimeString("fr-FR");
+
+      $("signalBadge").className =
+        "badge " + (isBuy ? "buy" : isSell ? "sell" : "");
+
+      $("signalBadge").textContent =
+        isBuy ? "▲ SIGNAL ACHAT"
+          : isSell ? "▼ SIGNAL VENTE"
+            : "● PAS DE SIGNAL";
+
+      $("signalTitle").className =
+        "signal-title " + (isBuy ? "buy" : isSell ? "sell" : "");
+
+      $("signalTitle").textContent = signal;
+
+      $("signalReason").textContent =
+        data.reason || "Aucune explication fournie par le moteur.";
+
+      $("entry").textContent = money(data.entry);
+      $("stopLoss").textContent = money(data.stopLoss);
+      $("takeProfit").textContent = money(data.takeProfit);
+
+      $("summaryTrend").textContent = data.trendM5 || "—";
+
+      $("lastCandle").textContent = data.lastClosedCandle
+        ? new Date(data.lastClosedCandle).toLocaleString("fr-FR")
+        : "—";
+
+      const indicators = data.indicators || {};
+
+      $("indicators").textContent =
+        indicators.SMA10_M5 !== undefined
+          ? "SMA10 " + Number(indicators.SMA10_M5).toFixed(2) +
+            " / SMA20 " + Number(indicators.SMA20_M5).toFixed(2)
+          : "—";
+
+      const cfg = data.configuration || {};
+
+      if (cfg.capital !== undefined) {
+        $("summaryCapital").textContent = money(cfg.capital);
+      }
+
+      if (cfg.riskPercent !== undefined) {
+        $("summaryRisk").textContent = cfg.riskPercent + " %";
+      }
+
+      if (cfg.riskAmount !== undefined) {
+        $("summaryRiskAmount").textContent = money(cfg.riskAmount);
+      }
+
+      if (cfg.targetMoveDollars !== undefined) {
+        $("summaryTarget").textContent =
+          "+" + money(cfg.targetMoveDollars);
+      }
+
+      if (cfg.stopDistanceDollars !== undefined) {
+        $("summaryStop").textContent =
+          money(cfg.stopDistanceDollars);
+      }
+
+      $("statusMessage").textContent =
+        "Analyse reçue. " +
+        (data.candlesM1 || "—") + " bougies M1 · " +
+        (data.candlesM5 || "—") + " bougies M5. " +
+        "Mode signaux uniquement.";
+
+      showConnection("online", "API connectée");
+      setError("");
+
+      addHistory(data);
+    }
+
+    async function refreshSignal() {
+      if (busy) return;
+
+      busy = true;
+      $("refreshButton").disabled = true;
+      $("refreshButton").textContent = "Analyse en cours...";
+      setError("");
+
+      try {
+        const s = readSettings();
+
+        const params = new URLSearchParams({
+          target: String(s.target),
+          stopDistance: String(s.stopDistance),
+          riskPercent: String(s.riskPercent),
+          capital: String(s.capital)
+        });
+
+        const response = await fetch(
+          API_BASE + "/scalp?" + params.toString(),
+          {
+            method: "GET",
+            headers: {
+              "Accept": "application/json"
+            },
+            cache: "no-store"
+          }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok || !data.ok) {
+          throw new Error(
+            data.details ||
+            data.error ||
+            "Le serveur n'a pas pu calculer le signal."
+          );
+        }
+
+        renderSignal(data);
+
+      } catch (error) {
+        showConnection("offline", "Connexion indisponible");
+
+        setError(
+          "Impossible de récupérer le signal. " +
+          (error.message || "Erreur inconnue.") +
+          " Vérifie la connexion et l'API Cloudflare."
+        );
+
+        $("statusMessage").textContent =
+          "Dernière mise à jour indisponible.";
+
+      } finally {
+        busy = false;
+        $("refreshButton").disabled = false;
+        $("refreshButton").textContent = "↻ Analyser le marché";
+      }
+    }
+
+    $("refreshButton").addEventListener("click", refreshSignal);
+
+    $("saveSettingsButton").addEventListener("click", saveSettings);
+
+    $("clearHistoryButton").addEventListener("click", () => {
+      if (confirm("Effacer l'historique enregistré sur cet appareil ?")) {
+        localStorage.removeItem(STORAGE_HISTORY);
+        renderHistory();
+      }
     });
 
-    const data = await response.json();
-    waiting.remove();
+    ["capital", "riskPercent", "target", "stopDistance"]
+      .forEach(id => {
+        $(id).addEventListener("input", updateSummary);
+      });
 
-    if (!response.ok || data.ok !== true || !data.reply) {
-      throw new Error(data.details || data.error || "Erreur du service IA.");
-    }
+    loadSettings();
+    renderHistory();
+    refreshSignal();
 
-    addMessage(data.reply, "assistant");
-  } catch (error) {
-    waiting.remove();
-    addMessage(
-      "Je n'ai pas pu obtenir de réponse. Vérifie que le Worker est déployé, que le secret OPENAI_API_KEY est configuré et que l'API est accessible. Détail : " +
-      (error.message || "erreur inconnue"),
-      "assistant error-message"
-    );
-  } finally {
-    loadingChat = false;
-    $("sendButton").disabled = false;
-    input.focus();
-  }
-}
-
-$("refreshButton").addEventListener("click", updateMarket);
-$("timeframe").addEventListener("change", updateMarket);
-$("chatForm").addEventListener("submit", sendChat);
-
-updateMarket();
-setInterval(updateMarket, REFRESH_MS);
-</script>
+    // Actualisation automatique toutes les 60 secondes.
+    setInterval(() => {
+      if (!document.hidden) refreshSignal();
+    }, 60000);
+  </script>
 </body>
 </html>
