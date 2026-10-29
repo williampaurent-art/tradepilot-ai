@@ -1,399 +1,829 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TradePilot AI</title>
+
 <style>
-:root{color-scheme:dark;--bg:#080d18;--panel:#111b2d;--line:#26354d;--text:#edf3ff;--muted:#9eacc3;--green:#37d69a;--red:#ff737d;--blue:#75a7ff}
+:root{
+  color-scheme:dark;
+  --bg:#080d18;
+  --panel:#111b2d;
+  --line:#26354d;
+  --text:#edf3ff;
+  --muted:#aab7cc;
+  --green:#37d69a;
+  --red:#ff737d;
+  --orange:#ffbf69;
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,-apple-system,sans-serif}
-main{max-width:1000px;margin:auto;padding:22px 15px 50px}
-header{padding:12px 0 24px}
-h1{margin:0;font-size:30px}
-h2{font-size:20px;margin-top:0}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font:15px system-ui,Arial,sans-serif;
+}
+main{max-width:950px;margin:auto;padding:20px 14px 45px}
+h1{font-size:30px;margin-bottom:5px}
+h2{font-size:20px}
 p{color:var(--muted);line-height:1.5}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;margin:14px 0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
-label{display:block;color:var(--muted);font-size:13px;margin-bottom:6px}
-input,select,textarea,button{width:100%;padding:12px;border-radius:9px;border:1px solid var(--line);background:#091222;color:var(--text);font:inherit}
-button{background:#245cce;border:0;font-weight:700;cursor:pointer;margin-top:12px}
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:15px;
+  padding:18px;
+  margin:15px 0;
+}
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(135px,1fr));
+  gap:12px;
+}
+label{
+  display:block;
+  color:var(--muted);
+  font-size:13px;
+  margin-bottom:6px;
+}
+input,select,button{
+  width:100%;
+  padding:12px;
+  border-radius:8px;
+  border:1px solid var(--line);
+  background:#091222;
+  color:var(--text);
+  font-size:15px;
+}
+button{
+  background:#2864d7;
+  border:0;
+  font-weight:700;
+  cursor:pointer;
+  margin-top:12px;
+}
 button:disabled{opacity:.5}
-.secondary{background:#25354c}
-.status{white-space:pre-wrap;color:var(--muted);font-size:13px;margin-top:12px}
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-.metric{padding:13px;background:#091222;border:1px solid var(--line);border-radius:10px;overflow-wrap:anywhere}
-.metric span{display:block;color:var(--muted);font-size:12px}
-.metric strong{display:block;font-size:20px;margin-top:5px}
-.good{color:var(--green)}.bad{color:var(--red)}
+.status{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  color:var(--muted);
+  margin-top:12px;
+}
+.price{
+  font-size:34px;
+  font-weight:800;
+  margin:15px 0 5px;
+}
+.signal{
+  font-size:25px;
+  font-weight:800;
+  margin:15px 0;
+}
+.metrics{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
+  gap:10px;
+}
+.metric{
+  background:#091222;
+  padding:12px;
+  border-radius:9px;
+  overflow-wrap:anywhere;
+}
+.metric span{
+  display:block;
+  color:var(--muted);
+  font-size:12px;
+}
+.metric strong{
+  display:block;
+  font-size:19px;
+  margin-top:6px;
+}
+.green{color:var(--green)}
+.red{color:var(--red)}
+.orange{color:var(--orange)}
 small{color:var(--muted)}
 </style>
 </head>
+
 <body>
 <main>
+
 <header>
 <h1>🚀 TradePilot AI</h1>
-<p>Générateur de stratégies et backtest historique — mode simulation uniquement.</p>
+<p>Analyse du GOLD, cotation indicative et backtests historiques.</p>
 </header>
 
+<!-- ANALYSE EN DIRECT -->
 <section class="panel">
-<h2>🤖 Générateur de stratégie</h2>
+<h2>📡 GOLD LIVE — XAU/USD</h2>
+
+<div id="livePrice" class="price">Connexion...</div>
+<div id="liveUpdated" class="status">Récupération du cours...</div>
+
+<hr style="border-color:#26354d;margin:18px 0">
+
+<div id="liveSignal" class="signal orange">🟠 ATTENDRE</div>
+<p id="liveAnalysis">
+Le robot récupère le prix. Le cours seul ne suffit pas pour établir un signal technique.
+</p>
+
 <div class="grid">
-<div><label for="genSymbol">Instrument</label>
-<select id="genSymbol"><option>XAUUSD</option><option>EUR_USD</option></select></div>
-<div><label for="genTf">Timeframe</label>
-<select id="genTf"><option>M15</option><option>M5</option><option>H1</option><option>H4</option></select></div>
-<div><label for="risk">Risque théorique (%)</label>
-<input id="risk" type="number" value="1" min="0.1" max="5" step="0.1"></div>
+<div class="metric">
+<span>Dernier prix reçu</span>
+<strong id="lastPrice">—</strong>
 </div>
-<button id="generate">Générer une stratégie</button>
-<div id="strategy" class="status">Ta stratégie apparaîtra ici.</div>
+<div class="metric">
+<span>Variation depuis la dernière lecture</span>
+<strong id="priceChange">—</strong>
+</div>
+<div class="metric">
+<span>Lectures conservées</span>
+<strong id="sampleCount">0</strong>
+</div>
+</div>
+
+<button id="refreshLive">Actualiser le cours</button>
+
+<p><small>
+Source : Gold API, prix indicatif de l'or au comptant.
+Actualisation demandée toutes les 60 secondes. Le prix peut être retardé
+et peut différer de celui proposé par ton courtier.
+</small></p>
 </section>
 
+<!-- GENERATEUR -->
 <section class="panel">
-<h2>📂 Importer les données historiques</h2>
-<p>Choisis ton fichier GOLD/XAUUSD M15. Les fichiers CSV et JSON sont acceptés, y compris les fichiers JSON compressés en .gz si ton navigateur prend en charge la décompression.</p>
+<h2>🤖 Générateur de stratégie</h2>
+
+<div class="grid">
+<div>
+<label for="genSymbol">Instrument</label>
+<select id="genSymbol">
+<option>XAUUSD</option>
+<option>EUR_USD</option>
+</select>
+</div>
+
+<div>
+<label for="genTf">Timeframe</label>
+<select id="genTf">
+<option>M15</option>
+<option>M5</option>
+<option>H1</option>
+<option>H4</option>
+</select>
+</div>
+
+<div>
+<label for="risk">Risque théorique (%)</label>
+<input id="risk" type="number" value="1" min="0.1" max="5" step="0.1">
+</div>
+</div>
+
+<button id="generate">Générer une stratégie</button>
+<div id="strategy" class="status">Prêt.</div>
+</section>
+
+<!-- BACKTEST -->
+<section class="panel">
+<h2>📂 Backtest historique</h2>
+
+<p>
+Importe ton historique GOLD au format CSV, JSON ou JSON.GZ.
+Les fichiers compressés nécessitent un navigateur compatible.
+</p>
+
 <label for="historyFile">Fichier historique</label>
 <input id="historyFile" type="file" accept=".csv,.txt,.json,.gz,.json.gz">
-<div class="grid" style="margin-top:14px">
-<div><label for="symbol">Instrument</label>
-<select id="symbol"><option value="XAU_USD">GOLD / XAUUSD</option><option value="EUR_USD">EUR/USD</option></select></div>
-<div><label for="timeframe">Timeframe</label>
-<select id="timeframe"><option>M15</option><option>M5</option><option>H1</option><option>H4</option><option>D1</option></select></div>
-<div><label for="fastMA">Moyenne rapide</label>
-<input id="fastMA" type="number" value="10" min="2"></div>
-<div><label for="slowMA">Moyenne lente</label>
-<input id="slowMA" type="number" value="20" min="3"></div>
-<div><label for="capital">Capital initial ($)</label>
-<input id="capital" type="number" value="10000" min="1"></div>
-</div>
-<button id="runBacktest">Lancer le backtest</button>
-<button id="clear" class="secondary">Effacer les résultats</button>
+
 <div id="importStatus" class="status">Aucun fichier importé.</div>
+
+<div class="grid">
+<div>
+<label for="symbol">Instrument</label>
+<select id="symbol">
+<option value="XAUUSD">GOLD / XAUUSD</option>
+<option value="EURUSD">EUR/USD</option>
+</select>
+</div>
+
+<div>
+<label for="timeframe">Timeframe</label>
+<select id="timeframe">
+<option>M15</option>
+<option>M5</option>
+<option>H1</option>
+<option>H4</option>
+<option>D1</option>
+</select>
+</div>
+
+<div>
+<label for="fastMA">Moyenne rapide</label>
+<input id="fastMA" type="number" value="10" min="2">
+</div>
+
+<div>
+<label for="slowMA">Moyenne lente</label>
+<input id="slowMA" type="number" value="20" min="3">
+</div>
+
+<div>
+<label for="capital">Capital initial ($)</label>
+<input id="capital" type="number" value="10000" min="1">
+</div>
+</div>
+
+<button id="runBacktest">Lancer le backtest</button>
+<button id="clear" style="background:#35435a">Effacer les données</button>
 </section>
 
 <section class="panel">
 <h2>📊 Résultats du backtest</h2>
-<div id="results"><p>Importe ton historique puis lance le backtest.</p></div>
+<div id="results">Importe ton fichier puis lance le backtest.</div>
 </section>
 
 <section class="panel">
-<h2>⚠️ Limites</h2>
-<p>Ce backtest est une simulation indicative utilisant les clôtures et un croisement de moyennes mobiles. Il ne reproduit pas fidèlement les frais, le spread, le slippage, le financement, la liquidité ou les contraintes d'exécution. Le dimensionnement du risque n'est pas modélisé. Les résultats historiques ne garantissent aucun résultat futur.</p>
+<h2>⚠️ Informations importantes</h2>
+<p>
+La cotation en direct est un prix indicatif et ne constitue pas nécessairement
+un flux de cotations exécutable chez ton courtier.
+Le module de cotation ne prend aucune position et ne déclenche aucun ordre.
+Le backtest utilise une stratégie simplifiée de croisement de moyennes mobiles.
+Les frais, le spread, le slippage et les contraintes d'exécution ne sont pas
+intégrés. Les résultats historiques ne garantissent pas les performances futures.
+</p>
 </section>
+
 </main>
 
 <script>
 "use strict";
 
+/* CONFIGURATION */
+const GOLD_API = "https://api.gold-api.com/price/XAU";
 const WORKER_URL = "https://tradepilot-ai.williampaurent.workers.dev";
-let historyBars = [];
 
 const $ = id => document.getElementById(id);
 
-function setStatus(id, message) {
-  $(id).textContent = message;
+let historyBars = [];
+let previousLivePrice = null;
+let liveReadings = [];
+let lastApiUpdatedAt = null;
+
+/* =========================
+   COTATION GOLD EN DIRECT
+========================= */
+
+async function updateGold() {
+  const priceEl = $("livePrice");
+  const updatedEl = $("liveUpdated");
+  const signalEl = $("liveSignal");
+  const analysisEl = $("liveAnalysis");
+
+  updatedEl.textContent = "Récupération du cours...";
+
+  try {
+    const response = await fetch(GOLD_API, {cache:"no-store"});
+
+    if (!response.ok) {
+      throw new Error("Erreur HTTP " + response.status);
+    }
+
+    const data = await response.json();
+    const price = Number(data.price);
+
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error("Le prix reçu est invalide.");
+    }
+
+    const oldPrice = previousLivePrice;
+    previousLivePrice = price;
+
+    liveReadings.push({
+      price: price,
+      time: Date.now()
+    });
+
+    if (liveReadings.length > 100) {
+      liveReadings.shift();
+    }
+
+    priceEl.textContent = "$" + price.toLocaleString("en-US", {
+      minimumFractionDigits:2,
+      maximumFractionDigits:2
+    });
+
+    $("lastPrice").textContent = "$" + price.toFixed(2);
+    $("sampleCount").textContent = liveReadings.length;
+
+    if (oldPrice !== null) {
+      const difference = price - oldPrice;
+      const changeEl = $("priceChange");
+
+      changeEl.textContent =
+        (difference >= 0 ? "+" : "") + difference.toFixed(2) + " $";
+
+      changeEl.className = difference >= 0 ? "green" : "red";
+    } else {
+      $("priceChange").textContent = "En attente";
+    }
+
+    lastApiUpdatedAt = data.updatedAt || null;
+
+    updatedEl.textContent =
+      "Dernière réponse reçue : " +
+      new Date().toLocaleTimeString("fr-FR") +
+      (lastApiUpdatedAt
+        ? "\nHorodatage fourni par la source : " + lastApiUpdatedAt
+        : "") +
+      "\nProchaine vérification dans 60 secondes.";
+
+    /*
+      Un seul prix ne suffit pas pour calculer une tendance fiable.
+      Ce module ne fabrique donc pas de signal d'achat ou de vente.
+    */
+    signalEl.textContent = "🟠 ATTENDRE";
+    signalEl.className = "signal orange";
+
+    analysisEl.textContent =
+      "Prix récupéré avec succès. Le robot surveille la cotation, " +
+      "mais il ne dispose pas encore d'un flux de bougies M15 en direct. " +
+      "Aucun signal d'achat ou de vente n'est confirmé.";
+
+  } catch (error) {
+    updatedEl.textContent =
+      "Impossible de récupérer le cours : " + error.message;
+
+    signalEl.textContent = "⚪ DONNÉES INDISPONIBLES";
+    signalEl.className = "signal";
+
+    analysisEl.textContent =
+      "Vérifie ta connexion internet ou réessaie. " +
+      "Le robot ne doit pas produire de signal sans données fiables.";
+  }
 }
 
-function normalizeKey(key) {
-  return String(key ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+$("refreshLive").addEventListener("click", updateGold);
+
+updateGold();
+setInterval(updateGold, 60000);
+
+/* =========================
+   LECTURE DES FICHIERS
+========================= */
+
+function normalizeKey(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }
 
-function numberValue(value) {
-  if (typeof value === "number") return Number.isFinite(value) ? value : NaN;
+function parseNumber(value) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : NaN;
+  }
+
   let s = String(value ?? "").trim().replace(/\s/g, "");
+
   if (!s) return NaN;
-  if (s.includes(",") && !s.includes(".")) s = s.replace(",", ".");
-  else s = s.replace(/,(?=\d{3}(\D|$))/g, "");
+
+  if (s.includes(",") && !s.includes(".")) {
+    s = s.replace(",", ".");
+  } else {
+    s = s.replace(/,(?=\d{3}(\D|$))/g, "");
+  }
+
   const n = Number(s);
   return Number.isFinite(n) ? n : NaN;
 }
 
 function parseCSV(text) {
   const firstLine = text.split(/\r?\n/, 1)[0] || "";
-  const delimiter = firstLine.includes("\t") ? "\t" :
-                    firstLine.includes(";") ? ";" : ",";
+
+  const delimiter = firstLine.includes("\t")
+    ? "\t"
+    : firstLine.includes(";")
+      ? ";"
+      : ",";
+
   const rows = [];
-  let row = [], cell = "", quoted = false;
+  let row = [];
+  let cell = "";
+  let quoted = false;
 
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+
     if (ch === '"') {
       if (quoted && text[i + 1] === '"') {
-        cell += '"'; i++;
-      } else quoted = !quoted;
+        cell += '"';
+        i++;
+      } else {
+        quoted = !quoted;
+      }
     } else if (ch === delimiter && !quoted) {
-      row.push(cell); cell = "";
+      row.push(cell);
+      cell = "";
     } else if ((ch === "\n" || ch === "\r") && !quoted) {
       if (ch === "\r" && text[i + 1] === "\n") i++;
+
       row.push(cell);
-      if (row.some(v => String(v).trim() !== "")) rows.push(row);
-      row = []; cell = "";
-    } else cell += ch;
+
+      if (row.some(v => String(v).trim() !== "")) {
+        rows.push(row);
+      }
+
+      row = [];
+      cell = "";
+    } else {
+      cell += ch;
+    }
   }
+
   row.push(cell);
-  if (row.some(v => String(v).trim() !== "")) rows.push(row);
-  if (rows.length < 2) throw new Error("Le CSV est vide ou incomplet.");
+
+  if (row.some(v => String(v).trim() !== "")) {
+    rows.push(row);
+  }
+
+  if (rows.length < 2) {
+    throw new Error("Le CSV est vide ou incomplet.");
+  }
 
   const headers = rows[0].map(normalizeKey);
   const findIndex = names => headers.findIndex(h => names.includes(h));
-  const closeIndex = findIndex(["close", "c", "closingprice", "last"]);
-  const openIndex = findIndex(["open", "o"]);
-  const highIndex = findIndex(["high", "h"]);
-  const lowIndex = findIndex(["low", "l"]);
-  const timeIndex = findIndex(["time", "timestamp", "date", "datetime", "etcutc", "gmt time"]);
+
+  const closeIndex = findIndex(["close","c","closingprice","last"]);
+  const openIndex = findIndex(["open","o"]);
+  const highIndex = findIndex(["high","h"]);
+  const lowIndex = findIndex(["low","l"]);
+  const timeIndex = findIndex([
+    "time","timestamp","date","datetime","etcutc","gmt"
+  ]);
 
   if (closeIndex < 0) {
-    throw new Error("Colonne Close introuvable. Vérifie les en-têtes du CSV.");
+    throw new Error("Colonne Close introuvable dans le CSV.");
   }
 
   return rows.slice(1).map(r => ({
     time: timeIndex >= 0 ? r[timeIndex] : "",
-    open: openIndex >= 0 ? numberValue(r[openIndex]) : NaN,
-    high: highIndex >= 0 ? numberValue(r[highIndex]) : NaN,
-    low: lowIndex >= 0 ? numberValue(r[lowIndex]) : NaN,
-    close: numberValue(r[closeIndex])
+    open: openIndex >= 0 ? parseNumber(r[openIndex]) : NaN,
+    high: highIndex >= 0 ? parseNumber(r[highIndex]) : NaN,
+    low: lowIndex >= 0 ? parseNumber(r[lowIndex]) : NaN,
+    close: parseNumber(r[closeIndex])
   })).filter(b => Number.isFinite(b.close));
 }
 
 function parseJSON(data) {
   let items = data;
-  if (items && !Array.isArray(items)) {
-    if (Array.isArray(items.data)) items = items.data;
-    else if (Array.isArray(items.bars)) items = items.bars;
-    else if (Array.isArray(items.candles)) items = items.candles;
-    else throw new Error("Format JSON non reconnu : tableau de bougies introuvable.");
+
+  if (!Array.isArray(items)) {
+    items = items?.data ?? items?.bars ?? items?.candles;
   }
 
   if (!Array.isArray(items) || !items.length) {
-    throw new Error("Le fichier JSON ne contient aucune bougie.");
+    throw new Error("Format JSON non reconnu.");
   }
 
   return items.map(b => ({
     time: b.ts ?? b.time ?? b.timestamp ?? b.date ?? "",
-    open: numberValue(b.o ?? b.open),
-    high: numberValue(b.h ?? b.high),
-    low: numberValue(b.l ?? b.low),
-    close: numberValue(b.c ?? b.close)
+    open: parseNumber(b.o ?? b.open),
+    high: parseNumber(b.h ?? b.high),
+    low: parseNumber(b.l ?? b.low),
+    close: parseNumber(b.c ?? b.close)
   })).filter(b => Number.isFinite(b.close));
 }
 
 async function readHistoryFile(file) {
-  let buffer = await file.arrayBuffer();
-  let name = file.name.toLowerCase();
+  const buffer = await file.arrayBuffer();
   let text;
 
-  if (name.endsWith(".gz")) {
+  if (file.name.toLowerCase().endsWith(".gz")) {
     if (!("DecompressionStream" in window)) {
-      throw new Error("Ce navigateur ne sait pas décompresser ce fichier. Il faut convertir le .gz en CSV ou JSON non compressé.");
+      throw new Error(
+        "Ton navigateur ne prend pas en charge la décompression GZIP."
+      );
     }
-    const stream = new Blob([buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+
+    const stream = new Blob([buffer])
+      .stream()
+      .pipeThrough(new DecompressionStream("gzip"));
+
     text = await new Response(stream).text();
   } else {
     text = new TextDecoder("utf-8").decode(buffer);
   }
 
   text = text.replace(/^\uFEFF/, "").trim();
+
   if (!text) throw new Error("Le fichier est vide.");
 
   if (text.startsWith("{") || text.startsWith("[")) {
     return parseJSON(JSON.parse(text));
   }
+
   return parseCSV(text);
 }
 
 $("historyFile").addEventListener("change", async event => {
   const file = event.target.files?.[0];
   if (!file) return;
-  setStatus("importStatus", "Lecture du fichier en cours…");
+
+  $("importStatus").textContent = "Lecture du fichier...";
+
   try {
     const bars = await readHistoryFile(file);
+
     if (bars.length < 30) {
-      throw new Error("Seulement " + bars.length + " bougies valides. Il en faut au moins 30.");
+      throw new Error("Moins de 30 bougies valides.");
     }
+
     historyBars = bars;
-    setStatus("importStatus",
-      "Fichier chargé : " + file.name + "\n" +
-      bars.length.toLocaleString("fr-FR") + " bougies valides.\n" +
-      "Tu peux maintenant lancer le backtest.");
-  } catch (err) {
+
+    $("importStatus").textContent =
+      "Fichier chargé : " + file.name +
+      "\nBougies valides : " +
+      bars.length.toLocaleString("fr-FR") +
+      "\nTu peux lancer le backtest.";
+
+  } catch (error) {
     historyBars = [];
-    setStatus("importStatus", "Erreur : " + err.message);
+    $("importStatus").textContent = "Erreur : " + error.message;
   }
 });
 
+/* =========================
+   BACKTEST MOYENNES MOBILES
+========================= */
+
 function sma(values, period, index) {
   if (index + 1 < period) return NaN;
+
   let sum = 0;
-  for (let i = index - period + 1; i <= index; i++) sum += values[i];
+
+  for (let i = index - period + 1; i <= index; i++) {
+    sum += values[i];
+  }
+
   return sum / period;
 }
 
-function money(n) {
-  return n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:2}) + " $";
+function money(value) {
+  return value.toLocaleString("fr-FR", {
+    minimumFractionDigits:2,
+    maximumFractionDigits:2
+  }) + " $";
 }
 
-function pct(n) {
-  return n.toLocaleString("fr-FR", {minimumFractionDigits:2, maximumFractionDigits:2}) + "%";
-}
-
-function renderResults(stats) {
-  const profitClass = stats.returnPct >= 0 ? "good" : "bad";
-  $("results").innerHTML = `
-    <div class="metrics">
-      <div class="metric"><span>Capital initial</span><strong>${money(stats.initial)}</strong></div>
-      <div class="metric"><span>Capital final</span><strong>${money(stats.final)}</strong></div>
-      <div class="metric"><span>Rendement</span><strong class="${profitClass}">${pct(stats.returnPct)}</strong></div>
-      <div class="metric"><span>Trades clôturés</span><strong>${stats.trades}</strong></div>
-      <div class="metric"><span>Trades gagnants</span><strong>${pct(stats.winRate)}</strong></div>
-      <div class="metric"><span>Drawdown maximal</span><strong class="bad">${pct(stats.drawdown)}</strong></div>
-      <div class="metric"><span>Profit factor</span><strong>${stats.profitFactor === Infinity ? "∞" : stats.profitFactor.toFixed(2)}</strong></div>
-      <div class="metric"><span>Nombre de bougies</span><strong>${stats.bars.toLocaleString("fr-FR")}</strong></div>
-    </div>
-    <p>${stats.trades === 0 ? "Aucun trade clôturé avec ces paramètres." : "Simulation terminée. Les frais et le spread ne sont pas inclus."}</p>
-    <small>${$("symbol").selectedOptions[0].text} · ${$("timeframe").value} · Moyennes ${stats.fast}/${stats.slow}</small>`;
+function percent(value) {
+  return value.toLocaleString("fr-FR", {
+    minimumFractionDigits:2,
+    maximumFractionDigits:2
+  }) + "%";
 }
 
 $("runBacktest").addEventListener("click", () => {
   try {
     if (historyBars.length < 30) {
-      throw new Error("Choisis d'abord un fichier historique valide.");
+      throw new Error("Importe d'abord un fichier valide.");
     }
 
     const fast = Math.floor(Number($("fastMA").value));
     const slow = Math.floor(Number($("slowMA").value));
     const initial = Number($("capital").value);
 
-    if (!Number.isFinite(fast) || !Number.isFinite(slow) || fast < 2 || slow <= fast) {
-      throw new Error("La moyenne lente doit être supérieure à la moyenne rapide.");
+    if (fast < 2 || slow <= fast) {
+      throw new Error(
+        "La moyenne lente doit être supérieure à la moyenne rapide."
+      );
     }
+
     if (!Number.isFinite(initial) || initial <= 0) {
-      throw new Error("Le capital initial doit être supérieur à zéro.");
+      throw new Error("Capital initial invalide.");
     }
+
     if (historyBars.length < slow + 2) {
-      throw new Error("Pas assez de bougies pour calculer la moyenne lente.");
+      throw new Error("Pas assez de données pour ce réglage.");
     }
 
     const closes = historyBars.map(b => b.close);
+
     let cash = initial;
     let units = 0;
     let entryPrice = 0;
+    let position = false;
+
     let peak = initial;
-    let maxDD = 0;
-    let grossProfit = 0;
-    let grossLoss = 0;
+    let maxDrawdown = 0;
     let trades = 0;
     let wins = 0;
+    let grossProfit = 0;
+    let grossLoss = 0;
+
     let previousFast = NaN;
     let previousSlow = NaN;
-    let position = false;
 
     for (let i = 0; i < closes.length; i++) {
       const price = closes[i];
-      const f = sma(closes, fast, i);
-      const s = sma(closes, slow, i);
-      if (!Number.isFinite(f) || !Number.isFinite(s)) continue;
+      const fastValue = sma(closes, fast, i);
+      const slowValue = sma(closes, slow, i);
 
-      const crossUp = Number.isFinite(previousFast) &&
-                      previousFast <= previousSlow && f > s;
-      const crossDown = Number.isFinite(previousFast) &&
-                        previousFast >= previousSlow && f < s;
+      if (!Number.isFinite(fastValue) ||
+          !Number.isFinite(slowValue)) {
+        continue;
+      }
+
+      const crossUp =
+        Number.isFinite(previousFast) &&
+        previousFast <= previousSlow &&
+        fastValue > slowValue;
+
+      const crossDown =
+        Number.isFinite(previousFast) &&
+        previousFast >= previousSlow &&
+        fastValue < slowValue;
 
       if (!position && crossUp) {
         units = cash / price;
         entryPrice = price;
         position = true;
+
       } else if (position && crossDown) {
         const pnl = units * (price - entryPrice);
+
         cash += pnl;
         trades++;
-        if (pnl > 0) { wins++; grossProfit += pnl; }
-        else if (pnl < 0) grossLoss += Math.abs(pnl);
+
+        if (pnl > 0) {
+          wins++;
+          grossProfit += pnl;
+        } else if (pnl < 0) {
+          grossLoss += Math.abs(pnl);
+        }
+
         units = 0;
         position = false;
       }
 
-      previousFast = f;
-      previousSlow = s;
+      previousFast = fastValue;
+      previousSlow = slowValue;
 
-      const equity = position ? cash + units * (price - entryPrice) : cash;
+      const equity = position
+        ? cash + units * (price - entryPrice)
+        : cash;
+
       peak = Math.max(peak, equity);
-      if (peak > 0) maxDD = Math.max(maxDD, (peak - equity) / peak * 100);
+
+      if (peak > 0) {
+        maxDrawdown = Math.max(
+          maxDrawdown,
+          (peak - equity) / peak * 100
+        );
+      }
     }
 
     if (position) {
-      const price = closes[closes.length - 1];
-      const pnl = units * (price - entryPrice);
+      const finalPrice = closes[closes.length - 1];
+      const pnl = units * (finalPrice - entryPrice);
+
       cash += pnl;
       trades++;
-      if (pnl > 0) { wins++; grossProfit += pnl; }
-      else if (pnl < 0) grossLoss += Math.abs(pnl);
+
+      if (pnl > 0) {
+        wins++;
+        grossProfit += pnl;
+      } else if (pnl < 0) {
+        grossLoss += Math.abs(pnl);
+      }
     }
 
-    renderResults({
-      initial, final: cash,
-      returnPct: (cash / initial - 1) * 100,
-      trades, winRate: trades ? wins / trades * 100 : 0,
-      drawdown: maxDD,
-      profitFactor: grossLoss === 0 ? (grossProfit > 0 ? Infinity : 0) : grossProfit / grossLoss,
-      bars: closes.length, fast, slow
-    });
+    const returnPct = (cash / initial - 1) * 100;
 
-    setStatus("importStatus",
-      "Calcul terminé sur " + historyBars.length.toLocaleString("fr-FR") +
-      " bougies. Résultats indicatifs avant frais et spread.");
-  } catch (err) {
-    $("results").textContent = "Erreur : " + err.message;
+    const profitFactor = grossLoss === 0
+      ? (grossProfit > 0 ? "∞" : "0.00")
+      : (grossProfit / grossLoss).toFixed(2);
+
+    $("results").innerHTML = `
+      <div class="metrics">
+        <div class="metric">
+          <span>Capital initial</span>
+          <strong>${money(initial)}</strong>
+        </div>
+        <div class="metric">
+          <span>Capital final</span>
+          <strong>${money(cash)}</strong>
+        </div>
+        <div class="metric">
+          <span>Rendement</span>
+          <strong class="${returnPct >= 0 ? "green" : "red"}">
+            ${percent(returnPct)}
+          </strong>
+        </div>
+        <div class="metric">
+          <span>Trades clôturés</span>
+          <strong>${trades}</strong>
+        </div>
+        <div class="metric">
+          <span>Trades gagnants</span>
+          <strong>${percent(trades ? wins / trades * 100 : 0)}</strong>
+        </div>
+        <div class="metric">
+          <span>Drawdown maximal</span>
+          <strong>${percent(maxDrawdown)}</strong>
+        </div>
+        <div class="metric">
+          <span>Profit factor</span>
+          <strong>${profitFactor}</strong>
+        </div>
+        <div class="metric">
+          <span>Nombre de bougies</span>
+          <strong>${closes.length.toLocaleString("fr-FR")}</strong>
+        </div>
+      </div>
+      <p>${$("symbol").selectedOptions[0].text} ·
+      ${$("timeframe").value} · Moyennes ${fast}/${slow}</p>
+      <p>Simulation terminée. Frais et spread non inclus.</p>
+    `;
+
+    $("importStatus").textContent =
+      "Backtest terminé sur " +
+      historyBars.length.toLocaleString("fr-FR") +
+      " bougies.";
+
+  } catch (error) {
+    $("results").textContent = "Erreur : " + error.message;
   }
 });
+
+/* =========================
+   EFFACER LE BACKTEST
+========================= */
 
 $("clear").addEventListener("click", () => {
   historyBars = [];
   $("historyFile").value = "";
-  $("results").innerHTML = "<p>Importe ton historique puis lance le backtest.</p>";
-  setStatus("importStatus", "Résultats effacés. Aucun fichier chargé.");
+  $("results").textContent =
+    "Importe ton fichier puis lance le backtest.";
+  $("importStatus").textContent = "Aucun fichier importé.";
 });
+
+/* =========================
+   GENERATEUR EXISTANT
+========================= */
 
 $("generate").addEventListener("click", async () => {
   const button = $("generate");
   const output = $("strategy");
-  button.disabled = true;
-  output.textContent = "Génération en cours…";
 
-  const payload = {
-    symbol: $("genSymbol").value,
-    timeframe: $("genTf").value,
-    risk_percent: Number($("risk").value)
-  };
+  button.disabled = true;
+  output.textContent = "Génération en cours...";
 
   try {
     const response = await fetch(WORKER_URL, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        symbol:$("genSymbol").value,
+        timeframe:$("genTf").value,
+        risk_percent:Number($("risk").value)
+      })
     });
-    const body = await response.text();
-    let data;
-    try { data = JSON.parse(body); }
-    catch { data = {result: body}; }
 
-    if (!response.ok) {
-      throw new Error(data.error || data.message || "Erreur API HTTP " + response.status);
+    const text = await response.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = {result:text};
     }
 
-    output.textContent = typeof data === "string"
-      ? data
-      : JSON.stringify(data, null, 2);
-  } catch (err) {
+    if (!response.ok) {
+      throw new Error(
+        data.error || data.message || "Erreur HTTP " + response.status
+      );
+    }
+
     output.textContent =
-      "Impossible de contacter le générateur : " + err.message +
-      "\nLe backtest local reste utilisable. Vérifie que le Worker est en ligne.";
+      typeof data === "string"
+        ? data
+        : JSON.stringify(data, null, 2);
+
+  } catch (error) {
+    output.textContent =
+      "Générateur indisponible : " + error.message +
+      "\nLe backtest et le module de cotation restent séparés.";
+
   } finally {
     button.disabled = false;
   }
 });
 </script>
+
 </body>
 </html>
-
