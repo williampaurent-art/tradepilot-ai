@@ -1,375 +1,129 @@
-
 <!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#080d18">
-<title>TradePilot AI — GOLD</title>
+<title>TradePilot AI</title>
 <style>
-:root{color-scheme:dark;--bg:#080d18;--panel:#111a2b;--border:#293750;--text:#eef3ff;--muted:#96a5bd;--gold:#f4c95d;--green:#48d6a0;--red:#ff7185;--orange:#ffbd69}
 *{box-sizing:border-box}
-body{margin:0;background:radial-gradient(ellipse at top,#1b2942,var(--bg) 65%);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
-main{max-width:1100px;margin:auto;padding:22px 14px 40px}
-header,.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-header{margin-bottom:22px}
-.brand{display:flex;align-items:center;gap:12px}
-.logo{width:44px;height:44px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#ffe8a1,#d59a28);color:#171208;font-size:21px;font-weight:900}
-h1{font-size:22px;margin:0}
-h2{font-size:17px;margin:24px 0 12px}
-h3{font-size:15px;margin:0 0 12px}
-.sub,.muted,.note{color:var(--muted)}
-.sub{font-size:12px;margin-top:4px}
-.status,.pill{font-size:12px;border:1px solid var(--border);border-radius:30px;padding:8px 11px;background:#0c1423;color:var(--muted)}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--orange);margin-right:6px}
-.dot.ok{background:var(--green)}.dot.bad{background:var(--red)}
-.hero,.card{border:1px solid var(--border);border-radius:17px;padding:18px;background:var(--panel);min-width:0}
-.hero{background:linear-gradient(135deg,#1b2a42,#111a2b);border-color:#354660;padding:22px}
-.eyebrow,.label{font-size:12px;color:var(--muted)}
-.eyebrow{color:var(--gold);letter-spacing:1.5px;text-transform:uppercase;font-weight:800}
-.price{font-size:clamp(38px,8vw,60px);font-weight:850;letter-spacing:-2px;margin:10px 0;overflow-wrap:anywhere}
-.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
-.value{font-size:clamp(20px,4vw,27px);font-weight:800;overflow-wrap:anywhere}
-.note{font-size:12px;line-height:1.5;margin-top:7px}
-.gold{color:var(--gold)}.green{color:var(--green)}.red{color:var(--red)}
-.signal{display:inline-block;border:1px solid #66562e;background:#282315;color:var(--orange);border-radius:10px;padding:9px 12px;font-weight:850}
-.signal.buy{color:var(--green);background:#10271f;border-color:#245b47}
-.signal.sell{color:var(--red);background:#2b1720;border-color:#703545}
-button{cursor:pointer;border:1px solid #66562e;background:#282315;color:var(--gold);padding:11px 14px;border-radius:10px;font-weight:750}
-button:disabled{opacity:.5;cursor:wait}
-input,select,textarea{width:100%;background:#0c1423;color:var(--text);border:1px solid var(--border);border-radius:9px;padding:11px;font:inherit}
-textarea{min-height:155px;resize:vertical;font-family:ui-monospace,monospace;font-size:12px}
-.field{display:grid;gap:7px;margin:12px 0}
-.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.metric{padding:13px;border:1px solid var(--border);border-radius:12px;background:#0c1423;min-width:0}
-.metric .value{font-size:20px;margin-top:7px}
-.notice,.error,.success{padding:13px;border-radius:11px;font-size:12px;line-height:1.6;margin-top:13px;overflow-wrap:anywhere}
-.notice{border:1px solid #554628;background:#211d13;color:#dfd0a5}
-.error{display:none;border:1px solid #703545;background:#28131c;color:#ffb1bd}
-.success{display:none;border:1px solid #245b47;background:#10271f;color:#b6f5d9}
-.results{display:grid;gap:10px;margin-top:14px}
-footer{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:11px;margin-top:22px}
-@media(max-width:650px){main{padding:16px 11px 30px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.hero,.card{padding:14px}}
-@media(max-width:360px){.grid,.metrics{grid-template-columns:1fr}}
+body{margin:0;background:#0b1020;color:#edf2ff;font-family:Arial,sans-serif}
+header{padding:20px;background:#111a2e;border-bottom:1px solid #27344d}
+h1{margin:0;color:#55e6b0;font-size:24px}
+header p{color:#9baac4;margin:7px 0 0}
+main{max-width:850px;margin:auto;padding:16px}
+.card{background:#121b30;border:1px solid #293751;border-radius:14px;padding:16px;margin-bottom:15px}
+h2{font-size:17px;margin-top:0}
+.price{font-size:30px;font-weight:bold;color:#55e6b0}
+button{background:#55e6b0;color:#08131a;border:0;border-radius:9px;padding:12px 16px;font-weight:bold;cursor:pointer}
+input{background:#0b1020;color:white;border:1px solid #34445f;border-radius:9px;padding:13px;width:100%;min-width:0}
+.chat{height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:10px;margin-bottom:12px}
+.msg{padding:11px 13px;border-radius:12px;max-width:90%;line-height:1.5;white-space:pre-wrap}
+.bot{background:#202d45;align-self:flex-start}
+.user{background:#155b4b;align-self:flex-end}
+form{display:flex;gap:8px}
+form input{flex:1}
+small{color:#9baac4}
+.green{color:#55e6b0}.red{color:#ff7979}
 </style>
 </head>
 <body>
-<main>
 <header>
-  <div class="brand">
-    <div class="logo">Au</div>
-    <div><h1>TradePilot AI</h1><div class="sub">Tableau de bord · GOLD / XAUUSD</div></div>
-  </div>
-  <div class="status"><span id="dot" class="dot"></span><span id="connection">Connexion…</span></div>
+<h1>TradePilot AI</h1>
+<p>Assistant de scalping · XAUUSD · Mode analyse</p>
 </header>
 
-<section class="hero">
-  <div class="eyebrow">Cours de l'or · M15</div>
-  <div class="price" id="mainPrice">Chargement…</div>
-  <div class="muted">Prix retourné par la source de données</div>
-  <div class="pills">
-    <span class="pill">Source : <b id="source">—</b></span>
-    <span class="pill">Dernière bougie : <b id="candleTime">—</b></span>
-    <span class="pill">Mis à jour : <b id="updated">—</b></span>
-  </div>
-</section>
-
-<div class="row" style="margin-top:14px">
-  <h2 style="margin:0">Signaux de marché</h2>
-  <button id="refresh">↻ Actualiser</button>
-</div>
-<div class="grid" style="margin-top:12px">
-  <section class="card">
-    <div class="label">Unité 15 minutes</div>
-    <div id="signalM15" class="signal">ATTENDRE</div>
-    <p class="note" id="reasonM15">Chargement…</p>
-    <div class="label">Prix M15</div><div class="value" id="priceM15">—</div>
-    <div class="label" style="margin-top:12px">RSI 14</div><div class="value" id="rsiM15">—</div>
-  </section>
-  <section class="card">
-    <div class="label">Unité 1 heure</div>
-    <div id="signalH1" class="signal">ATTENDRE</div>
-    <p class="note" id="reasonH1">Chargement…</p>
-    <div class="label">Prix H1</div><div class="value" id="priceH1">—</div>
-    <div class="label" style="margin-top:12px">RSI 14</div><div class="value" id="rsiH1">—</div>
-  </section>
-</div>
-
-<h2>Indicateurs techniques — M15</h2>
-<section class="grid">
-  <article class="card"><div class="label">SMA 10</div><div class="value gold" id="sma10">—</div><div class="note">Moyenne mobile courte</div></article>
-  <article class="card"><div class="label">SMA 20</div><div class="value" id="sma20">—</div><div class="note">Moyenne mobile longue</div></article>
-  <article class="card"><div class="label">Bougies analysées</div><div class="value" id="candleCount">—</div><div class="note">Bougies reçues par l'API</div></article>
-</section>
-
-<h2>Niveaux indicatifs — M15</h2>
-<section class="grid">
-  <article class="card"><div class="label">Prix de référence</div><div class="value gold" id="reference">—</div></article>
-  <article class="card"><div class="label">Stop-loss</div><div class="value red" id="sl">Non défini</div></article>
-  <article class="card"><div class="label">Take-profit</div><div class="value green" id="tp">Non défini</div></article>
-</section>
-
-<h2>Backtest historique</h2>
+<main>
 <section class="card">
-  <p class="note">Colle un tableau JSON contenant au moins 50 bougies historiques. Chaque bougie doit contenir les nombres <code>open</code>, <code>high</code>, <code>low</code> et <code>close</code>. Le tableau doit correspondre à l'actif et à l'unité de temps que tu souhaites tester.</p>
-  <div class="field">
-    <label for="capital">Capital initial simulé</label>
-    <input id="capital" type="number" min="1" value="10000">
-  </div>
-  <div class="field">
-    <label for="risk">Risque par position (%) — maximum 2 %</label>
-    <select id="risk">
-      <option value="0.5">0,5 %</option>
-      <option value="1" selected>1 %</option>
-      <option value="1.5">1,5 %</option>
-      <option value="2">2 %</option>
-    </select>
-  </div>
-  <div class="field">
-    <label for="candlesJson">Bougies historiques JSON</label>
-    <textarea id="candlesJson" placeholder='[{"open":4000,"high":4010,"low":3990,"close":4005}, ...]'></textarea>
-  </div>
-  <button id="runBacktest">Lancer le backtest</button>
-  <div id="btError" class="error" role="alert"></div>
-  <div id="btSuccess" class="success" role="status"></div>
-  <div id="btResults" class="results"></div>
-  <p class="note">Aucun résultat ne s'affiche tant que le serveur n'a pas exécuté la simulation. Ce prototype ne remplace pas un backtest avec spread, slippage, frais et spécifications du courtier correctement modélisés.</p>
+<h2>Marché de l'or — XAUUSD</h2>
+<div id="price" class="price">Chargement...</div>
+<p id="marketStatus">Connexion au serveur...</p>
+<button onclick="loadMarket()">Actualiser le marché</button>
+<p><small>Les données affichées dépendent de la source connectée au serveur.</small></p>
 </section>
 
-<div id="apiError" class="error" role="alert"></div>
-<div class="notice"><b>Important :</b> cet outil fournit une analyse indicative. Il n'exécute aucun ordre. Les résultats historiques ne garantissent pas les résultats futurs. Vérifie les données, les frais et les règles de ton courtier avant toute décision.</div>
-<footer><span>TradePilot AI · Démonstration</span><span>Actualisation toutes les 60 secondes</span></footer>
+<section class="card">
+<h2>Ton assistant de trading</h2>
+<div id="chat" class="chat">
+<div class="msg bot">Bonjour ! Je suis TradePilot AI. Je peux t'aider à structurer ta stratégie de scalping XAUUSD.\n\nDis-moi : tu trades plutôt en M1, M5 ou M15 ?</div>
+</div>
+<form id="chatForm">
+<input id="message" placeholder="Ex. Analyse ma stratégie en M5..." autocomplete="off" required>
+<button type="submit">Envoyer</button>
+</form>
+</section>
+
+<section class="card">
+<h2>Règles de prudence</h2>
+<p>• Attends une confirmation avant toute entrée.</p>
+<p>• Définis ton stop-loss avant de prendre position.</p>
+<p>• Ne risque pas une somme que tu ne peux pas perdre.</p>
+<small>Ce tableau de bord ne passe aucun ordre et ne garantit aucun résultat.</small>
+</section>
 </main>
 
 <script>
-"use strict";
-
 const API = "https://tradepilot-ai.williampaurent.workers.dev";
-const $ = id => document.getElementById(id);
-let loading = false;
 
-function fmt(value, digits=3) {
-  if (value === null || value === undefined || value === "" ||
-      !Number.isFinite(Number(value))) return "—";
-  return Number(value).toLocaleString("fr-FR", {
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits
-  });
-}
-
-function fmtTime(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value);
-  return d.toLocaleString("fr-FR", {
-    day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",
-    timeZone:"Europe/Paris"
-  });
-}
-
-function setSignal(id, value) {
-  const el = $(id);
-  const signal = String(value || "ATTENDRE").toUpperCase();
-  el.className = "signal";
-  if (signal.includes("ACHAT") || signal.includes("BUY")) el.classList.add("buy");
-  if (signal.includes("VENTE") || signal.includes("SELL")) el.classList.add("sell");
-  el.textContent = signal;
-}
-
-function renderTimeframe(data, tf) {
-  const p = tf === "M15" ? "M15" : "H1";
-  $(tf === "M15" ? "priceM15" : "priceH1").textContent = fmt(data.price);
-  $(tf === "M15" ? "rsiM15" : "rsiH1").textContent =
-    fmt(data.indicators?.RSI14, 2);
-  setSignal(tf === "M15" ? "signalM15" : "signalH1", data.signal);
-  $(tf === "M15" ? "reasonM15" : "reasonH1").textContent =
-    data.reason || data.warning || "Aucune explication fournie.";
-}
-
-function showApiError(message) {
-  $("apiError").style.display = "block";
-  $("apiError").textContent = message;
-}
-
-async function getMarket(tf) {
-  const response = await fetch(
-    API + "/gold?timeframe=" + encodeURIComponent(tf),
-    {cache:"no-store", headers:{"Accept":"application/json"}}
-  );
-  if (!response.ok) throw new Error(tf + " : erreur HTTP " + response.status);
-  const data = await response.json();
-  if (!data || data.ok !== true) throw new Error(tf + " : réponse API invalide.");
-  renderTimeframe(data, tf);
-
-  if (tf === "M15") {
-    if (!Number.isFinite(Number(data.price))) throw new Error("Prix M15 invalide.");
-    $("mainPrice").textContent = fmt(data.price);
-    $("source").textContent = data.source || "—";
-    $("candleTime").textContent = fmtTime(data.lastClosedCandle);
-    $("updated").textContent = fmtTime(data.updatedAt);
-    $("sma10").textContent = fmt(data.indicators?.SMA10);
-    $("sma20").textContent = fmt(data.indicators?.SMA20);
-    $("candleCount").textContent = data.candlesAnalyzed ?? "—";
-    $("reference").textContent = fmt(data.price);
-    $("sl").textContent = data.stopLoss == null ? "Non défini" : fmt(data.stopLoss);
-    $("tp").textContent = data.takeProfit == null ? "Non défini" : fmt(data.takeProfit);
-  }
-}
-
-async function updateMarket() {
-  if (loading) return;
-  loading = true;
-  $("refresh").disabled = true;
-  $("connection").textContent = "Actualisation…";
-  $("dot").className = "dot";
-  $("apiError").style.display = "none";
-  try {
-    const results = await Promise.allSettled([
-      getMarket("M15"),
-      getMarket("H1")
-    ]);
-    const errors = results
-      .filter(x => x.status === "rejected")
-      .map(x => x.reason?.message || "Erreur inconnue");
-    if (errors.length === 2) throw new Error(errors.join(" | "));
-    if (errors.length) showApiError(errors.join(" | "));
-    $("connection").textContent = errors.length ? "Données partielles" : "API connectée";
-    $("dot").className = errors.length ? "dot" : "dot ok";
-  } catch (e) {
-    $("connection").textContent = "Connexion indisponible";
-    $("dot").className = "dot bad";
-    showApiError(e.message || "Impossible de récupérer les données.");
-  } finally {
-    loading = false;
-    $("refresh").disabled = false;
-  }
-}
-
-function metric(label, value, extra="") {
-  const box = document.createElement("div");
-  box.className = "metric";
-  const l = document.createElement("div");
-  l.className = "label";
-  l.textContent = label;
-  const v = document.createElement("div");
-  v.className = "value";
-  v.textContent = value;
-  box.append(l, v);
-  if (extra) {
-    const n = document.createElement("div");
-    n.className = "note";
-    n.textContent = extra;
-    box.append(n);
-  }
-  return box;
-}
-
-function renderBacktest(data) {
-  const results = $("btResults");
-  results.replaceChildren();
-  const list = Array.isArray(data) ? data :
-    Array.isArray(data.results) ? data.results :
-    Array.isArray(data.strategies) ? data.strategies : [data];
-
-  list.forEach(item => {
-    const section = document.createElement("section");
-    section.className = "card";
-    const title = document.createElement("h3");
-    const names = {trend:"Tendance", breakout:"Cassure", reversal:"Retournement"};
-    title.textContent = names[item.strategy] || item.strategy || "Résultat du backtest";
-    section.append(title);
-    const grid = document.createElement("div");
-    grid.className = "metrics";
-    const values = [
-      ["Capital final", item.endingCapital == null ? "—" : fmt(item.endingCapital, 2)],
-      ["Profit net", item.netProfit == null ? "—" : fmt(item.netProfit, 2)],
-      ["Rendement", item.returnPercent == null ? "—" : fmt(item.returnPercent, 2) + " %"],
-      ["Nombre de trades", item.trades == null ? "—" : String(item.trades)],
-      ["Trades gagnants", item.winRate == null ? "—" : fmt(item.winRate, 2) + " %"],
-      ["Drawdown maximal", item.maxDrawdownPercent == null ? "—" : fmt(item.maxDrawdownPercent, 2) + " %"]
-    ];
-    values.forEach(([label, value]) => grid.append(metric(label, value)));
-    section.append(grid);
-    if (item.note) {
-      const note = document.createElement("p");
-      note.className = "note";
-      note.textContent = item.note;
-      section.append(note);
-    }
-    results.append(section);
-  });
-}
-
-async function runBacktest() {
-  const btn = $("runBacktest");
-  const err = $("btError");
-  const ok = $("btSuccess");
-  err.style.display = "none";
-  ok.style.display = "none";
-  $("btResults").replaceChildren();
-
-  let candles;
-  try {
-    const parsed = JSON.parse($("candlesJson").value);
-    candles = Array.isArray(parsed) ? parsed : parsed.candles;
-    if (!Array.isArray(candles) || candles.length < 50) {
-      throw new Error("Il faut au moins 50 bougies dans le tableau JSON.");
-    }
-    for (const c of candles) {
-      if (!c || !["open","high","low","close"].every(
-        k => typeof c[k] === "number" && Number.isFinite(c[k])
-      )) {
-        throw new Error("Chaque bougie doit avoir open, high, low et close sous forme de nombres.");
-      }
-    }
-  } catch (e) {
-    err.style.display = "block";
-    err.textContent = "JSON invalide : " + e.message;
-    return;
-  }
-
-  const capital = Number($("capital").value);
-  if (!(capital > 0)) {
-    err.style.display = "block";
-    err.textContent = "Saisis un capital initial supérieur à zéro.";
-    return;
-  }
-
-  btn.disabled = true;
-  btn.textContent = "Simulation en cours…";
-  try {
-    const response = await fetch(API + "/backtest", {
-      method:"POST",
-      headers:{"Content-Type":"application/json","Accept":"application/json"},
-      body:JSON.stringify({
-        candles,
-        capital,
-        riskPercent:Number($("risk").value)
-      })
-    });
+async function loadMarket(){
+  const price = document.getElementById("price");
+  const status = document.getElementById("marketStatus");
+  price.textContent = "Chargement...";
+  status.textContent = "Connexion au serveur...";
+  try{
+    const response = await fetch(API + "/gold?timeframe=M15");
+    if(!response.ok) throw new Error("Serveur HTTP " + response.status);
     const data = await response.json();
-    if (!response.ok || data.ok === false || data.error) {
-      throw new Error(data.error || data.message || ("Erreur HTTP " + response.status));
-    }
-    renderBacktest(data);
-    ok.style.display = "block";
-    ok.textContent = "Réponse de backtest reçue. Vérifie les hypothèses et les coûts non modélisés avant d'interpréter les résultats.";
-  } catch (e) {
-    err.style.display = "block";
-    err.textContent = "Backtest impossible : " + e.message +
-      ". Vérifie que le Worker accepte les requêtes POST sur /backtest.";
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Lancer le backtest";
+    const value = data.price ?? data.close ?? data.last ?? data.data?.price;
+    if(value === undefined) throw new Error("Format de prix non reconnu");
+    price.textContent = Number(value).toFixed(2);
+    status.textContent = "Données reçues · " + new Date().toLocaleTimeString("fr-FR");
+  }catch(error){
+    price.textContent = "Indisponible";
+    status.textContent = "Erreur de connexion : " + error.message;
   }
 }
 
-$("refresh").addEventListener("click", updateMarket);
-$("runBacktest").addEventListener("click", runBacktest);
-updateMarket();
-setInterval(updateMarket, 60000);
+function addMessage(text, type){
+  const chat = document.getElementById("chat");
+  const div = document.createElement("div");
+  div.className = "msg " + type;
+  div.textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+}
+
+async function askAssistant(message){
+  addMessage("Je réfléchis...", "bot");
+  const chat = document.getElementById("chat");
+  const thinking = chat.lastElementChild;
+
+  try{
+    const response = await fetch(API + "/chat", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({message:message})
+    });
+
+    if(!response.ok) throw new Error("Route /chat non configurée");
+    const data = await response.json();
+    thinking.textContent = data.reply || data.response || data.message || "Réponse vide du serveur.";
+  }catch(error){
+    thinking.textContent =
+      "Le chat IA n'est pas encore connecté au modèle. Ton message a bien été affiché, mais il faut configurer la route /chat sur Cloudflare pour obtenir de vraies réponses. En attendant, tu peux consulter les données du marché avec le bouton Actualiser.";
+  }
+}
+
+document.getElementById("chatForm").addEventListener("submit", async function(e){
+  e.preventDefault();
+  const input = document.getElementById("message");
+  const message = input.value.trim();
+  if(!message) return;
+  addMessage(message, "user");
+  input.value = "";
+  await askAssistant(message);
+});
+
+loadMarket();
 </script>
 </body>
 </html>
-
