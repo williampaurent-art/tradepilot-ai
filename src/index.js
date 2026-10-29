@@ -16,6 +16,9 @@ const TIMEFRAMES = {
   W1: "1w",
 };
 
+const DATA_SOURCE = "biquote";
+const INSTRUMENT = "GOLD / XAUUSD";
+
 function respond(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
@@ -49,7 +52,8 @@ function rsi(values, period = 14) {
 
   if (losses === 0) return gains === 0 ? 50 : 100;
 
-  return 100 - 100 / (1 + gains / losses);
+  const rs = gains / losses;
+  return 100 - 100 / (1 + rs);
 }
 
 function normalizeBars(bars) {
@@ -58,7 +62,7 @@ function normalizeBars(bars) {
   return bars
     .filter(b => b && !b.isOpen)
     .map(b => ({
-      time: b.openTime,
+      time: b.openTime ?? b.time ?? null,
       open: Number(b.open),
       high: Number(b.high),
       low: Number(b.low),
@@ -70,8 +74,65 @@ function normalizeBars(bars) {
       b.high >= Math.max(b.open, b.close) &&
       b.low <= Math.min(b.open, b.close)
     )
-    .sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+    .sort((a, b) => {
+      const ta = typeof a.time === "number"
+        ? a.time
+        : Date.parse(a.time);
+
+      const tb = typeof b.time === "number"
+        ? b.time
+        : Date.parse(b.time);
+
+      if (!Number.isFinite(ta) || !Number.isFinite(tb)) return 0;
+
+      return ta - tb;
+    });
 }
+
+async function fetchGoldCandles(timeframe = "M1", limit = 100) {
+  const interval = TIMEFRAMES[timeframe];
+
+  if (!interval) {
+    throw new Error(`Unité de temps non prise en charge : ${timeframe}`);
+  }
+
+  const safeLimit = Math.max(30, Math.min(500, Number(limit) || 100));
+
+  const response = await fetch(
+    `https://biquote.io/api/XAUUSD/ohlc?interval=${encodeURIComponent(interval)}&limit=${safeLimit}`,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `La source BiQuote a répondu avec le statut ${response.status}.`
+    );
+  }
+
+  const data = await response.json();
+
+  if (!Array.isArray(data.bars)) {
+    throw new Error("Format des données historiques inattendu.");
+  }
+
+  const candles = normalizeBars(data.bars);
+
+  if (candles.length < 30) {
+    throw new Error(
+      `Pas assez de bougies clôturées pour ${timeframe} : ${candles.length}.`
+    );
+  }
+
+  return candles;
+}
+
+// ------------------------------------------------------
+// ANALYSE TECHNIQUE CLASSIQUE
+// ------------------------------------------------------
 
 function analyze(bars, timeframe = "M15") {
   const candles = normalizeBars(bars);
@@ -90,12 +151,14 @@ function analyze(bars, timeframe = "M15") {
 
   const fast = sma(closes, 10);
   const slow = sma(closes, 20);
+
   const previousFast = sma(closes.slice(0, -1), 10);
   const previousSlow = sma(closes.slice(0, -1), 20);
+
   const rsi14 = rsi(closes);
 
   let signal = "ATTENDRE";
-  let reason = "Aucun croisement confirmé avec les filtres RSI.";
+  let reason = "Aucun signal confirmé.";
 
   if (
     previousFast <= previousSlow &&
@@ -104,7 +167,7 @@ function analyze(bars, timeframe = "M15") {
     rsi14 < 70
   ) {
     signal = "ACHAT";
-    reason = "Croisement haussier SMA 10/20 et RSI favorable.";
+    reason = "Croisement haussier SMA 10/20 avec RSI favorable.";
   } else if (
     previousFast >= previousSlow &&
     fast < slow &&
@@ -112,13 +175,14 @@ function analyze(bars, timeframe = "M15") {
     rsi14 > 30
   ) {
     signal = "VENTE";
-    reason = "Croisement baissier SMA 10/20 et RSI favorable.";
+    reason = "Croisement baissier SMA 10/20 avec RSI favorable.";
   }
 
   let stopLoss = null;
   let takeProfit = null;
 
   const recent = candles.slice(-14);
+
   const recentLow = Math.min(...recent.map(b => b.low));
   const recentHigh = Math.max(...recent.map(b => b.high));
 
@@ -146,9 +210,9 @@ function analyze(bars, timeframe = "M15") {
 
   return {
     ok: true,
-    instrument: "GOLD / XAUUSD",
+    instrument: INSTRUMENT,
     timeframe,
-    source: "biquote",
+    source: DATA_SOURCE,
     updatedAt: new Date().toISOString(),
     lastClosedCandle: last.time,
     price: last.close,
@@ -159,14 +223,140 @@ function analyze(bars, timeframe = "M15") {
     },
     signal,
     reason,
-    stopLoss: stopLoss === null ? null : Number(stopLoss.toFixed(4)),
-    takeProfit: takeProfit === null ? null : Number(takeProfit.toFixed(4)),
-    riskReward: takeProfit === null ? null : "1:2",
-    candlesAnalyzed: candles.length,
-    warning:
-      "Signal indicatif, non garanti. Aucun ordre n'est exécuté.",
+    stopLoss: stopLoss === null
+      ? null
+      : Number(stopLoss.toFixed(2)),
+    takeProfit: takeProfit === null
+      ? null
+      : Number(takeProfit.toFixed(2)),
+    warning: "Signal indicatif uniquement. Aucun ordre réel n'est exécuté.",
   };
 }
+
+// ------------------------------------------------------
+// MOTEUR DE SCALPING M1 + TENDANCE M5
+// ------------------------------------------------------
+
+function detectScalpSignal(m1, m5, options = {}) {
+  const targetMove = Number(options.targetMove ?? 2);
+  const stopDistance = Number(options.stopDistance ?? 1);
+  const riskPercent = Number(options.riskPercent ?? 1);
+  const capital = Number(options.capital ?? 1000);
+
+  if (
+    !Number.isFinite(targetMove) ||
+    targetMove <= 0 ||
+    !Number.isFinite(stopDistance) ||
+    stopDistance <= 0 ||
+    !Number.isFinite(riskPercent) ||
+    riskPercent <= 0 ||
+    riskPercent > 100 ||
+    !Number.isFinite(capital) ||
+    capital <= 0
+  ) {
+    throw new Error("Paramètres de scalping invalides.");
+  }
+
+  if (m1.length < 30 || m5.length < 30) {
+    throw new Error(
+      "Il faut au moins 30 bougies clôturées en M1 et en M5."
+    );
+  }
+
+  const last = m1[m1.length - 1];
+  const previous = m1.slice(-6, -1);
+
+  const closesM5 = m5.map(c => c.close);
+
+  const trendFast = sma(closesM5, 10);
+  const trendSlow = sma(closesM5, 20);
+
+  const recentHigh = Math.max(...previous.map(c => c.high));
+  const recentLow = Math.min(...previous.map(c => c.low));
+
+  const bullishTrend = trendFast > trendSlow;
+  const bearishTrend = trendFast < trendSlow;
+
+  let signal = "ATTENDRE";
+  let reason = "Aucune cassure M1 confirmée par la tendance M5.";
+
+  if (last.close > recentHigh && bullishTrend) {
+    signal = "ACHAT";
+    reason = "Cassure haussière M1 confirmée par la tendance M5.";
+  } else if (last.close < recentLow && bearishTrend) {
+    signal = "VENTE";
+    reason = "Cassure baissière M1 confirmée par la tendance M5.";
+  }
+
+  const entry = last.close;
+
+  let stopLoss = null;
+  let takeProfit = null;
+
+  if (signal === "ACHAT") {
+    stopLoss = entry - stopDistance;
+    takeProfit = entry + targetMove;
+  } else if (signal === "VENTE") {
+    stopLoss = entry + stopDistance;
+    takeProfit = entry - targetMove;
+  }
+
+  const riskAmount = capital * riskPercent / 100;
+
+  return {
+    ok: true,
+    instrument: "XAUUSD",
+    strategy: "M1 breakout + M5 trend filter",
+    source: DATA_SOURCE,
+    updatedAt: new Date().toISOString(),
+    lastClosedCandle: last.time,
+
+    signal,
+    reason,
+
+    entry: Number(entry.toFixed(2)),
+
+    stopLoss: stopLoss === null
+      ? null
+      : Number(stopLoss.toFixed(2)),
+
+    takeProfit: takeProfit === null
+      ? null
+      : Number(takeProfit.toFixed(2)),
+
+    configuration: {
+      capital: Number(capital.toFixed(2)),
+      riskPercent,
+      riskAmount: Number(riskAmount.toFixed(2)),
+      targetMoveDollars: targetMove,
+      stopDistanceDollars: stopDistance,
+    },
+
+    trendM5: bullishTrend
+      ? "HAUSSIÈRE"
+      : bearishTrend
+        ? "BAISSIÈRE"
+        : "NEUTRE",
+
+    indicators: {
+      SMA10_M5: Number(trendFast.toFixed(2)),
+      SMA20_M5: Number(trendSlow.toFixed(2)),
+      previousHighM1: Number(recentHigh.toFixed(2)),
+      previousLowM1: Number(recentLow.toFixed(2)),
+    },
+
+    status: "SIGNAL_ONLY_NO_LIVE_ORDERS",
+
+    warning:
+      "Prototype. Le montant de risque est une estimation en devise du capital. " +
+      "Il ne calcule pas la taille réelle de position sans les spécifications " +
+      "du contrat du courtier. Spread, slippage et exécution ne sont pas simulés.",
+  };
+}
+
+// ------------------------------------------------------
+// INDICATEURS POUR LE BACKTEST
+// ------------------------------------------------------
 
 function fullSMA(values, period) {
   return values.map((_, i) => {
@@ -203,20 +393,17 @@ function signalFor(candles, index, strategy, fast, slow, momentum) {
 
   if (strategy === "trend") {
     if (
-      fast[index] !== null &&
-      slow[index] !== null &&
-      fast[index - 1] !== null &&
-      slow[index - 1] !== null
+      fast[index] > slow[index] &&
+      fast[index - 1] <= slow[index - 1]
     ) {
-      if (
-        fast[index] > slow[index] &&
-        fast[index - 1] <= slow[index - 1]
-      ) return 1;
+      return 1;
+    }
 
-      if (
-        fast[index] < slow[index] &&
-        fast[index - 1] >= slow[index - 1]
-      ) return -1;
+    if (
+      fast[index] < slow[index] &&
+      fast[index - 1] >= slow[index - 1]
+    ) {
+      return -1;
     }
   }
 
@@ -233,25 +420,21 @@ function signalFor(candles, index, strategy, fast, slow, momentum) {
   }
 
   if (strategy === "reversal") {
-    if (momentum[index] !== null && momentum[index] < 30) return 1;
-    if (momentum[index] !== null && momentum[index] > 70) return -1;
+    if (momentum[index] !== null && momentum[index] < 30) {
+      return 1;
+    }
+
+    if (momentum[index] !== null && momentum[index] > 70) {
+      return -1;
+    }
   }
 
   return 0;
 }
 
-function validCandles(candles) {
-  return Array.isArray(candles) &&
-    candles.every(c =>
-      c &&
-      [c.open, c.high, c.low, c.close].every(
-        n => typeof n === "number" && Number.isFinite(n)
-      ) &&
-      c.low > 0 &&
-      c.high >= Math.max(c.open, c.close) &&
-      c.low <= Math.min(c.open, c.close)
-    );
-}
+// ------------------------------------------------------
+// BACKTEST HISTORIQUE
+// ------------------------------------------------------
 
 function backtest(candles, strategy, options = {}) {
   if (candles.length < 50) {
@@ -261,18 +444,26 @@ function backtest(candles, strategy, options = {}) {
   const initialCapital = Number(options.capital ?? 10000);
   const riskPercent = Number(options.riskPercent ?? 1);
   const feePercent = Number(options.feePercent ?? 0.02);
+  const stopDistancePercent = Number(
+    options.stopDistancePercent ?? 0.5
+  );
+  const targetRiskReward = Number(options.targetRiskReward ?? 2);
 
   if (
     !Number.isFinite(initialCapital) ||
     initialCapital <= 0 ||
     !Number.isFinite(riskPercent) ||
     riskPercent <= 0 ||
-    riskPercent > 2 ||
+    riskPercent > 100 ||
     !Number.isFinite(feePercent) ||
     feePercent < 0 ||
-    feePercent > 5
+    feePercent > 5 ||
+    !Number.isFinite(stopDistancePercent) ||
+    stopDistancePercent <= 0 ||
+    !Number.isFinite(targetRiskReward) ||
+    targetRiskReward <= 0
   ) {
-    throw new Error("Paramètres de capital, risque ou frais invalides.");
+    throw new Error("Paramètres de backtest invalides.");
   }
 
   const closes = candles.map(c => c.close);
@@ -282,19 +473,25 @@ function backtest(candles, strategy, options = {}) {
 
   let capital = initialCapital;
   let position = null;
+
   let trades = 0;
   let wins = 0;
   let grossProfit = 0;
   let grossLoss = 0;
+
   let peak = capital;
   let maxDrawdown = 0;
 
   function closePosition(price) {
     const gross =
-      (price - position.entry) * position.direction * position.units;
+      (price - position.entry) *
+      position.direction *
+      position.units;
 
     const fees =
-      (position.entry + price) * position.units * feePercent / 100;
+      (position.entry + price) *
+      position.units *
+      feePercent / 100;
 
     const pnl = gross - fees;
 
@@ -323,8 +520,8 @@ function backtest(candles, strategy, options = {}) {
         ? candle.high >= position.target
         : candle.low <= position.target;
 
-      // Si stop et cible sont touchés dans la même bougie,
-      // on retient l'hypothèse prudente : le stop est touché en premier.
+      // Hypothèse prudente : le stop est touché en premier
+      // si le stop et l'objectif sont atteints dans la même bougie.
       if (stopHit) {
         closePosition(position.stop);
       } else if (targetHit) {
@@ -333,22 +530,29 @@ function backtest(candles, strategy, options = {}) {
     }
 
     if (!position) {
-      const signal = signalFor(
-        candles, i, strategy, fast, slow, momentum
+      const direction = signalFor(
+        candles,
+        i,
+        strategy,
+        fast,
+        slow,
+        momentum
       );
 
-      if (signal !== 0) {
+      if (direction !== 0) {
         const entry = candle.close;
-        const stopDistance = entry * 0.005;
+        const stopDistance = entry * stopDistancePercent / 100;
         const riskMoney = capital * riskPercent / 100;
         const units = riskMoney / stopDistance;
 
         position = {
           entry,
-          direction: signal,
+          direction,
           units,
-          stop: entry - signal * stopDistance,
-          target: entry + signal * 2 * stopDistance,
+          stop: entry - direction * stopDistance,
+          target:
+            entry +
+            direction * targetRiskReward * stopDistance,
         };
       }
     }
@@ -367,23 +571,38 @@ function backtest(candles, strategy, options = {}) {
 
   return {
     strategy,
-    startingCapital: initialCapital,
+    startingCapital: Number(initialCapital.toFixed(2)),
     endingCapital: Number(capital.toFixed(2)),
     netProfit: Number((capital - initialCapital).toFixed(2)),
+
     returnPercent: Number(
       ((capital / initialCapital - 1) * 100).toFixed(2)
     ),
+
     trades,
-    wins,
-    losses: trades - wins,
-    winRate: trades ? Number((wins / trades * 100).toFixed(2)) : 0,
+
+    winRate: trades
+      ? Number((wins / trades * 100).toFixed(2))
+      : 0,
+
     profitFactor: grossLoss > 0
       ? Number((grossProfit / grossLoss).toFixed(2))
-      : grossProfit > 0 ? null : 0,
+      : grossProfit > 0
+        ? null
+        : 0,
+
     maxDrawdownPercent: Number(maxDrawdown.toFixed(2)),
+
+    configuration: {
+      riskPercent,
+      feePercent,
+      stopDistancePercent,
+      targetRiskReward,
+    },
+
     note:
-      "Prototype : spread réel, slippage, gaps, taille de contrat et " +
-      "règles du courtier non entièrement modélisés.",
+      "Simulation indicative. Le spread réel, le slippage, les gaps et " +
+      "les règles du courtier ne sont pas entièrement modélisés.",
   };
 }
 
@@ -393,31 +612,25 @@ function compareStrategies(candles, options = {}) {
     .sort((a, b) => b.returnPercent - a.returnPercent);
 }
 
-async function fetchGoldCandles(timeframe, limit = 200) {
-  const interval = TIMEFRAMES[timeframe];
-
-  const upstream = await fetch(
-    `https://biquote.io/api/XAUUSD/ohlc?interval=${encodeURIComponent(interval)}&limit=${limit}`,
-    { headers: { Accept: "application/json" } }
-  );
-
-  if (!upstream.ok) {
-    throw new Error(
-      `La source BiQuote a répondu avec le statut ${upstream.status}.`
+function validCandles(candles) {
+  return Array.isArray(candles) &&
+    candles.every(c =>
+      c &&
+      [c.open, c.high, c.low, c.close].every(
+        n => typeof n === "number" && Number.isFinite(n)
+      ) &&
+      c.low > 0 &&
+      c.high >= Math.max(c.open, c.close) &&
+      c.low <= Math.min(c.open, c.close)
     );
-  }
-
-  const data = await upstream.json();
-
-  if (!Array.isArray(data.bars)) {
-    throw new Error("Format de bougies inattendu depuis BiQuote.");
-  }
-
-  return normalizeBars(data.bars);
 }
 
+// ------------------------------------------------------
+// ROUTES API
+// ------------------------------------------------------
+
 export default {
-  async fetch(request, env) {
+  async fetch(request) {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
@@ -426,46 +639,49 @@ export default {
     }
 
     const url = new URL(request.url);
+
     const timeframe = (
       url.searchParams.get("timeframe") || "M15"
     ).toUpperCase();
 
+    // État du service
     if (url.pathname === "/" || url.pathname === "/health") {
       return respond({
         ok: true,
         service: "TradePilot AI",
         status: "online",
+        instrument: INSTRUMENT,
+        source: DATA_SOURCE,
+        liveTrading: false,
+
         endpoints: [
           "/health",
           "/gold?timeframe=M15",
           "/analyze?timeframe=M15",
-          "/backtest?timeframe=M15",
-          "/chat",
+          "/scalp?target=2&stopDistance=1&riskPercent=1&capital=1000",
+          "/backtest",
         ],
+
         timeframes: Object.keys(TIMEFRAMES),
-        backtestMethods: ["GET", "POST"],
-        liveTrading: false,
       });
     }
 
-    if (url.pathname === "/gold" || url.pathname === "/analyze") {
-      if (request.method !== "GET") {
-        return respond({
-          ok: false,
-          error: "Utilise GET pour cette route.",
-        }, 405);
-      }
-
+    // Données et analyse technique
+    if (
+      url.pathname === "/gold" ||
+      url.pathname === "/analyze"
+    ) {
       if (!TIMEFRAMES[timeframe]) {
         return respond({
           ok: false,
-          error: "Timeframe non supporté.",
+          error: "Unité de temps non prise en charge.",
           available: Object.keys(TIMEFRAMES),
         }, 400);
       }
 
       try {
         const candles = await fetchGoldCandles(timeframe, 100);
+
         return respond(analyze(candles, timeframe));
       } catch (error) {
         return respond({
@@ -476,54 +692,73 @@ export default {
       }
     }
 
-    if (url.pathname === "/backtest") {
+    // Signal de scalping M1 avec filtre M5
+    if (url.pathname === "/scalp") {
+      if (request.method !== "GET") {
+        return respond({
+          ok: false,
+          error: "Utilise GET pour obtenir un signal de scalping.",
+        }, 405);
+      }
+
       try {
-        let body;
+        const targetMove = url.searchParams.get("target") ?? 2;
+        const stopDistance =
+          url.searchParams.get("stopDistance") ?? 1;
+        const riskPercent =
+          url.searchParams.get("riskPercent") ?? 1;
+        const capital = url.searchParams.get("capital") ?? 1000;
 
-        if (request.method === "GET") {
-          if (!TIMEFRAMES[timeframe]) {
-            return respond({
-              ok: false,
-              error: "Timeframe non supporté.",
-              available: Object.keys(TIMEFRAMES),
-            }, 400);
-          }
+        const m1 = await fetchGoldCandles("M1", 100);
+        const m5 = await fetchGoldCandles("M5", 100);
 
-          const requestedLimit = Number(
-            url.searchParams.get("limit") || 200
-          );
+        const result = detectScalpSignal(m1, m5, {
+          targetMove,
+          stopDistance,
+          riskPercent,
+          capital,
+        });
 
-          if (
-            !Number.isInteger(requestedLimit) ||
-            requestedLimit < 50 ||
-            requestedLimit > 10000
-          ) {
-            return respond({
-              ok: false,
-              error: "Le paramètre limit doit être compris entre 50 et 10000.",
-            }, 400);
-          }
+        return respond({
+          ...result,
+          candlesM1: m1.length,
+          candlesM5: m5.length,
+        });
+      } catch (error) {
+        return respond({
+          ok: false,
+          error: "Impossible de calculer le signal de scalping.",
+          details: String(error),
+        }, 502);
+      }
+    }
 
-          const candles = await fetchGoldCandles(
-            timeframe,
-            requestedLimit
-          );
+    // Backtest historique
+    if (url.pathname === "/backtest") {
+      if (request.method !== "POST") {
+        return respond({
+          ok: false,
+          error: "Utilise POST avec un tableau de bougies historiques.",
+          format: {
+            candles: [
+              {
+                open: 4000,
+                high: 4010,
+                low: 3990,
+                close: 4005,
+              },
+            ],
+            capital: 10000,
+            riskPercent: 1,
+            feePercent: 0.02,
+            stopDistancePercent: 0.5,
+            targetRiskReward: 2,
+          },
+        }, 405);
+      }
 
-          body = {
-            candles,
-            timeframe,
-            capital: url.searchParams.get("capital") ?? 10000,
-            riskPercent: url.searchParams.get("riskPercent") ?? 1,
-            feePercent: url.searchParams.get("feePercent") ?? 0.02,
-          };
-        } else if (request.method === "POST") {
-          body = await request.json();
-        } else {
-          return respond({
-            ok: false,
-            error: "Utilise GET ou POST pour le backtest.",
-          }, 405);
-        }
+      try {
+        const body = await request.json();
 
         if (
           !validCandles(body.candles) ||
@@ -532,10 +767,8 @@ export default {
         ) {
           return respond({
             ok: false,
-            error: "Il faut entre 50 et 10000 bougies OHLC numériques valides.",
-            received: Array.isArray(body.candles)
-              ? body.candles.length
-              : 0,
+            error:
+              "Fournis entre 50 et 10000 bougies OHLC numériques valides.",
           }, 400);
         }
 
@@ -543,19 +776,19 @@ export default {
           capital: body.capital,
           riskPercent: body.riskPercent,
           feePercent: body.feePercent,
+          stopDistancePercent: body.stopDistancePercent,
+          targetRiskReward: body.targetRiskReward,
         });
 
         return respond({
           ok: true,
-          instrument: "GOLD / XAUUSD",
-          source: body.timeframe ? "biquote" : "provided-candles",
+          instrument: INSTRUMENT,
           timeframe: body.timeframe || "M15",
           candlesUsed: body.candles.length,
           results,
           warning:
-            "Simulation historique uniquement. Le spread, le slippage, " +
-            "les gaps et les règles du courtier ne sont pas entièrement " +
-            "modélisés. Résultats non garantis.",
+            "Simulation historique uniquement. Les performances passées " +
+            "ne garantissent pas les résultats futurs.",
         });
       } catch (error) {
         return respond({
@@ -566,96 +799,6 @@ export default {
       }
     }
 
-    if (url.pathname === "/chat") {
-      if (request.method !== "POST") {
-        return respond({
-          ok: false,
-          error: "Utilise POST avec un message.",
-        }, 405);
-      }
-
-      if (!env || !env.OPENAI_API_KEY) {
-        return respond({
-          ok: false,
-          error: "Le secret OPENAI_API_KEY est absent de Cloudflare.",
-        }, 500);
-      }
-
-      try {
-        const body = await request.json();
-
-        if (
-          typeof body.message !== "string" ||
-          !body.message.trim() ||
-          body.message.length > 4000
-        ) {
-          return respond({
-            ok: false,
-            error: "Le message doit contenir entre 1 et 4000 caractères.",
-          }, 400);
-        }
-
-        const aiResponse = await fetch(
-          "https://api.openai.com/v1/responses",
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: "gpt-4.1-mini",
-              instructions:
-                "Tu es TradePilot AI, un assistant spécialisé en analyse " +
-                "technique et stratégies de trading XAUUSD. Réponds en " +
-                "français. Explique les indicateurs, les stratégies, les " +
-                "backtests et la gestion du risque. Ne prétends pas connaître " +
-                "les prix en temps réel si aucune donnée ne t'a été fournie. " +
-                "Ne garantis aucun profit. Distingue les faits des hypothèses. " +
-                "Tu ne passes aucun ordre réel.",
-              input: body.message.trim(),
-              max_output_tokens: 800,
-            }),
-          }
-        );
-
-        const result = await aiResponse.json();
-
-        if (!aiResponse.ok) {
-          return respond({
-            ok: false,
-            error: "L'API OpenAI a refusé la requête.",
-            details: result.error?.message || "Erreur API.",
-          }, 502);
-        }
-
-        const reply = (result.output || [])
-          .filter(item => item.type === "message")
-          .flatMap(item => item.content || [])
-          .filter(item => item.type === "output_text")
-          .map(item => item.text)
-          .join("\n");
-
-        if (!reply) {
-          return respond({
-            ok: false,
-            error: "L'IA n'a renvoyé aucune réponse textuelle.",
-          }, 502);
-        }
-
-        return respond({
-          ok: true,
-          reply,
-        });
-      } catch (error) {
-        return respond({
-          ok: false,
-          error: "Impossible de contacter l'IA.",
-          details: String(error),
-        }, 502);
-      }
-    }
-
     return respond({
       ok: false,
       error: "Route introuvable.",
@@ -663,8 +806,8 @@ export default {
         "/health",
         "/gold",
         "/analyze",
+        "/scalp",
         "/backtest",
-        "/chat",
       ],
     }, 404);
   },
