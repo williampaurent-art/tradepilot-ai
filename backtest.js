@@ -2,22 +2,18 @@
 const CONFIG = {
   instrument: "XAUUSD",
   timeframe: "M15",
-  initialCapital: 300,
-  riskPercent: 1,
   strategies: ["trend", "breakout", "reversal", "custom"]
 };
 
 function sma(values, period, end) {
-  if (end + 1 < period) return null;
-  const slice = values.slice(end - period + 1, end + 1);
-  return slice.reduce((sum, n) => sum + n, 0) / period;
+  if (end < period - 1) return null;
+  return values.slice(end - period + 1, end + 1)
+    .reduce((sum, value) => sum + value, 0) / period;
 }
 
-function rsi(closes, period, end) {
+function calcRsi(closes, period, end) {
   if (end < period) return null;
-
-  let gains = 0;
-  let losses = 0;
+  let gains = 0, losses = 0;
 
   for (let i = end - period + 1; i <= end; i++) {
     const change = closes[i] - closes[i - 1];
@@ -26,42 +22,38 @@ function rsi(closes, period, end) {
   }
 
   if (losses === 0) return gains === 0 ? 50 : 100;
-
-  const rs = gains / losses;
-  return 100 - 100 / (1 + rs);
+  return 100 - 100 / (1 + gains / losses);
 }
 
-function getSignal(strategy, candles, i, customRules) {
-  if (i < 20) return "HOLD";
-
+function signalFor(strategy, candles, i, customRules) {
   const closes = candles.map(c => c.close);
-  const candle = candles[i];
   const fast = sma(closes, 10, i);
   const slow = sma(closes, 20, i);
-  const momentum = rsi(closes, 14, i);
+  const rsi = calcRsi(closes, 14, i);
+
+  if (fast === null || slow === null || rsi === null) return "HOLD";
 
   if (strategy === "trend") {
-    if (fast > slow && momentum > 50) return "BUY";
-    if (fast < slow && momentum < 50) return "SELL";
+    if (fast > slow && rsi > 50) return "BUY";
+    if (fast < slow && rsi < 50) return "SELL";
   }
 
   if (strategy === "breakout") {
-    const previous = candles.slice(i - 20, i);
-    const high = Math.max(...previous.map(c => c.high));
-    const low = Math.min(...previous.map(c => c.low));
-
-    if (candle.close > high) return "BUY";
-    if (candle.close < low) return "SELL";
+    const prior = candles.slice(i - 20, i);
+    const high = Math.max(...prior.map(c => c.high));
+    const low = Math.min(...prior.map(c => c.low));
+    if (candles[i].close > high) return "BUY";
+    if (candles[i].close < low) return "SELL";
   }
 
   if (strategy === "reversal") {
-    if (momentum < 30) return "BUY";
-    if (momentum > 70) return "SELL";
+    if (rsi < 30) return "BUY";
+    if (rsi > 70) return "SELL";
   }
 
-  if (strategy === "custom" && customRules) {
-    return customRules({ candles, index: i, smaFast: fast,
-      smaSlow: slow, rsi: momentum }) || "HOLD";
+  if (strategy === "custom" && typeof customRules === "function") {
+    const result = customRules({ candles, index: i, fast, slow, rsi });
+    return ["BUY", "SELL"].includes(result) ? result : "HOLD";
   }
 
   return "HOLD";
@@ -69,28 +61,26 @@ function getSignal(strategy, candles, i, customRules) {
 
 function backtest(candles, strategy, options = {}) {
   if (!Array.isArray(candles) || candles.length < 100) {
-    throw new Error("Il faut au moins 100 bougies historiques.");
+    throw new Error("Fournis au moins 100 bougies historiques.");
   }
 
   for (const c of candles) {
-    if (![c.open, c.high, c.low, c.close].every(Number.isFinite)) {
-      throw new Error("Bougie invalide : prix manquant ou non numérique.");
-    }
-    if (c.high < Math.max(c.open, c.close) ||
-        c.low > Math.min(c.open, c.close) || c.high < c.low) {
-      throw new Error("OHLC incohérents.");
+    if (![c.open, c.high, c.low, c.close].every(Number.isFinite) ||
+        c.low > Math.min(c.open, c.close) ||
+        c.high < Math.max(c.open, c.close) ||
+        c.high < c.low) {
+      throw new Error("Bougie OHLC invalide.");
     }
   }
 
-  const initialCapital = options.initialCapital ?? CONFIG.initialCapital;
-  const riskPercent = options.riskPercent ?? CONFIG.riskPercent;
-  const stopDistancePercent = options.stopDistancePercent ?? 0.5;
-  const spreadPerUnit = options.spreadPerUnit ?? 0;
-  const feePerUnit = options.feePerUnit ?? 0;
-  const customRules = options.customRules;
+  const initialCapital = options.initialCapital ?? 300;
+  const riskPct = options.riskPercent ?? 1;
+  const stopPct = options.stopDistancePercent ?? 0.5;
+  const costPerUnit = options.costPerUnit ?? 0;
 
-  if (initialCapital <= 0 || riskPercent <= 0 || riskPercent > 50) {
-    throw new Error("Capital ou risque invalide (risque autorisé : 0–50 %).");
+  if (initialCapital <= 0 || riskPct <= 0 || riskPct > 50 ||
+      stopPct <= 0 || costPerUnit < 0) {
+    throw new Error("Paramètres de risque ou de coûts invalides.");
   }
 
   let equity = initialCapital;
@@ -99,59 +89,59 @@ function backtest(candles, strategy, options = {}) {
   let position = null;
   const trades = [];
 
+  function closePosition(price, reason) {
+    const direction = position.side === "BUY" ? 1 : -1;
+    const pnl = (price - position.entry) *
+      position.units * direction - position.units * costPerUnit;
+
+    equity += pnl;
+    trades.push({ side: position.side, entry: position.entry,
+      exit: price, pnl, reason });
+    position = null;
+  }
+
   for (let i = 20; i < candles.length - 1; i++) {
-    const current = candles[i];
-    const next = candles[i + 1];
+    const c = candles[i];
 
     if (position) {
       const stopHit = position.side === "BUY"
-        ? current.low <= position.stop
-        : current.high >= position.stop;
-
+        ? c.low <= position.stop : c.high >= position.stop;
       const targetHit = position.side === "BUY"
-        ? current.high >= position.target
-        : current.low <= position.target;
+        ? c.high >= position.target : c.low <= position.target;
 
-      // Si stop et cible sont touchés dans la même bougie,
-      // on suppose le stop touché en premier (hypothèse prudente).
-      if (stopHit || targetHit) {
-        const exit = stopHit ? position.stop : position.target;
-        const gross = (exit - position.entry) *
-          position.units * (position.side === "BUY" ? 1 : -1);
-        const costs = position.units * (spreadPerUnit + feePerUnit);
-        const pnl = gross - costs;
+      // Hypothèse prudente si stop et cible touchés dans la même bougie.
+      if (stopHit) closePosition(position.stop, "STOP");
+      else if (targetHit) closePosition(position.target, "TARGET");
+    }
 
-        equity += pnl;
-        trades.push({ side: position.side, entry: position.entry,
-          exit, pnl, reason: stopHit ? "STOP" : "TARGET" });
-        position = null;
+    if (!position && equity > 0) {
+      const side = signalFor(strategy, candles, i, options.customRules);
+      if (side === "BUY" || side === "SELL") {
+        const entry = candles[i + 1].open;
+        const distance = entry * stopPct / 100;
+        const riskCash = equity * riskPct / 100;
+
+        position = {
+          side, entry,
+          units: riskCash / distance,
+          stop: side === "BUY" ? entry - distance : entry + distance,
+          target: side === "BUY" ? entry + 2 * distance : entry - 2 * distance
+        };
       }
     }
 
-    if (!position) {
-      const signal = getSignal(strategy, candles, i, customRules);
-      if (signal !== "BUY" && signal !== "SELL") continue;
-
-      // Entrée à l'ouverture de la bougie suivante, jamais à la clôture connue.
-      const entry = next.open;
-      const distance = entry * stopDistancePercent / 100;
-      const riskCash = equity * riskPercent / 100;
-      const units = riskCash / distance;
-
-      position = {
-        side: signal,
-        entry,
-        units,
-        stop: signal === "BUY" ? entry - distance : entry + distance,
-        target: signal === "BUY"
-          ? entry + distance * 2
-          : entry - distance * 2
-      };
-    }
-
     peak = Math.max(peak, equity);
-    maxDrawdown = Math.max(maxDrawdown, (peak - equity) / peak * 100);
+    if (peak > 0) {
+      maxDrawdown = Math.max(maxDrawdown, (peak - equity) / peak * 100);
+    }
   }
+
+  if (position) closePosition(candles[candles.length - 1].close, "END_OF_TEST");
+
+  const wins = trades.filter(t => t.pnl > 0);
+  const losses = trades.filter(t => t.pnl < 0);
+  const grossWins = wins.reduce((sum, t) => sum + t.pnl, 0);
+  const grossLosses = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0));
 
   return {
     strategy,
@@ -161,22 +151,11 @@ function backtest(candles, strategy, options = {}) {
     finalEquity: equity,
     netProfit: equity - initialCapital,
     trades: trades.length,
-    wins: trades.filter(t => t.pnl > 0).length,
-    losses: trades.filter(t => t.pnl <= 0).length,
+    winRate: trades.length ? wins.length / trades.length * 100 : 0,
     maxDrawdownPercent: maxDrawdown,
-    profitFactor: profitFactor(trades),
-    note: "Simulation pédagogique, pas un résultat de trading réel."
+    profitFactor: grossLosses ? grossWins / grossLosses : null,
+    note: "Simulation uniquement ; pas d'ordres réels."
   };
-}
-
-function profitFactor(trades) {
-  const gains = trades.filter(t => t.pnl > 0)
-    .reduce((s, t) => s + t.pnl, 0);
-  const losses = Math.abs(trades.filter(t => t.pnl < 0)
-    .reduce((s, t) => s + t.pnl, 0));
-
-  if (losses === 0) return gains > 0 ? null : 0;
-  return gains / losses;
 }
 
 function compareStrategies(candles, options = {}) {
@@ -185,4 +164,5 @@ function compareStrategies(candles, options = {}) {
   );
 }
 
-export { CONFIG, backtest, compareStrategies, getSignal };
+export { CONFIG, backtest, compareStrategies };
+
