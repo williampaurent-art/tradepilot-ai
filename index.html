@@ -4,269 +4,532 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#0b1020">
-  <title>TradePilot AI — GOLD Live</title>
+  <meta name="theme-color" content="#080d18">
+  <meta name="description" content="TradePilot AI — Tableau de bord d'analyse technique GOLD / XAUUSD.">
+  <title>TradePilot AI | GOLD</title>
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0b1020;
-      --panel: #131c30;
-      --border: #263550;
-      --text: #edf3ff;
-      --muted: #9aacc7;
-      --gold: #f5c451;
-      --green: #39d98a;
-      --red: #ff667d;
+      --bg: #080d18;
+      --panel: #111a2b;
+      --panel2: #0c1423;
+      --border: #26354c;
+      --text: #eef3ff;
+      --muted: #96a5bd;
+      --gold: #f4c95d;
+      --green: #48d6a0;
+      --red: #ff7185;
+      --orange: #ffbd69;
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
-      background: radial-gradient(ellipse at top, #182642, var(--bg) 60%);
+      background: radial-gradient(ellipse at top, #17243b 0, var(--bg) 55%);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       min-height: 100vh;
     }
+
+    .container {
+      width: min(1100px, 100%);
+      margin: auto;
+      padding: 24px 16px 40px;
+    }
+
     header {
-      padding: 22px 18px;
-      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 26px;
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; }
+
+    .logo {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 46px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, #ffe8a1, #d59a28);
+      color: #16120a;
+      font-size: 23px;
+      font-weight: 900;
+    }
+
+    h1 { margin: 0; font-size: 23px; letter-spacing: -.5px; }
+    .subtitle { color: var(--muted); font-size: 13px; margin-top: 5px; }
+
+    .status {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      max-width: 1000px;
-      margin: auto;
-    }
-    .brand { font-weight: 800; font-size: 20px; }
-    .brand span { color: var(--gold); }
-    .live {
-      color: var(--green);
+      gap: 8px;
+      color: var(--muted);
       font-size: 12px;
-      border: 1px solid #276448;
+      border: 1px solid var(--border);
+      padding: 9px 12px;
       border-radius: 30px;
-      padding: 7px 10px;
+      background: #0c1423;
     }
-    main { max-width: 1000px; margin: auto; padding: 22px 16px 40px; }
-    .eyebrow { color: var(--muted); font-size: 12px; letter-spacing: 1.5px; }
-    h1 { font-size: clamp(26px, 5vw, 42px); margin: 8px 0; }
-    .subtitle { color: var(--muted); margin-bottom: 24px; }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: var(--orange);
+      border-radius: 50%;
+    }
+
+    .dot.online { background: var(--green); }
+    .dot.offline { background: var(--red); }
+
+    .hero {
+      background: linear-gradient(135deg, #1b2a42, #111a2b 65%);
+      border: 1px solid #354660;
+      border-radius: 22px;
+      padding: 25px;
+      margin-bottom: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "Au";
+      position: absolute;
+      right: 20px;
+      top: -30px;
+      font-size: 150px;
+      font-weight: 900;
+      color: rgba(244,201,93,.055);
+      pointer-events: none;
+    }
+
+    .eyebrow {
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .price {
+      font-size: clamp(36px, 8vw, 60px);
+      font-weight: 800;
+      letter-spacing: -2px;
+      margin: 12px 0 6px;
+      overflow-wrap: anywhere;
+    }
+
+    .price-label { color: var(--muted); font-size: 13px; }
+
+    .hero-bottom {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 22px;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      border-radius: 30px;
+      background: rgba(8,13,24,.45);
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
     .grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
+      margin: 16px 0;
     }
+
     .card {
-      background: rgba(19, 28, 48, .95);
+      background: var(--panel);
       border: 1px solid var(--border);
-      border-radius: 18px;
-      padding: 20px;
+      border-radius: 17px;
+      padding: 18px;
       min-width: 0;
     }
-    .wide { grid-column: 1 / -1; }
-    .label { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
-    .price { font-size: clamp(28px, 6vw, 44px); font-weight: 800; color: var(--gold); overflow-wrap: anywhere; }
-    .unit { color: var(--muted); font-size: 13px; margin-top: 8px; }
-    .signal {
-      font-size: 28px;
-      font-weight: 900;
-      display: inline-block;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 16px;
-    }
-    .ACHAT { color: var(--green); }
-    .VENTE { color: var(--red); }
-    .ATTENDRE { color: var(--gold); }
-    .metric { font-size: 24px; font-weight: 750; overflow-wrap: anywhere; }
-    .reason { color: var(--muted); line-height: 1.55; margin-top: 14px; }
-    .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .rowlabel { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-    button {
-      background: var(--gold);
-      color: #151515;
-      border: 0;
-      border-radius: 12px;
-      padding: 13px 18px;
-      font-weight: 800;
-      font-size: 15px;
-      cursor: pointer;
-      width: 100%;
-      margin-top: 18px;
-    }
-    button:disabled { opacity: .6; }
-    .status { color: var(--muted); font-size: 12px; margin-top: 12px; line-height: 1.5; }
-    .warning {
-      border: 1px solid #554c2e;
-      background: #211f19;
-      color: #e8d8a5;
-      padding: 14px;
-      border-radius: 12px;
+
+    .card-label {
       font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 13px;
+    }
+
+    .card-value {
+      font-size: clamp(20px, 4vw, 28px);
+      font-weight: 750;
+      overflow-wrap: anywhere;
+    }
+
+    .card-note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+    .signal-card {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .signal {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 20px;
+      font-weight: 850;
+      border-radius: 12px;
+      padding: 12px 15px;
+      background: rgba(255,189,105,.10);
+      color: var(--orange);
+      border: 1px solid rgba(255,189,105,.25);
+    }
+
+    .signal.buy {
+      color: var(--green);
+      background: rgba(72,214,160,.10);
+      border-color: rgba(72,214,160,.25);
+    }
+
+    .signal.sell {
+      color: var(--red);
+      background: rgba(255,113,133,.10);
+      border-color: rgba(255,113,133,.25);
+    }
+
+    .reason {
+      color: var(--muted);
+      font-size: 13px;
       line-height: 1.6;
+      margin-top: 14px;
+    }
+
+    .section-title {
+      font-size: 16px;
+      font-weight: 750;
+      margin: 24px 0 12px;
+    }
+
+    .levels {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .level {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 15px;
+    }
+
+    .level-name { color: var(--muted); font-size: 12px; }
+    .level-value { font-size: 20px; font-weight: 750; margin-top: 8px; overflow-wrap: anywhere; }
+    .green { color: var(--green); }
+    .red { color: var(--red); }
+    .gold { color: var(--gold); }
+
+    .notice {
+      border: 1px solid #554628;
+      background: rgba(244,201,93,.06);
+      border-radius: 14px;
+      padding: 15px;
+      color: #dfd0a5;
+      font-size: 12px;
+      line-height: 1.65;
       margin-top: 18px;
     }
-    footer { color: var(--muted); font-size: 12px; text-align: center; padding: 22px; }
-    @media (max-width: 650px) {
-      .grid { grid-template-columns: 1fr 1fr; }
-      .wide { grid-column: 1 / -1; }
-      .card { padding: 16px; }
-      header { padding: 18px 14px; }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+      color: var(--muted);
+      font-size: 11px;
     }
-    @media (max-width: 390px) {
+
+    .refresh {
+      border: 1px solid #66562e;
+      background: #282315;
+      color: var(--gold);
+      border-radius: 10px;
+      padding: 10px 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .refresh:disabled { opacity: .6; cursor: wait; }
+
+    .error {
+      display: none;
+      margin-top: 14px;
+      border: 1px solid #703545;
+      background: #28131c;
+      border-radius: 12px;
+      padding: 13px;
+      color: #ffb1bd;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    @media (max-width: 680px) {
+      .container { padding: 18px 12px 30px; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .card { padding: 14px; }
+      .levels { grid-template-columns: 1fr; }
+      .hero { padding: 20px; }
+      .signal-card { align-items: flex-start; flex-direction: column; }
+    }
+
+    @media (max-width: 360px) {
       .grid { grid-template-columns: 1fr; }
-      .wide { grid-column: auto; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand">TradePilot <span>AI</span></div>
-    <div class="live" id="liveBadge">● CONNEXION</div>
-  </header>
+  <main class="container">
+    <header>
+      <div class="brand">
+        <div class="logo">Au</div>
+        <div>
+          <h1>TradePilot AI</h1>
+          <div class="subtitle">Assistant d'analyse technique · GOLD / XAUUSD</div>
+        </div>
+      </div>
+      <div class="status">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Connexion en cours…</span>
+      </div>
+    </header>
 
-  <main>
-    <div class="eyebrow">ANALYSE DU MARCHÉ</div>
-    <h1>GOLD / XAUUSD</h1>
-    <div class="subtitle">Analyse technique · Bougies M15 · SMA 10/20 · RSI 14</div>
+    <section class="hero">
+      <div class="eyebrow">Prix de l'or · Unité M15</div>
+      <div class="price" id="price">—</div>
+      <div class="price-label">Dernier prix reçu par l'API · Devise fournie par la source</div>
+      <div class="hero-bottom">
+        <span class="pill">Source : <strong id="source">—</strong></span>
+        <span class="pill">Bougie clôturée : <strong id="candleTime">—</strong></span>
+        <span class="pill">Mise à jour : <strong id="updatedAt">—</strong></span>
+      </div>
+    </section>
 
-    <div class="grid">
-      <section class="card wide">
-        <div class="label">Dernier cours de clôture reçu</div>
-        <div class="price" id="price">Chargement…</div>
-        <div class="unit">USD · Source : biquote · <span id="candleTime">En attente des données</span></div>
-      </section>
+    <section class="card">
+      <div class="signal-card">
+        <div>
+          <div class="card-label">Signal technique actuel</div>
+          <div class="signal" id="signal"><span>●</span> ATTENDRE</div>
+        </div>
+        <button class="refresh" id="refreshButton" type="button">↻ Actualiser</button>
+      </div>
+      <div class="reason" id="reason">En attente des données du marché.</div>
+    </section>
 
-      <section class="card wide">
-        <div class="label">SIGNAL TECHNIQUE</div>
-        <div class="signal ATTENDRE" id="signal">ATTENDRE</div>
-        <div class="reason" id="reason">Récupération des données de marché…</div>
-      </section>
+    <div class="section-title">Indicateurs techniques</div>
+    <section class="grid">
+      <article class="card">
+        <div class="card-label">SMA 10</div>
+        <div class="card-value gold" id="sma10">—</div>
+        <div class="card-note">Moyenne mobile courte</div>
+      </article>
+      <article class="card">
+        <div class="card-label">SMA 20</div>
+        <div class="card-value" id="sma20">—</div>
+        <div class="card-note">Moyenne mobile longue</div>
+      </article>
+      <article class="card">
+        <div class="card-label">RSI 14</div>
+        <div class="card-value" id="rsi">—</div>
+        <div class="card-note" id="rsiNote">Momentum du marché</div>
+      </article>
+      <article class="card">
+        <div class="card-label">Bougies analysées</div>
+        <div class="card-value" id="candles">—</div>
+        <div class="card-note">Données retournées par l'API</div>
+      </article>
+      <article class="card">
+        <div class="card-label">Ratio risque / rendement</div>
+        <div class="card-value" id="rr">—</div>
+        <div class="card-note">Fourni par la stratégie si disponible</div>
+      </article>
+      <article class="card">
+        <div class="card-label">Dernier contrôle</div>
+        <div class="card-value" id="lastCheck">—</div>
+        <div class="card-note">Vérification du serveur</div>
+      </article>
+    </section>
 
-      <section class="card">
-        <div class="label">SMA 10</div>
-        <div class="metric" id="sma10">—</div>
-      </section>
-      <section class="card">
-        <div class="label">SMA 20</div>
-        <div class="metric" id="sma20">—</div>
-      </section>
-      <section class="card">
-        <div class="label">RSI 14</div>
-        <div class="metric" id="rsi">—</div>
-      </section>
+    <div class="section-title">Niveaux de trading</div>
+    <section class="levels">
+      <article class="level">
+        <div class="level-name">Prix de référence</div>
+        <div class="level-value" id="referencePrice">—</div>
+      </article>
+      <article class="level">
+        <div class="level-name">Stop-loss</div>
+        <div class="level-value red" id="stopLoss">Non défini</div>
+      </article>
+      <article class="level">
+        <div class="level-name">Take-profit</div>
+        <div class="level-value green" id="takeProfit">Non défini</div>
+      </article>
+    </section>
 
-      <section class="card">
-        <div class="label">STOP-LOSS indicatif</div>
-        <div class="metric" id="sl">—</div>
-      </section>
-      <section class="card">
-        <div class="label">TAKE-PROFIT indicatif</div>
-        <div class="metric" id="tp">—</div>
-      </section>
-      <section class="card">
-        <div class="label">BOUGIES ANALYSÉES</div>
-        <div class="metric" id="count">—</div>
-      </section>
+    <div class="error" id="errorBox" role="alert"></div>
 
-      <section class="card wide">
-        <div class="label">État de la connexion</div>
-        <div id="connection">Connexion au Worker…</div>
-        <div class="status" id="updated">Dernière actualisation : —</div>
-        <button id="refreshBtn" type="button">Actualiser l’analyse</button>
-      </section>
+    <div class="notice">
+      <strong>Important :</strong> TradePilot AI affiche des indications techniques, pas des garanties de gain.
+      Aucun ordre n'est exécuté. Les niveaux de stop-loss et de take-profit ne sont affichés que s'ils sont fournis par le serveur.
+      Vérifie l'horodatage des bougies, le spread, les frais et les conditions de ton courtier avant toute décision.
     </div>
 
-    <div class="warning">
-      ⚠️ Les signaux sont indicatifs et ne garantissent aucun profit. Le cours affiché est celui de la dernière bougie clôturée, pas nécessairement le cours exécutable actuel. Vérifie le spread, les frais et le risque. Aucun ordre réel n’est envoyé.
-    </div>
+    <footer class="footer">
+      <span>TradePilot AI · Version de démonstration</span>
+      <span>Actualisation automatique toutes les 60 secondes</span>
+    </footer>
   </main>
 
-  <footer>TradePilot AI · Outil d’analyse technique, pas un conseil financier.</footer>
-
   <script>
-    const API = "https://tradepilot-ai.williampaurent.workers.dev/gold";
-    const $ = (id) => document.getElementById(id);
+    "use strict";
 
-    function formatNumber(value, digits = 3) {
-      if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    const API = "https://tradepilot-ai.williampaurent.workers.dev/gold";
+    const REFRESH_MS = 60000;
+
+    const $ = (id) => document.getElementById(id);
+    let busy = false;
+
+    function formatNumber(value, digits = 2) {
+      const number = Number(value);
+      if (value === null || value === undefined || value === "" || !Number.isFinite(number)) {
         return "—";
       }
-      return Number(value).toLocaleString("fr-FR", {
+      return number.toLocaleString("fr-FR", {
         minimumFractionDigits: digits,
         maximumFractionDigits: digits
       });
     }
 
     function formatTime(value) {
-      if (!value) return "Heure inconnue";
+      if (!value) return "—";
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return String(value);
       return date.toLocaleString("fr-FR", {
-        dateStyle: "short",
-        timeStyle: "short",
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
         timeZone: "Europe/Paris"
-      }) + " (Paris)";
+      });
     }
 
-    async function refreshAnalysis() {
-      const button = $("refreshBtn");
-      button.disabled = true;
-      $("connection").textContent = "Récupération des bougies M15…";
-      $("liveBadge").textContent = "● ACTUALISATION";
+    function showStatus(kind, message) {
+      $("statusDot").className = "dot " + kind;
+      $("statusText").textContent = message;
+    }
+
+    function render(data) {
+      $("price").textContent = formatNumber(data.price, 3);
+      $("source").textContent = data.source || "—";
+      $("candleTime").textContent = formatTime(data.lastClosedCandle);
+      $("updatedAt").textContent = formatTime(data.updatedAt);
+      $("referencePrice").textContent = formatNumber(data.price, 3);
+
+      const indicators = data.indicators || {};
+      $("sma10").textContent = formatNumber(indicators.SMA10, 3);
+      $("sma20").textContent = formatNumber(indicators.SMA20, 3);
+      $("rsi").textContent = formatNumber(indicators.RSI14, 2);
+      $("candles").textContent = data.candlesAnalyzed ?? "—";
+      $("rr").textContent = data.riskReward == null
+        ? "—"
+        : formatNumber(data.riskReward, 2) + ":1";
+
+      const rsi = Number(indicators.RSI14);
+      $("rsiNote").textContent = !Number.isFinite(rsi)
+        ? "Momentum du marché"
+        : rsi >= 70 ? "Zone de surachat indicative"
+        : rsi <= 30 ? "Zone de survente indicative"
+        : "Zone intermédiaire";
+
+      $("stopLoss").textContent = data.stopLoss == null
+        ? "Non défini"
+        : formatNumber(data.stopLoss, 3);
+
+      $("takeProfit").textContent = data.takeProfit == null
+        ? "Non défini"
+        : formatNumber(data.takeProfit, 3);
+
+      const signalText = String(data.signal || "ATTENDRE").toUpperCase();
+      const signalElement = $("signal");
+      signalElement.className = "signal";
+
+      if (signalText.includes("ACHAT") || signalText.includes("BUY")) {
+        signalElement.classList.add("buy");
+      } else if (signalText.includes("VENTE") || signalText.includes("SELL")) {
+        signalElement.classList.add("sell");
+      }
+
+      signalElement.textContent = "● " + signalText;
+      $("reason").textContent = data.reason || data.warning || "Analyse reçue.";
+
+      $("lastCheck").textContent = new Date().toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZone: "Europe/Paris"
+      });
+
+      $("errorBox").style.display = "none";
+      showStatus("online", "API connectée");
+    }
+
+    async function updateData() {
+      if (busy) return;
+      busy = true;
+      $("refreshButton").disabled = true;
+      showStatus("", "Actualisation…");
 
       try {
         const response = await fetch(API, {
           method: "GET",
-          cache: "no-store"
+          cache: "no-store",
+          headers: { "Accept": "application/json" }
         });
+
+        if (!response.ok) {
+          throw new Error("Le serveur a répondu avec le code " + response.status + ".");
+        }
 
         const data = await response.json();
 
-        if (!response.ok || data.ok !== true) {
-          throw new Error(data.error || "La source de données a refusé la requête.");
+        if (!data || data.ok !== true || !Number.isFinite(Number(data.price))) {
+          throw new Error("La réponse de l'API est incomplète ou invalide.");
         }
 
-        $("price").textContent = formatNumber(data.price);
-        $("candleTime").textContent = "Bougie clôturée : " + formatTime(data.lastClosedCandle);
-
-        $("sma10").textContent = formatNumber(data.indicators?.SMA10);
-        $("sma20").textContent = formatNumber(data.indicators?.SMA20);
-        $("rsi").textContent = formatNumber(data.indicators?.RSI14, 2);
-        $("count").textContent = data.candlesAnalyzed ?? "—";
-
-        const signal = ["ACHAT", "VENTE", "ATTENDRE"].includes(data.signal)
-          ? data.signal : "ATTENDRE";
-
-        $("signal").textContent = signal;
-        $("signal").className = "signal " + signal;
-        $("reason").textContent = data.reason || "Aucune explication fournie.";
-
-        $("sl").textContent = data.stopLoss == null
-          ? "—" : formatNumber(data.stopLoss);
-        $("tp").textContent = data.takeProfit == null
-          ? "—" : formatNumber(data.takeProfit);
-
-        $("connection").textContent =
-          "Connexion OK · " + (data.source || "Source") + " · " + data.timeframe;
-
-        $("updated").textContent =
-          "Dernière actualisation : " + formatTime(data.updatedAt);
-
-        $("liveBadge").textContent = "● EN LIGNE";
-        $("liveBadge").style.color = "#39d98a";
+        render(data);
       } catch (error) {
-        $("connection").textContent = "Erreur : " + error.message;
-        $("liveBadge").textContent = "● ERREUR";
-        $("liveBadge").style.color = "#ff667d";
-        $("reason").textContent =
-          "Impossible de mettre à jour l’analyse. Réessaie ou vérifie le Worker.";
+        showStatus("offline", "Connexion indisponible");
+        $("errorBox").style.display = "block";
+        $("errorBox").textContent =
+          "Impossible de récupérer les données. Vérifie ta connexion et réessaie. " +
+          (error && error.message ? error.message : "");
+        $("reason").textContent = "Les dernières données ne peuvent pas être confirmées.";
       } finally {
-        button.disabled = false;
+        busy = false;
+        $("refreshButton").disabled = false;
       }
     }
 
-    $("refreshBtn").addEventListener("click", refreshAnalysis);
-    refreshAnalysis();
-    setInterval(refreshAnalysis, 60000);
+    $("refreshButton").addEventListener("click", updateData);
+    updateData();
+    setInterval(updateData, REFRESH_MS);
   </script>
 </body>
 </html>
+
