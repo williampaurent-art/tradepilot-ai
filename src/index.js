@@ -1,24 +1,22 @@
 
 /**
- * TradePilot AI — XAUUSD
+ * 
+/**
+ * TRADEPILOT AI — XAUUSD
  * Cloudflare Worker
  *
- * Signaux selectifs avec confirmation de pullback M1.
- * Alertes Telegram automatiques.
- * Test Telegram securise.
- * Aucun ordre reel n'est execute.
- *
- * Capital de reference : 1000 USD
- * Taille indicative : 0.5 lot / 1000 USD
- * Levier indicatif : x500
- * Objectif : 2 USD de mouvement XAUUSD
- * Stop : 7 USD de mouvement XAUUSD
+ * Signaux automatiques Telegram et diagnostic Cron.
+ * Aucun ordre réel n'est exécuté.
  *
  * Variables Cloudflare :
- * TELEGRAM_BOT_TOKEN : Secret du bot Telegram
- * TELEGRAM_CHAT_ID   : ID du chat Telegram
- * TELEGRAM_TEST_KEY  : Secret pour proteger le test Telegram
- * TP_STATE           : Binding KV pour memoriser les signaux
+ * TELEGRAM_BOT_TOKEN : secret du bot Telegram
+ * TELEGRAM_CHAT_ID   : identifiant du chat Telegram
+ *
+ * Binding KV :
+ * TP_STATE -> namespace TRADEPILOT_STATE
+ *
+ * Cron :
+ * */3 * * * *
  */
 
 const CONFIG = {
@@ -34,6 +32,7 @@ const CONFIG = {
 
   MIN_SCORE: 75,
   MAX_CANDLES: 250,
+
   COOLDOWN_MS: 5 * 60 * 1000,
 
   FRESHNESS_INTERVALS: 2,
@@ -46,13 +45,13 @@ const CONFIG = {
 };
 
 const TIMEFRAMES = {
-  M1:  { interval: "1m",  ms: 60_000 },
-  M5:  { interval: "5m",  ms: 300_000 },
+  M1:  { interval: "1m", ms: 60_000 },
+  M5:  { interval: "5m", ms: 300_000 },
   M15: { interval: "15m", ms: 900_000 },
   M30: { interval: "30m", ms: 1_800_000 },
-  H1:  { interval: "1h",  ms: 3_600_000 },
-  H4:  { interval: "4h",  ms: 14_400_000 },
-  D1:  { interval: "1d",  ms: 86_400_000 }
+  H1:  { interval: "1h", ms: 3_600_000 },
+  H4:  { interval: "4h", ms: 14_400_000 },
+  D1:  { interval: "1d", ms: 86_400_000 }
 };
 
 // --------------------------------------------------
@@ -79,16 +78,10 @@ function numberParam(url, name, fallback, min, max) {
 
   const value = Number(raw);
 
-  if (!Number.isFinite(value)) {
-    return fallback;
-  }
+  if (!Number.isFinite(value)) return fallback;
 
   return Math.min(max, Math.max(min, value));
 }
-
-// --------------------------------------------------
-// PARAMETRES ET CALCUL DES LOTS
-// --------------------------------------------------
 
 function getSettings(url) {
   const capital = numberParam(
@@ -103,30 +96,33 @@ function getSettings(url) {
     url, "stopDistance", CONFIG.STOP_MOVE, 0.01, 1000
   );
 
+  const riskPercent = numberParam(
+    url, "riskPercent", 50, 0.01, 100
+  );
+
   const minScore = numberParam(
     url, "minScore", CONFIG.MIN_SCORE, 50, 100
   );
-
-  const lots = (capital / 1000) * CONFIG.LOTS_PER_1000;
 
   return {
     capital,
     target,
     stopDistance,
+    riskPercent,
     minScore,
     leverage: CONFIG.LEVERAGE,
-    lots: Number(lots.toFixed(4))
+    lots: Number(
+      ((capital / 1000) * CONFIG.LOTS_PER_1000).toFixed(4)
+    )
   };
 }
 
 // --------------------------------------------------
-// NORMALISATION DES TIMESTAMPS ET BOUGIES
+// TIMESTAMPS ET BOUGIES
 // --------------------------------------------------
 
 function toTimestamp(value) {
-  if (value === null || value === undefined) {
-    return NaN;
-  }
+  if (value === null || value === undefined) return NaN;
 
   if (typeof value === "number") {
     return value < 1e12 ? value * 1000 : value;
@@ -148,33 +144,21 @@ function toTimestamp(value) {
 }
 
 function extractRows(payload) {
-  if (Array.isArray(payload)) {
-    return payload;
+  if (Array.isArray(payload)) return payload;
+
+  if (!payload || typeof payload !== "object") return null;
+
+  const keys = ["bars", "candles", "data", "results", "ohlc"];
+
+  for (const key of keys) {
+    if (Array.isArray(payload[key])) return payload[key];
   }
 
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-
-  const possibleKeys = [
-    "bars",
-    "candles",
-    "data",
-    "results",
-    "ohlc"
-  ];
-
-  for (const key of possibleKeys) {
-    if (Array.isArray(payload[key])) {
-      return payload[key];
-    }
-  }
-
-  for (const key of possibleKeys) {
+  for (const key of keys) {
     const nested = payload[key];
 
     if (nested && typeof nested === "object") {
-      for (const nestedKey of possibleKeys) {
+      for (const nestedKey of keys) {
         if (Array.isArray(nested[nestedKey])) {
           return nested[nestedKey];
         }
@@ -189,12 +173,10 @@ function normalizeBars(payload) {
   const rows = extractRows(payload);
 
   if (!rows) {
-    throw new Error(
-      "Format OHLC non reconnu. Verifier la reponse de BiQuote."
-    );
+    throw new Error("Format OHLC non reconnu.");
   }
 
-  const bars = rows.map((row) => {
+  const bars = rows.map(row => {
     if (Array.isArray(row)) {
       return {
         time: toTimestamp(row[0]),
@@ -216,17 +198,13 @@ function normalizeBars(payload) {
         row.datetime ??
         row.date
       ),
-
       open: Number(row.open ?? row.o),
       high: Number(row.high ?? row.h),
       low: Number(row.low ?? row.l),
       close: Number(row.close ?? row.c),
-
-      isOpen:
-        row.isOpen === true ||
-        row.is_open === true
+      isOpen: row.isOpen === true || row.is_open === true
     };
-  }).filter((bar) =>
+  }).filter(bar =>
     Number.isFinite(bar.time) &&
     Number.isFinite(bar.open) &&
     Number.isFinite(bar.high) &&
@@ -255,7 +233,7 @@ function normalizeBars(payload) {
 }
 
 // --------------------------------------------------
-// FRAICHEUR DES DONNEES
+// FRAICHEUR ET QUALITE DES DONNEES
 // --------------------------------------------------
 
 function validateFreshness(bars, timeframe = "M1") {
@@ -286,10 +264,6 @@ function validateFreshness(bars, timeframe = "M1") {
   };
 }
 
-// --------------------------------------------------
-// QUALITE ET CONTINUITE DES HISTORIQUES
-// --------------------------------------------------
-
 function inspectDataQuality(bars, timeframe = "M1") {
   const tf = TIMEFRAMES[timeframe];
 
@@ -308,13 +282,9 @@ function inspectDataQuality(bars, timeframe = "M1") {
   const freshness = validateFreshness(bars, timeframe);
   const last = bars[bars.length - 1];
 
-  const cutoff =
-    last.time - CONFIG.QUALITY_LOOKBACK_MS;
+  const cutoff = last.time - CONFIG.QUALITY_LOOKBACK_MS;
 
-  const recentBars = bars.filter(
-    bar => bar.time >= cutoff
-  );
-
+  const recentBars = bars.filter(bar => bar.time >= cutoff);
   const gaps = [];
 
   for (let i = 1; i < recentBars.length; i++) {
@@ -322,17 +292,16 @@ function inspectDataQuality(bars, timeframe = "M1") {
     const current = recentBars[i];
 
     const delta = current.time - previous.time;
-    const expected = tf.ms;
 
-    if (delta > expected + CONFIG.GAP_TOLERANCE_MS) {
+    if (delta > tf.ms + CONFIG.GAP_TOLERANCE_MS) {
       gaps.push({
         from: new Date(previous.time).toISOString(),
         to: new Date(current.time).toISOString(),
         actualGapMs: delta,
-        expectedGapMs: expected,
+        expectedGapMs: tf.ms,
         missingIntervals: Math.max(
           0,
-          Math.round(delta / expected) - 1
+          Math.round(delta / tf.ms) - 1
         )
       });
     }
@@ -345,9 +314,7 @@ function inspectDataQuality(bars, timeframe = "M1") {
   }
 
   if (gaps.length > 0) {
-    issues.push(
-      "Interruption detectee dans l'historique recent"
-    );
+    issues.push("Interruption detectee dans l'historique recent");
   }
 
   return {
@@ -362,33 +329,26 @@ function inspectDataQuality(bars, timeframe = "M1") {
 }
 
 // --------------------------------------------------
-// RECUPERATION DES DONNEES DE MARCHE
+// RECUPERATION DES DONNEES
 // --------------------------------------------------
 
 async function fetchCandles(timeframe = "M1", limit = 200) {
   const tf = TIMEFRAMES[String(timeframe).toUpperCase()];
 
   if (!tf) {
-    throw new Error(
-      `Timeframe non pris en charge : ${timeframe}`
-    );
+    throw new Error(`Timeframe non pris en charge : ${timeframe}`);
   }
 
   const url = new URL(CONFIG.SOURCE_URL);
 
   url.searchParams.set("interval", tf.interval);
-
   url.searchParams.set(
     "limit",
-    String(
-      Math.min(CONFIG.MAX_CANDLES, Math.max(30, limit))
-    )
+    String(Math.min(CONFIG.MAX_CANDLES, Math.max(30, limit)))
   );
 
   const response = await fetch(url.toString(), {
-    headers: {
-      accept: "application/json"
-    },
+    headers: { accept: "application/json" },
     signal: AbortSignal.timeout(12000)
   });
 
@@ -402,28 +362,22 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
   const bars = normalizeBars(payload);
 
   if (bars.length === 0) {
-    throw new Error(
-      `Aucune bougie exploitable pour ${timeframe}.`
-    );
+    throw new Error(`Aucune bougie exploitable pour ${timeframe}.`);
   }
 
   const now = Date.now();
 
-  const closed = bars.filter((bar) =>
-    !bar.isOpen &&
-    bar.time + tf.ms <= now
+  const closed = bars.filter(bar =>
+    !bar.isOpen && bar.time + tf.ms <= now
   );
 
   if (closed.length < 30) {
     throw new Error(
-      `Historique insuffisant pour ${timeframe} : ` +
-      `${closed.length} bougies cloturees sur ${bars.length} recues.`
+      `Historique insuffisant pour ${timeframe} : ${closed.length} bougies cloturees.`
     );
   }
 
-  return closed.slice(
-    -Math.min(limit, CONFIG.MAX_CANDLES)
-  );
+  return closed.slice(-Math.min(limit, CONFIG.MAX_CANDLES));
 }
 
 // --------------------------------------------------
@@ -431,21 +385,15 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
 // --------------------------------------------------
 
 function sma(values, period) {
-  if (values.length < period) {
-    return null;
-  }
+  if (values.length < period) return null;
 
   const slice = values.slice(-period);
 
-  return slice.reduce(
-    (sum, value) => sum + value, 0
-  ) / period;
+  return slice.reduce((sum, value) => sum + value, 0) / period;
 }
 
 function ema(values, period) {
-  if (values.length < period) {
-    return null;
-  }
+  if (values.length < period) return null;
 
   const k = 2 / (period + 1);
 
@@ -454,34 +402,23 @@ function ema(values, period) {
     .reduce((sum, value) => sum + value, 0) / period;
 
   for (let i = period; i < values.length; i++) {
-    result =
-      values[i] * k +
-      result * (1 - k);
+    result = values[i] * k + result * (1 - k);
   }
 
   return result;
 }
 
 function calculateRSI(values, period = 14) {
-  if (values.length < period + 1) {
-    return null;
-  }
+  if (values.length < period + 1) return null;
 
   let gains = 0;
   let losses = 0;
 
-  for (
-    let i = values.length - period;
-    i < values.length;
-    i++
-  ) {
+  for (let i = values.length - period; i < values.length; i++) {
     const change = values[i] - values[i - 1];
 
-    if (change > 0) {
-      gains += change;
-    } else {
-      losses -= change;
-    }
+    if (change > 0) gains += change;
+    else losses -= change;
   }
 
   const averageGain = gains / period;
@@ -497,9 +434,7 @@ function calculateRSI(values, period = 14) {
 }
 
 function calculateATR(bars, period = 14) {
-  if (bars.length < period + 1) {
-    return null;
-  }
+  if (bars.length < period + 1) return null;
 
   const ranges = [];
 
@@ -562,7 +497,7 @@ function roundPrice(value) {
 }
 
 // --------------------------------------------------
-// MOTEUR DE SCENARIOS ET DE SIGNAUX
+// ANALYSE DES SIGNAUX
 // --------------------------------------------------
 
 function analyzeSetup(m1, m5, m15, settings) {
@@ -579,8 +514,6 @@ function analyzeSetup(m1, m5, m15, settings) {
 
   let buyScore = 0;
   let sellScore = 0;
-
-  // TENDANCES MULTI-TIMEFRAMES
 
   if (trend15 === "HAUSSIER") {
     buyScore += 20;
@@ -612,17 +545,15 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellReasons.push("Tendance M1 baissiere");
   }
 
-  // CONFIRMATION RSI
-
   if (i1.rsi !== null) {
     if (i1.rsi >= 50 && i1.rsi <= 68) {
       buyScore += 15;
-      buyReasons.push("RSI M1 favorable aux achats");
+      buyReasons.push("RSI favorable aux achats");
     }
 
     if (i1.rsi <= 50 && i1.rsi >= 32) {
       sellScore += 15;
-      sellReasons.push("RSI M1 favorable aux ventes");
+      sellReasons.push("RSI favorable aux ventes");
     }
   }
 
@@ -638,73 +569,18 @@ function analyzeSetup(m1, m5, m15, settings) {
     }
   }
 
-  // DETECTION DU PULLBACK M1
-
   const last = m1[m1.length - 1];
   const previous = m1[m1.length - 2];
 
-  const recentBars = m1.slice(-6, -1);
-
-  const ema9 = i1.ema9;
-  const ema21 = i1.ema21;
-
-  const tolerance = i1.atr !== null
-    ? i1.atr * 0.15
-    : 0;
-
-  const pullbackTouched = recentBars.some(bar => {
-    const touchesEma9 =
-      ema9 !== null &&
-      bar.low <= ema9 + tolerance &&
-      bar.high >= ema9 - tolerance;
-
-    const touchesEma21 =
-      ema21 !== null &&
-      bar.low <= ema21 + tolerance &&
-      bar.high >= ema21 - tolerance;
-
-    return touchesEma9 || touchesEma21;
-  });
-
-  const bearishResume =
-    pullbackTouched &&
-    ema9 !== null &&
-    last.close < ema9 &&
-    last.close < last.open &&
-    last.close < previous.close;
-
-  const bullishResume =
-    pullbackTouched &&
-    ema9 !== null &&
-    last.close > ema9 &&
-    last.close > last.open &&
-    last.close > previous.close;
-
-  if (
-    bearishResume &&
-    trend5 === "BAISSIER" &&
-    trend15 === "BAISSIER"
-  ) {
-    sellScore += 15;
-
-    sellReasons.push(
-      "Pullback M1 confirme : rejet EMA 9/21 et reprise baissiere"
-    );
-  }
-
-  if (
-    bullishResume &&
-    trend5 === "HAUSSIER" &&
-    trend15 === "HAUSSIER"
-  ) {
+  if (last.close > previous.high && trend1 === "HAUSSIER") {
     buyScore += 15;
-
-    buyReasons.push(
-      "Pullback M1 confirme : rejet EMA 9/21 et reprise haussiere"
-    );
+    buyReasons.push("Cassure du dernier plus haut");
   }
 
-  // FILTRE DE VOLATILITE
+  if (last.close < previous.low && trend1 === "BAISSIER") {
+    sellScore += 15;
+    sellReasons.push("Cassure du dernier plus bas");
+  }
 
   const atr = i1.atr;
 
@@ -732,8 +608,6 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellScore = Math.min(sellScore, 49);
   }
 
-  // ALIGNEMENT OBLIGATOIRE M5 / M15
-
   if (trend5 !== trend15 || trend5 === "NEUTRE") {
     buyScore = Math.min(buyScore, 69);
     sellScore = Math.min(sellScore, 69);
@@ -742,14 +616,9 @@ function analyzeSetup(m1, m5, m15, settings) {
   buyScore = Math.min(100, buyScore);
   sellScore = Math.min(100, sellScore);
 
-  // GENERATION DU SIGNAL
-
   let signal = "ATTENDRE";
   let score = Math.max(buyScore, sellScore);
-
-  let reasons = [
-    "Aucune configuration ne satisfait les filtres."
-  ];
+  let reasons = ["Aucune configuration ne satisfait les filtres."];
 
   const entry = i1.price;
 
@@ -764,13 +633,8 @@ function analyzeSetup(m1, m5, m15, settings) {
     score = buyScore;
     reasons = buyReasons;
 
-    targetPrice = roundPrice(
-      entry + settings.target
-    );
-
-    stopPrice = roundPrice(
-      entry - settings.stopDistance
-    );
+    targetPrice = roundPrice(entry + settings.target);
+    stopPrice = roundPrice(entry - settings.stopDistance);
 
   } else if (
     sellScore >= settings.minScore &&
@@ -780,13 +644,8 @@ function analyzeSetup(m1, m5, m15, settings) {
     score = sellScore;
     reasons = sellReasons;
 
-    targetPrice = roundPrice(
-      entry - settings.target
-    );
-
-    stopPrice = roundPrice(
-      entry + settings.stopDistance
-    );
+    targetPrice = roundPrice(entry - settings.target);
+    stopPrice = roundPrice(entry + settings.stopDistance);
   }
 
   return {
@@ -806,11 +665,10 @@ function analyzeSetup(m1, m5, m15, settings) {
     stopPrice,
 
     capital: settings.capital,
-
     lotSize: settings.lots,
-    lotSizingRule: "0.5 lot par tranche de 1000 USD",
-
     leverage: settings.leverage,
+
+    riskPercentRequested: settings.riskPercent,
 
     estimatedRiskReward: Number(
       (settings.target / settings.stopDistance).toFixed(3)
@@ -821,21 +679,10 @@ function analyzeSetup(m1, m5, m15, settings) {
       trendM5: trend5,
       trendM15: trend15,
 
-      rsiM1:
-        i1.rsi === null
-          ? null
-          : Number(i1.rsi.toFixed(2)),
+      rsiM1: i1.rsi === null ? null : Number(i1.rsi.toFixed(2)),
+      rsiM5: i5.rsi === null ? null : Number(i5.rsi.toFixed(2)),
 
-      rsiM5:
-        i5.rsi === null
-          ? null
-          : Number(i5.rsi.toFixed(2)),
-
-      atrM1:
-        atr === null
-          ? null
-          : Number(atr.toFixed(4)),
-
+      atrM1: atr === null ? null : Number(atr.toFixed(4)),
       volatility
     },
 
@@ -848,7 +695,7 @@ function analyzeSetup(m1, m5, m15, settings) {
 }
 
 // --------------------------------------------------
-// ANALYSE COMPLETE ET VALIDATION DES DONNEES
+// ANALYSE COMPLETE
 // --------------------------------------------------
 
 async function getSignal(settings) {
@@ -873,202 +720,129 @@ async function getSignal(settings) {
       instrument: CONFIG.INSTRUMENT,
       signal: "ATTENDRE",
       score: 0,
-
       error: "Qualite des donnees insuffisante.",
-
       dataQuality: quality,
-
       reasons: [
         "Analyse bloquee : verifier la fraicheur et la continuite des bougies."
       ],
-
       generatedAt: new Date().toISOString(),
-
       execution: "AUCUN ORDRE REEL"
     };
   }
 
-  const result = analyzeSetup(
-    m1,
-    m5,
-    m15,
-    settings
-  );
-
+  const result = analyzeSetup(m1, m5, m15, settings);
   result.dataQuality = quality;
 
   return result;
 }
 
 // --------------------------------------------------
-// ALERTES TELEGRAM AUTOMATIQUES
+// TELEGRAM
 // --------------------------------------------------
 
-async function sendAlert(env, signal) {
-  const token = env.TELEGRAM_BOT_TOKEN;
-  const chatId = env.TELEGRAM_CHAT_ID;
+function telegramConfigured(env) {
+  return Boolean(
+    env.TELEGRAM_BOT_TOKEN &&
+    env.TELEGRAM_CHAT_ID
+  );
+}
 
-  if (!token || !chatId) {
+async function sendTelegram(env, textMessage) {
+  if (!telegramConfigured(env)) {
     return {
       sent: false,
-      reason: "TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID non configure"
+      reason: "Configuration Telegram manquante"
     };
   }
 
-  if (
-    !signal.ok ||
-    signal.signal === "ATTENDRE"
-  ) {
-    return {
-      sent: false,
-      reason: "Aucun signal valide"
-    };
-  }
+  const url =
+    `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
 
-  const emoji = signal.signal === "ACHAT" ? "🟢" : "🔴";
-
-  const reasons = Array.isArray(signal.reasons)
-    ? signal.reasons.map(reason => `• ${reason}`).join("\n")
-    : "Non renseigne";
-
-  const message = [
-    `${emoji} TRADEPILOT AI — ${signal.signal}`,
-    "",
-    `Instrument : ${signal.instrument}`,
-    `Score technique : ${signal.score}/100`,
-    "",
-    `Prix d'entree indicatif : ${signal.entry}`,
-    `Take Profit : ${signal.targetPrice}`,
-    `Stop Loss : ${signal.stopPrice}`,
-    "",
-    `Capital de reference : ${signal.capital} USD`,
-    `Taille indicative : ${signal.lotSize} lot`,
-    `Levier indicatif : x${signal.leverage}`,
-    `Ratio gain/risque theorique : ${signal.estimatedRiskReward}`,
-    "",
-    "Confirmation technique :",
-    reasons,
-    "",
-    `Tendance M1 : ${signal.market?.trendM1 ?? "N/A"}`,
-    `Tendance M5 : ${signal.market?.trendM5 ?? "N/A"}`,
-    `Tendance M15 : ${signal.market?.trendM15 ?? "N/A"}`,
-    `RSI M1 : ${signal.market?.rsiM1 ?? "N/A"}`,
-    `RSI M5 : ${signal.market?.rsiM5 ?? "N/A"}`,
-    "",
-    `Date : ${signal.generatedAt}`,
-    "",
-    "⚠️ Signal indicatif uniquement.",
-    "AUCUN ORDRE REEL N'EST EXECUTE."
-  ].join("\n");
-
-  const telegramUrl =
-    `https://api.telegram.org/bot${token}/sendMessage`;
-
-  const response = await fetch(telegramUrl, {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      chat_id: chatId,
-      text: message,
-      disable_web_page_preview: true
+      chat_id: env.TELEGRAM_CHAT_ID,
+      text: textMessage
     }),
     signal: AbortSignal.timeout(10000)
   });
 
-  let result;
+  const result = await response.json();
 
-  try {
-    result = await response.json();
-  } catch {
-    throw new Error("Reponse Telegram illisible.");
-  }
-
-  if (!response.ok || result.ok !== true) {
+  if (!response.ok || !result.ok) {
     throw new Error(
-      `Erreur Telegram : ${result.description || response.status}`
+      result.description || `Telegram HTTP ${response.status}`
     );
   }
 
   return {
     sent: true,
-    channel: "Telegram",
     messageId: result.result?.message_id ?? null
   };
 }
 
-// --------------------------------------------------
-// TEST TELEGRAM INDEPENDANT DE LA STRATEGIE
-// --------------------------------------------------
-
-async function sendTelegramTest(env) {
-  const token = env.TELEGRAM_BOT_TOKEN;
-  const chatId = env.TELEGRAM_CHAT_ID;
-
-  if (!token || !chatId) {
-    return {
-      ok: false,
-      error: "Configuration Telegram manquante"
-    };
-  }
-
-  const message = [
-    "🟢 TRADEPILOT AI",
+function buildAlertMessage(signal) {
+  return [
+    `🚨 ${CONFIG.SERVICE} — ${CONFIG.INSTRUMENT}`,
     "",
-    "TEST TELEGRAM REUSSI !",
+    `📊 SIGNAL : ${signal.signal}`,
+    `🎯 Score technique : ${signal.score}/100`,
     "",
-    "Cloudflare communique correctement avec Telegram.",
+    `💰 Entrée indicative : ${signal.entry}`,
+    `✅ Objectif : ${signal.targetPrice}`,
+    `🛑 Stop : ${signal.stopPrice}`,
     "",
-    "Instrument : GOLD / XAUUSD",
-    "Statut : AUCUN ORDRE REEL",
+    `📦 Taille indicative : ${signal.lotSize} lot`,
+    `⚙️ Levier indicatif : x${signal.leverage}`,
     "",
-    "Les notifications Telegram sont accessibles."
+    `📈 Tendance M1 : ${signal.market.trendM1}`,
+    `📈 Tendance M5 : ${signal.market.trendM5}`,
+    `📈 Tendance M15 : ${signal.market.trendM15}`,
+    `RSI M1 : ${signal.market.rsiM1}`,
+    `RSI M5 : ${signal.market.rsiM5}`,
+    `Volatilité : ${signal.market.volatility}`,
+    "",
+    "Motifs :",
+    ...signal.reasons.map(reason => `• ${reason}`),
+    "",
+    `⏱️ ${signal.generatedAt}`,
+    "",
+    "⚠️ Signal indicatif. Aucun ordre réel exécuté."
   ].join("\n");
-
-  try {
-    const response = await fetch(
-      `https://api.telegram.org/bot${token}/sendMessage`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: message,
-          disable_web_page_preview: true
-        }),
-        signal: AbortSignal.timeout(10000)
-      }
-    );
-
-    const result = await response.json();
-
-    if (!response.ok || result.ok !== true) {
-      return {
-        ok: false,
-        error: result.description || "Erreur Telegram"
-      };
-    }
-
-    return {
-      ok: true,
-      message: "Notification Telegram envoyee",
-      messageId: result.result?.message_id ?? null
-    };
-
-  } catch {
-    return {
-      ok: false,
-      error: "Impossible de communiquer avec Telegram"
-    };
-  }
 }
 
 // --------------------------------------------------
-// ANTI-DOUBLON DES ALERTES
+// ETAT KV ET ANTI-DOUBLON
 // --------------------------------------------------
+
+async function readKV(env, key) {
+  if (!env.TP_STATE) return null;
+
+  const value = await env.TP_STATE.get(key);
+
+  if (!value) return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return { raw: value };
+  }
+}
+
+async function writeKV(env, key, value, ttl = 7 * 24 * 60 * 60) {
+  if (!env.TP_STATE) return false;
+
+  await env.TP_STATE.put(
+    key,
+    JSON.stringify(value),
+    { expirationTtl: ttl }
+  );
+
+  return true;
+}
 
 function getAlertKey(signal) {
   return [
@@ -1080,63 +854,163 @@ function getAlertKey(signal) {
 }
 
 async function shouldSendAlert(env, signal) {
-  if (!env.TP_STATE) {
-    return {
-      allowed: true,
-      reason: "KV non configure : anti-doublon indisponible"
-    };
+  if (!env.TP_STATE) return true;
+
+  const previous = await readKV(env, "last_alert");
+
+  if (!previous || !previous.key || !previous.time) {
+    return true;
   }
 
-  const previous = await env.TP_STATE.get("last_alert");
+  const sameSignal = previous.key === getAlertKey(signal);
 
-  if (!previous) {
-    return {
-      allowed: true,
-      reason: "Premiere alerte"
-    };
-  }
+  const recent =
+    Date.now() - previous.time < CONFIG.COOLDOWN_MS;
 
-  try {
-    const old = JSON.parse(previous);
-    const sameSignal = old.key === getAlertKey(signal);
-    const recent =
-      Date.now() - old.time < CONFIG.COOLDOWN_MS;
-
-    if (sameSignal && recent) {
-      return {
-        allowed: false,
-        reason: "Signal identique deja envoye pendant le cooldown"
-      };
-    }
-  } catch {
-    // Un ancien etat invalide ne bloque pas les alertes.
-  }
-
-  return {
-    allowed: true,
-    reason: "Nouveau signal ou cooldown termine"
-  };
+  return !(sameSignal && recent);
 }
 
-async function rememberAlert(env, signal) {
-  if (!env.TP_STATE) {
-    return;
-  }
+async function rememberAlert(env, signal, telegramResult) {
+  await writeKV(env, "last_alert", {
+    key: getAlertKey(signal),
+    signal: signal.signal,
+    entry: signal.entry,
+    target: signal.targetPrice,
+    stop: signal.stopPrice,
+    time: Date.now(),
+    sentAt: new Date().toISOString(),
+    telegramMessageId: telegramResult?.messageId ?? null
+  }, 24 * 60 * 60);
+}
 
-  await env.TP_STATE.put(
-    "last_alert",
-    JSON.stringify({
-      key: getAlertKey(signal),
-      signal: signal.signal,
-      entry: signal.entry,
-      targetPrice: signal.targetPrice,
-      stopPrice: signal.stopPrice,
-      time: Date.now()
-    }),
-    {
-      expirationTtl: 24 * 60 * 60
+// --------------------------------------------------
+// DIAGNOSTIC AUTOMATIQUE DU CRON
+// --------------------------------------------------
+
+async function saveCronStatus(env, data) {
+  const status = {
+    ...data,
+    updatedAt: new Date().toISOString(),
+    updatedAtMs: Date.now()
+  };
+
+  await writeKV(env, "cron_status", status);
+  return status;
+}
+
+async function scheduledCheck(env) {
+  const startedAt = new Date().toISOString();
+
+  await saveCronStatus(env, {
+    status: "RUNNING",
+    startedAt,
+    signal: null,
+    alertSent: false,
+    message: "Analyse automatique en cours."
+  });
+
+  console.log("TradePilot Cron started", startedAt);
+
+  try {
+    const settings = {
+      capital: CONFIG.DEFAULT_CAPITAL,
+      target: CONFIG.TARGET_MOVE,
+      stopDistance: CONFIG.STOP_MOVE,
+      riskPercent: 50,
+      minScore: CONFIG.MIN_SCORE,
+      leverage: CONFIG.LEVERAGE,
+      lots: CONFIG.LOTS_PER_1000
+    };
+
+    const signal = await getSignal(settings);
+
+    await writeKV(env, "last_signal", signal);
+
+    if (!signal.ok) {
+      await saveCronStatus(env, {
+        status: "DATA_ERROR",
+        startedAt,
+        signal: "ATTENDRE",
+        score: 0,
+        alertSent: false,
+        message: signal.error || "Qualite des donnees insuffisante.",
+        dataQuality: signal.dataQuality
+      });
+
+      console.log("TradePilot Cron: invalid data");
+      return signal;
     }
-  );
+
+    if (signal.signal === "ATTENDRE") {
+      await saveCronStatus(env, {
+        status: "COMPLETED",
+        startedAt,
+        signal: signal.signal,
+        score: signal.score,
+        alertSent: false,
+        message: "Analyse terminee : aucun signal au seuil requis."
+      });
+
+      console.log("TradePilot Cron: ATTENDRE", signal.score);
+      return signal;
+    }
+
+    const allowed = await shouldSendAlert(env, signal);
+
+    if (!allowed) {
+      await saveCronStatus(env, {
+        status: "COMPLETED",
+        startedAt,
+        signal: signal.signal,
+        score: signal.score,
+        entry: signal.entry,
+        alertSent: false,
+        message: "Signal identique deja notifie pendant le delai anti-doublon."
+      });
+
+      console.log("TradePilot Cron: duplicate blocked");
+      return signal;
+    }
+
+    const message = buildAlertMessage(signal);
+    const telegramResult = await sendTelegram(env, message);
+
+    await rememberAlert(env, signal, telegramResult);
+
+    await saveCronStatus(env, {
+      status: "ALERT_SENT",
+      startedAt,
+      signal: signal.signal,
+      score: signal.score,
+      entry: signal.entry,
+      target: signal.targetPrice,
+      stop: signal.stopPrice,
+      alertSent: true,
+      telegramMessageId: telegramResult.messageId,
+      message: "Alerte Telegram envoyee avec succes."
+    });
+
+    console.log("TradePilot Cron: Telegram alert sent");
+
+    return signal;
+
+  } catch (error) {
+    console.error("TradePilot Cron error:", error.message);
+
+    await writeKV(env, "last_error", {
+      error: error.message,
+      time: new Date().toISOString()
+    }, 24 * 60 * 60);
+
+    await saveCronStatus(env, {
+      status: "ERROR",
+      startedAt,
+      alertSent: false,
+      message: error.message
+    });
+
+    throw error;
+  }
 }
 
 // --------------------------------------------------
@@ -1144,14 +1018,8 @@ async function rememberAlert(env, signal) {
 // --------------------------------------------------
 
 async function handleHealth(env) {
-  const telegramConfigured = Boolean(
-    env.TELEGRAM_BOT_TOKEN &&
-    env.TELEGRAM_CHAT_ID
-  );
-
   return json({
     ok: true,
-
     service: CONFIG.SERVICE,
     status: "online",
     instrument: CONFIG.INSTRUMENT,
@@ -1159,42 +1027,77 @@ async function handleHealth(env) {
     strategy: {
       capitalReference: CONFIG.DEFAULT_CAPITAL,
       lotsPer1000: CONFIG.LOTS_PER_1000,
-      lotSizingRule: "0.5 lot par tranche de 1000 USD",
       leverage: CONFIG.LEVERAGE,
       targetMove: CONFIG.TARGET_MOVE,
       stopMove: CONFIG.STOP_MOVE,
-      minimumScore: CONFIG.MIN_SCORE,
-      selectiveSignals: true,
-      pullbackConfirmation: true
+      minimumScore: CONFIG.MIN_SCORE
     },
 
-    dataValidation: {
-      enabled: true,
-      freshnessIntervals: CONFIG.FRESHNESS_INTERVALS,
-      freshnessGraceMs: CONFIG.FRESHNESS_GRACE_MS,
-      qualityLookbackMs: CONFIG.QUALITY_LOOKBACK_MS,
-      gapToleranceMs: CONFIG.GAP_TOLERANCE_MS
-    },
+    telegramConfigured: telegramConfigured(env),
+    kvConfigured: Boolean(env.TP_STATE),
 
     liveTrading: false,
+    automaticPushNotifications: telegramConfigured(env),
 
-    telegramAlertsEnabled: true,
-    telegramAlertsConfigured: telegramConfigured,
-    telegramTestConfigured: Boolean(env.TELEGRAM_TEST_KEY),
-    automaticPushNotifications: telegramConfigured,
-
-    kvConfigured: Boolean(env.TP_STATE),
+    cronScheduleExpected: "*/3 * * * *",
 
     endpoints: [
       "/health",
+      "/status",
       "/gold?timeframe=M1",
       "/gold?timeframe=M5",
       "/gold?timeframe=M15",
       "/analyze",
-      "/scalp",
-      "/backtest",
-      "POST /telegram-test"
+      "/scalp"
     ],
+
+    timestamp: new Date().toISOString()
+  });
+}
+
+// --------------------------------------------------
+// ROUTE STATUS
+// --------------------------------------------------
+
+async function handleStatus(env) {
+  const cron = await readKV(env, "cron_status");
+  const lastSignal = await readKV(env, "last_signal");
+  const lastAlert = await readKV(env, "last_alert");
+  const lastError = await readKV(env, "last_error");
+
+  return json({
+    ok: true,
+    service: CONFIG.SERVICE,
+
+    cronConfiguredInCode: true,
+    kvConfigured: Boolean(env.TP_STATE),
+    telegramConfigured: telegramConfigured(env),
+
+    cron: cron || {
+      status: "NOT_YET_EXECUTED",
+      message: "Aucune execution Cron enregistree pour le moment."
+    },
+
+    lastSignal: lastSignal
+      ? {
+          signal: lastSignal.signal,
+          score: lastSignal.score,
+          entry: lastSignal.entry,
+          generatedAt: lastSignal.generatedAt,
+          ok: lastSignal.ok
+        }
+      : null,
+
+    lastAlert: lastAlert
+      ? {
+          signal: lastAlert.signal,
+          entry: lastAlert.entry,
+          sentAt: lastAlert.sentAt,
+          telegramMessageId: lastAlert.telegramMessageId
+        }
+      : null,
+
+    lastError: lastError || null,
 
     timestamp: new Date().toISOString()
   });
@@ -1211,33 +1114,17 @@ async function handleGold(request) {
     url.searchParams.get("timeframe") || "M1"
   ).toUpperCase();
 
-  const bars = await fetchCandles(
-    timeframe,
-    200
-  );
+  const bars = await fetchCandles(timeframe, 200);
 
   return json({
     ok: true,
-
     instrument: CONFIG.INSTRUMENT,
     timeframe,
-
     count: bars.length,
-
     latest: bars[bars.length - 1],
-
-    freshness: validateFreshness(
-      bars,
-      timeframe
-    ),
-
-    dataQuality: inspectDataQuality(
-      bars,
-      timeframe
-    ),
-
+    freshness: validateFreshness(bars, timeframe),
+    dataQuality: inspectDataQuality(bars, timeframe),
     candles: bars,
-
     source: CONFIG.SOURCE_URL
   });
 }
@@ -1247,27 +1134,18 @@ async function handleGold(request) {
 // --------------------------------------------------
 
 async function handleAnalyze(request) {
-  const settings = getSettings(
-    new URL(request.url)
-  );
-
+  const settings = getSettings(new URL(request.url));
   const result = await getSignal(settings);
 
-  return json(
-    result,
-    result.ok === false ? 503 : 200
-  );
+  return json(result, result.ok === false ? 503 : 200);
 }
 
 // --------------------------------------------------
-// ROUTE SCALP
+// ROUTE SCALP — TEST MANUEL
 // --------------------------------------------------
 
 async function handleScalp(request, env) {
-  const settings = getSettings(
-    new URL(request.url)
-  );
-
+  const settings = getSettings(new URL(request.url));
   const result = await getSignal(settings);
 
   result.alert = {
@@ -1275,27 +1153,30 @@ async function handleScalp(request, env) {
     reason: "Aucun signal valide"
   };
 
-  if (
-    result.ok &&
-    result.signal !== "ATTENDRE"
-  ) {
+  if (result.ok && result.signal !== "ATTENDRE") {
     try {
-      const check = await shouldSendAlert(env, result);
+      const allowed = await shouldSendAlert(env, result);
 
-      if (!check.allowed) {
+      if (!allowed) {
         result.alert = {
           sent: false,
-          reason: check.reason
+          reason: "Signal identique deja notifie pendant le delai anti-doublon."
         };
       } else {
-        const alertResult = await sendAlert(env, result);
+        const telegramResult = await sendTelegram(
+          env,
+          buildAlertMessage(result)
+        );
 
-        result.alert = alertResult;
+        await rememberAlert(env, result, telegramResult);
 
-        if (alertResult.sent) {
-          await rememberAlert(env, result);
-        }
+        result.alert = {
+          sent: true,
+          channel: "Telegram",
+          messageId: telegramResult.messageId
+        };
       }
+
     } catch (error) {
       result.alert = {
         sent: false,
@@ -1304,128 +1185,7 @@ async function handleScalp(request, env) {
     }
   }
 
-  return json(
-    result,
-    result.ok === false ? 503 : 200
-  );
-}
-
-// --------------------------------------------------
-// ROUTE BACKTEST
-// --------------------------------------------------
-
-async function handleBacktest(request) {
-  const settings = getSettings(
-    new URL(request.url)
-  );
-
-  const [m1, m5, m15] = await Promise.all([
-    fetchCandles("M1", CONFIG.MAX_CANDLES),
-    fetchCandles("M5", CONFIG.MAX_CANDLES),
-    fetchCandles("M15", CONFIG.MAX_CANDLES)
-  ]);
-
-  const quality = {
-    M1: inspectDataQuality(m1, "M1"),
-    M5: inspectDataQuality(m5, "M5"),
-    M15: inspectDataQuality(m15, "M15")
-  };
-
-  const dataQualityOk = Object.values(quality)
-    .every(item => item.ok);
-
-  if (!dataQualityOk) {
-    return json({
-      ok: false,
-      mode: "SIGNAL ACTUEL",
-      signal: "ATTENDRE",
-      error: "Qualite des donnees insuffisante.",
-      dataQuality: quality
-    }, 503);
-  }
-
-  const result = analyzeSetup(
-    m1,
-    m5,
-    m15,
-    settings
-  );
-
-  result.dataQuality = quality;
-
-  return json({
-    ok: true,
-
-    mode: "SIGNAL ACTUEL",
-
-    warning:
-      "Ce endpoint ne realise pas un backtest historique. " +
-      "Il renvoie le signal actuel et ne mesure pas la rentabilite.",
-
-    signal: result
-  });
-}
-
-// --------------------------------------------------
-// CONTROLE PERIODIQUE VIA CRON
-// --------------------------------------------------
-
-async function scheduledCheck(env) {
-  const capital = CONFIG.DEFAULT_CAPITAL;
-
-  const settings = {
-    capital,
-    target: CONFIG.TARGET_MOVE,
-    stopDistance: CONFIG.STOP_MOVE,
-    minScore: CONFIG.MIN_SCORE,
-    leverage: CONFIG.LEVERAGE,
-
-    lots: Number(
-      ((capital / 1000) * CONFIG.LOTS_PER_1000).toFixed(4)
-    )
-  };
-
-  const signal = await getSignal(settings);
-
-  if (env.TP_STATE) {
-    await env.TP_STATE.put(
-      "last_signal",
-      JSON.stringify(signal),
-      {
-        expirationTtl: 7 * 24 * 60 * 60
-      }
-    );
-  }
-
-  if (
-    !signal.ok ||
-    signal.signal === "ATTENDRE"
-  ) {
-    return signal;
-  }
-
-  const check = await shouldSendAlert(env, signal);
-
-  if (!check.allowed) {
-    return {
-      ...signal,
-      alert: {
-        sent: false,
-        reason: check.reason
-      }
-    };
-  }
-
-  const alertResult = await sendAlert(env, signal);
-
-  if (alertResult.sent) {
-    await rememberAlert(env, signal);
-  }
-
-  return {
-    ...signal,
-    alert: alertResult
-  };
+  return json(result, result.ok === false ? 503 : 200);
 }
 
 // --------------------------------------------------
@@ -1437,53 +1197,16 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
 
-    // CORS
-
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "content-type, x-test-key"
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-headers": "content-type"
         }
       });
     }
-
-  // TEST TELEGRAM SECURISE
-// Version redeployee depuis GitHub.
-// Cette route est traitee avant le filtre GET.
-
-    if (path === "/telegram-test") {
-      if (request.method !== "POST") {
-        return json({
-          ok: false,
-          error: "Methode POST requise."
-        }, 405);
-      }
-
-      const testKey = request.headers.get("x-test-key");
-
-      if (
-        !env.TELEGRAM_TEST_KEY ||
-        !testKey ||
-        testKey !== env.TELEGRAM_TEST_KEY
-      ) {
-        return json({
-          ok: false,
-          error: "Acces non autorise."
-        }, 401);
-      }
-
-      const result = await sendTelegramTest(env);
-
-      return json(
-        result,
-        result.ok ? 200 : 502
-      );
-    }
-
-    // LES AUTRES ROUTES UTILISENT GET UNIQUEMENT
 
     if (request.method !== "GET") {
       return json({
@@ -1493,11 +1216,12 @@ export default {
     }
 
     try {
-      if (
-        path === "/" ||
-        path === "/health"
-      ) {
+      if (path === "/" || path === "/health") {
         return await handleHealth(env);
+      }
+
+      if (path === "/status") {
+        return await handleStatus(env);
       }
 
       if (path === "/gold") {
@@ -1512,35 +1236,27 @@ export default {
         return await handleScalp(request, env);
       }
 
-      if (path === "/backtest") {
-        return await handleBacktest(request);
-      }
-
       return json({
         ok: false,
         error: "Route inconnue",
-
         available: [
           "/health",
+          "/status",
           "/gold",
           "/analyze",
-          "/scalp",
-          "/backtest",
-          "POST /telegram-test"
+          "/scalp"
         ]
       }, 404);
 
     } catch (error) {
+      console.error("TradePilot request error:", error.message);
+
       return json({
         ok: false,
-
         instrument: CONFIG.INSTRUMENT,
         signal: "ATTENDRE",
-
         error: "Erreur pendant l'analyse du signal.",
-
         details: error.message,
-
         timestamp: new Date().toISOString()
       }, 500);
     }
@@ -1548,28 +1264,9 @@ export default {
 
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
-      scheduledCheck(env).catch(async (error) => {
-        if (env.TP_STATE) {
-          await env.TP_STATE.put(
-            "last_error",
-            JSON.stringify({
-              error: error.message,
-              time: new Date().toISOString()
-            }),
-            {
-              expirationTtl: 24 * 60 * 60
-            }
-          );
-        }
+      scheduledCheck(env).catch(error => {
+        console.error("Scheduled execution failed:", error.message);
       })
     );
   }
 };
-
-
-
-
-
-
-
-       
