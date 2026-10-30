@@ -14,8 +14,7 @@
  * Binding KV :
  * TP_STATE -> namespace TRADEPILOT_STATE
  *
- * Cron Cloudflare à configurer :
- * */3 * * * *
+ * Cron Cloudflare : fréquence de 3 minutes.
  */
 
 const CONFIG = {
@@ -1387,4 +1386,3 @@ export default {
     );
   }
 };
-
