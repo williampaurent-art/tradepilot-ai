@@ -2,12 +2,13 @@
 
 
 
+
 /**
  * TradePilot AI — XAUUSD
  * Cloudflare Worker
  *
  * Signaux selectifs avec confirmation de pullback M1.
- * Alertes webhook.
+ * Alertes Telegram.
  * Aucun ordre reel n'est execute.
  *
  * Capital de reference : 1000 USD
@@ -16,9 +17,10 @@
  * Objectif : 2 USD de mouvement XAUUSD
  * Stop : 7 USD de mouvement XAUUSD
  *
- * Variables Cloudflare optionnelles :
- * ALERT_WEBHOOK : URL HTTPS du webhook d'alerte
- * TP_STATE       : binding KV pour memoriser les signaux
+ * Variables Cloudflare :
+ * TELEGRAM_BOT_TOKEN : Secret contenant le token du bot Telegram
+ * TELEGRAM_CHAT_ID   : ID du chat Telegram
+ * TP_STATE           : binding KV pour memoriser les signaux
  */
 
 const CONFIG = {
@@ -915,14 +917,17 @@ async function getSignal(settings) {
 }
 
 // --------------------------------------------------
-// ALERTES WEBHOOK
+// ALERTES TELEGRAM
 // --------------------------------------------------
 
 async function sendAlert(env, signal) {
-  if (!env.ALERT_WEBHOOK) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+
+  if (!token || !chatId) {
     return {
       sent: false,
-      reason: "ALERT_WEBHOOK non configure"
+      reason: "TELEGRAM_BOT_TOKEN ou TELEGRAM_CHAT_ID non configure"
     };
   }
 
@@ -936,49 +941,163 @@ async function sendAlert(env, signal) {
     };
   }
 
-  const message = {
-    text:
-      `${CONFIG.SERVICE}: ${signal.signal} ${CONFIG.INSTRUMENT}\n` +
-      `Score technique: ${signal.score}/100\n` +
-      `Entree indicative: ${signal.entry}\n` +
-      `Objectif: ${signal.targetPrice}\n` +
-      `Stop: ${signal.stopPrice}\n` +
-      `Capital: ${signal.capital} USD\n` +
-      `Taille indicative: ${signal.lotSize} lot\n` +
-      `Levier indicatif: x${signal.leverage}\n` +
-      `Aucun ordre reel execute.`,
+  const emoji = signal.signal === "ACHAT" ? "🟢" : "🔴";
 
-    signal
-  };
+  const reasons = Array.isArray(signal.reasons)
+    ? signal.reasons.map(reason => `• ${reason}`).join("\n")
+    : "Non renseigne";
 
-  const response = await fetch(env.ALERT_WEBHOOK, {
+  const message = [
+    `${emoji} TRADEPILOT AI — ${signal.signal}`,
+    "",
+    `Instrument : ${signal.instrument}`,
+    `Score technique : ${signal.score}/100`,
+    "",
+    `Prix d'entree indicatif : ${signal.entry}`,
+    `Take Profit : ${signal.targetPrice}`,
+    `Stop Loss : ${signal.stopPrice}`,
+    "",
+    `Capital de reference : ${signal.capital} USD`,
+    `Taille indicative : ${signal.lotSize} lot`,
+    `Levier indicatif : x${signal.leverage}`,
+    `Ratio gain/risque theorique : ${signal.estimatedRiskReward}`,
+    "",
+    "Confirmation technique :",
+    reasons,
+    "",
+    `Tendance M1 : ${signal.market?.trendM1 ?? "N/A"}`,
+    `Tendance M5 : ${signal.market?.trendM5 ?? "N/A"}`,
+    `Tendance M15 : ${signal.market?.trendM15 ?? "N/A"}`,
+    `RSI M1 : ${signal.market?.rsiM1 ?? "N/A"}`,
+    `RSI M5 : ${signal.market?.rsiM5 ?? "N/A"}`,
+    "",
+    `Date : ${signal.generatedAt}`,
+    "",
+    "⚠️ Signal indicatif uniquement.",
+    "AUCUN ORDRE REEL N'EST EXECUTE."
+  ].join("\n");
+
+  const telegramUrl =
+    `https://api.telegram.org/bot${token}/sendMessage`;
+
+  const response = await fetch(telegramUrl, {
     method: "POST",
-
     headers: {
       "content-type": "application/json"
     },
-
-    body: JSON.stringify(message),
-
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: message,
+      disable_web_page_preview: true
+    }),
     signal: AbortSignal.timeout(10000)
   });
 
-  if (!response.ok) {
+  let result;
+
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error("Reponse Telegram illisible.");
+  }
+
+  if (!response.ok || result.ok !== true) {
     throw new Error(
-      `Echec du webhook d'alerte : HTTP ${response.status}`
+      `Erreur Telegram : ${result.description || response.status}`
     );
   }
 
   return {
-    sent: true
+    sent: true,
+    channel: "Telegram",
+    messageId: result.result?.message_id ?? null
   };
+}
+
+// --------------------------------------------------
+// ANTI-DOUBLON DES ALERTES
+// --------------------------------------------------
+
+function getAlertKey(signal) {
+  return [
+    signal.signal,
+    signal.entry,
+    signal.targetPrice,
+    signal.stopPrice
+  ].join("_");
+}
+
+async function shouldSendAlert(env, signal) {
+  if (!env.TP_STATE) {
+    // Sans KV, aucun anti-doublon persistant n'est possible.
+    return {
+      allowed: true,
+      reason: "KV non configure : anti-doublon indisponible"
+    };
+  }
+
+  const previous = await env.TP_STATE.get("last_alert");
+
+  if (!previous) {
+    return {
+      allowed: true,
+      reason: "Premiere alerte"
+    };
+  }
+
+  try {
+    const old = JSON.parse(previous);
+    const sameSignal = old.key === getAlertKey(signal);
+    const recent =
+      Date.now() - old.time < CONFIG.COOLDOWN_MS;
+
+    if (sameSignal && recent) {
+      return {
+        allowed: false,
+        reason: "Signal identique deja envoye pendant le cooldown"
+      };
+    }
+  } catch {
+    // Un ancien etat invalide ne doit pas bloquer les alertes.
+  }
+
+  return {
+    allowed: true,
+    reason: "Nouveau signal ou cooldown termine"
+  };
+}
+
+async function rememberAlert(env, signal) {
+  if (!env.TP_STATE) {
+    return;
+  }
+
+  await env.TP_STATE.put(
+    "last_alert",
+    JSON.stringify({
+      key: getAlertKey(signal),
+      signal: signal.signal,
+      entry: signal.entry,
+      targetPrice: signal.targetPrice,
+      stopPrice: signal.stopPrice,
+      time: Date.now()
+    }),
+    {
+      expirationTtl: 24 * 60 * 60
+    }
+  );
 }
 
 // --------------------------------------------------
 // ROUTE HEALTH
 // --------------------------------------------------
 
-async function handleHealth() {
+async function handleHealth(env) {
+  const telegramConfigured = Boolean(
+    env.TELEGRAM_BOT_TOKEN &&
+    env.TELEGRAM_CHAT_ID
+  );
+
   return json({
     ok: true,
 
@@ -1007,7 +1126,12 @@ async function handleHealth() {
     },
 
     liveTrading: false,
-    automaticPushNotifications: false,
+
+    telegramAlertsEnabled: true,
+    telegramAlertsConfigured: telegramConfigured,
+    automaticPushNotifications: telegramConfigured,
+
+    kvConfigured: Boolean(env.TP_STATE),
 
     endpoints: [
       "/health",
@@ -1103,10 +1227,22 @@ async function handleScalp(request, env) {
     result.signal !== "ATTENDRE"
   ) {
     try {
-      result.alert = await sendAlert(
-        env,
-        result
-      );
+      const check = await shouldSendAlert(env, result);
+
+      if (!check.allowed) {
+        result.alert = {
+          sent: false,
+          reason: check.reason
+        };
+      } else {
+        const alertResult = await sendAlert(env, result);
+
+        result.alert = alertResult;
+
+        if (alertResult.sent) {
+          await rememberAlert(env, result);
+        }
+      }
     } catch (error) {
       result.alert = {
         sent: false,
@@ -1215,53 +1351,28 @@ async function scheduledCheck(env) {
     return signal;
   }
 
-  let shouldAlert = true;
+  const check = await shouldSendAlert(env, signal);
 
-  if (env.TP_STATE) {
-    const previous = await env.TP_STATE.get(
-      "last_alert"
-    );
-
-    if (previous) {
-      try {
-        const old = JSON.parse(previous);
-
-        const sameSignal =
-          old.signal === signal.signal &&
-          old.entry === signal.entry;
-
-        const recent =
-          Date.now() - old.time <
-          CONFIG.COOLDOWN_MS;
-
-        if (sameSignal && recent) {
-          shouldAlert = false;
-        }
-      } catch {
-        // Ignorer un etat KV invalide.
+  if (!check.allowed) {
+    return {
+      ...signal,
+      alert: {
+        sent: false,
+        reason: check.reason
       }
-    }
+    };
   }
 
-  if (shouldAlert) {
-    await sendAlert(env, signal);
+  const alertResult = await sendAlert(env, signal);
 
-    if (env.TP_STATE) {
-      await env.TP_STATE.put(
-        "last_alert",
-        JSON.stringify({
-          signal: signal.signal,
-          entry: signal.entry,
-          time: Date.now()
-        }),
-        {
-          expirationTtl: 24 * 60 * 60
-        }
-      );
-    }
+  if (alertResult.sent) {
+    await rememberAlert(env, signal);
   }
 
-  return signal;
+  return {
+    ...signal,
+    alert: alertResult
+  };
 }
 
 // --------------------------------------------------
@@ -1297,7 +1408,7 @@ export default {
         path === "/" ||
         path === "/health"
       ) {
-        return await handleHealth();
+        return await handleHealth(env);
       }
 
       if (path === "/gold") {
