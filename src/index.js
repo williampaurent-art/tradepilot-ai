@@ -1,4 +1,5 @@
 
+
 /**
  * TradePilot AI — XAUUSD
  * Cloudflare Worker
@@ -32,11 +33,9 @@ const CONFIG = {
   MAX_CANDLES: 250,
   COOLDOWN_MS: 5 * 60 * 1000,
 
-  // Fraicheur : deux intervalles + une minute de marge.
   FRESHNESS_INTERVALS: 2,
   FRESHNESS_GRACE_MS: 60 * 1000,
 
-  // Controle des interruptions recentes.
   QUALITY_LOOKBACK_MS: 2 * 60 * 60 * 1000,
   GAP_TOLERANCE_MS: 30 * 1000,
 
@@ -84,6 +83,10 @@ function numberParam(url, name, fallback, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+// --------------------------------------------------
+// PARAMETRES ET CALCUL DES LOTS
+// --------------------------------------------------
+
 function getSettings(url) {
   const capital = numberParam(
     url, "capital", CONFIG.DEFAULT_CAPITAL, 1, 100_000_000
@@ -97,21 +100,17 @@ function getSettings(url) {
     url, "stopDistance", CONFIG.STOP_MOVE, 0.01, 1000
   );
 
-  const riskPercent = numberParam(
-    url, "riskPercent", 50, 0.01, 100
-  );
-
   const minScore = numberParam(
     url, "minScore", CONFIG.MIN_SCORE, 50, 100
   );
 
+  // 0.5 lot pour chaque tranche de 1000 USD.
   const lots = (capital / 1000) * CONFIG.LOTS_PER_1000;
 
   return {
     capital,
     target,
     stopDistance,
-    riskPercent,
     minScore,
     leverage: CONFIG.LEVERAGE,
     lots: Number(lots.toFixed(4))
@@ -270,8 +269,7 @@ function validateFreshness(bars, timeframe = "M1") {
     };
   }
 
-  // Le timestamp de la source est suppose correspondre
-  // au debut de la bougie.
+  // Hypothese : le timestamp correspond au debut de bougie.
   const candleCloseTime = last.time + tf.ms;
   const ageMs = Date.now() - candleCloseTime;
 
@@ -307,11 +305,8 @@ function inspectDataQuality(bars, timeframe = "M1") {
   }
 
   const freshness = validateFreshness(bars, timeframe);
-
   const last = bars[bars.length - 1];
 
-  // On examine uniquement les interruptions proches
-  // de la derniere bougie, pas tout l'historique.
   const cutoff =
     last.time - CONFIG.QUALITY_LOOKBACK_MS;
 
@@ -414,7 +409,6 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
   const now = Date.now();
 
   // Hypothese : timestamp = debut de bougie.
-  // Les bougies encore ouvertes sont exclues.
   const closed = bars.filter((bar) =>
     !bar.isOpen &&
     bar.time + tf.ms <= now
@@ -757,10 +751,11 @@ function analyzeSetup(m1, m5, m15, settings) {
     stopPrice,
 
     capital: settings.capital,
-    lotSize: settings.lots,
-    leverage: settings.leverage,
 
-    riskPercentRequested: settings.riskPercent,
+    lotSize: settings.lots,
+    lotSizingRule: "0.5 lot par tranche de 1000 USD",
+
+    leverage: settings.leverage,
 
     estimatedRiskReward: Number(
       (settings.target / settings.stopDistance).toFixed(3)
@@ -879,6 +874,7 @@ async function sendAlert(env, signal) {
       `Entree indicative: ${signal.entry}\n` +
       `Objectif: ${signal.targetPrice}\n` +
       `Stop: ${signal.stopPrice}\n` +
+      `Capital: ${signal.capital} USD\n` +
       `Taille indicative: ${signal.lotSize} lot\n` +
       `Levier indicatif: x${signal.leverage}\n` +
       `Aucun ordre reel execute.`,
@@ -924,6 +920,7 @@ async function handleHealth() {
     strategy: {
       capitalReference: CONFIG.DEFAULT_CAPITAL,
       lotsPer1000: CONFIG.LOTS_PER_1000,
+      lotSizingRule: "0.5 lot par tranche de 1000 USD",
       leverage: CONFIG.LEVERAGE,
       targetMove: CONFIG.TARGET_MOVE,
       stopMove: CONFIG.STOP_MOVE,
@@ -1115,14 +1112,18 @@ async function handleBacktest(request) {
 // --------------------------------------------------
 
 async function scheduledCheck(env) {
+  const capital = CONFIG.DEFAULT_CAPITAL;
+
   const settings = {
-    capital: CONFIG.DEFAULT_CAPITAL,
+    capital,
     target: CONFIG.TARGET_MOVE,
     stopDistance: CONFIG.STOP_MOVE,
-    riskPercent: 50,
     minScore: CONFIG.MIN_SCORE,
     leverage: CONFIG.LEVERAGE,
-    lots: CONFIG.LOTS_PER_1000
+
+    lots: Number(
+      ((capital / 1000) * CONFIG.LOTS_PER_1000).toFixed(4)
+    )
   };
 
   const signal = await getSignal(settings);
