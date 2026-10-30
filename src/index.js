@@ -1450,8 +1450,9 @@ export default {
       });
     }
 
-    // TEST TELEGRAM SECURISE
-    // Cette route est traitee avant le filtre GET.
+  // TEST TELEGRAM SECURISE
+// Version redeployee depuis GitHub.
+// Cette route est traitee avant le filtre GET.
 
     if (path === "/telegram-test") {
       if (request.method !== "POST") {
