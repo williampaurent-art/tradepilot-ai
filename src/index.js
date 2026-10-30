@@ -1,11 +1,13 @@
 
 
 
+
 /**
  * TradePilot AI — XAUUSD
  * Cloudflare Worker
  *
  * Signaux selectifs avec confirmation de pullback M1.
+ * Alertes webhook.
  * Aucun ordre reel n'est execute.
  *
  * Capital de reference : 1000 USD
@@ -39,10 +41,6 @@ const CONFIG = {
 
   QUALITY_LOOKBACK_MS: 2 * 60 * 60 * 1000,
   GAP_TOLERANCE_MS: 30 * 1000,
-
-  // Parametres du pullback M1
-  PULLBACK_LOOKBACK: 5,
-  PULLBACK_ATR_TOLERANCE: 0.30,
 
   SOURCE_URL: "https://biquote.io/api/XAUUSD/ohlc"
 };
@@ -274,6 +272,7 @@ function validateFreshness(bars, timeframe = "M1") {
     };
   }
 
+  // Hypothese : le timestamp correspond au debut de bougie.
   const candleCloseTime = last.time + tf.ms;
   const ageMs = Date.now() - candleCloseTime;
 
@@ -412,6 +411,7 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
 
   const now = Date.now();
 
+  // Hypothese : timestamp = debut de bougie.
   const closed = bars.filter((bar) =>
     !bar.isOpen &&
     bar.time + tf.ms <= now
@@ -565,97 +565,8 @@ function roundPrice(value) {
 }
 
 // --------------------------------------------------
-// DETECTION DU PULLBACK M1
-// --------------------------------------------------
-
-function detectPullback(bars, indicator, direction) {
-  if (
-    !Array.isArray(bars) ||
-    bars.length < CONFIG.PULLBACK_LOOKBACK + 2 ||
-    indicator.ema9 === null ||
-    indicator.ema21 === null ||
-    indicator.atr === null
-  ) {
-    return {
-      confirmed: false,
-      touched: false,
-      trigger: false,
-      reason: "Historique ou indicateurs insuffisants"
-    };
-  }
-
-  const last = bars[bars.length - 1];
-
-  // Les bougies precedant la bougie de confirmation.
-  const previousBars = bars.slice(
-    -(CONFIG.PULLBACK_LOOKBACK + 1),
-    -1
-  );
-
-  const tolerance = Math.max(
-    indicator.atr * CONFIG.PULLBACK_ATR_TOLERANCE,
-    0.01
-  );
-
-  const emaLevels = [
-    indicator.ema9,
-    indicator.ema21
-  ];
-
-  // Recherche d'un retour du prix vers les EMA.
-  const touched = previousBars.some(bar => {
-    return emaLevels.some(level => {
-      return (
-        bar.low <= level + tolerance &&
-        bar.high >= level - tolerance
-      );
-    });
-  });
-
-  if (!touched) {
-    return {
-      confirmed: false,
-      touched: false,
-      trigger: false,
-      reason: "Aucun retour vers les EMA 9/21"
-    };
-  }
-
-  let trigger = false;
-
-  if (direction === "ACHAT") {
-    trigger =
-      last.close > last.open &&
-      last.close > indicator.ema9;
-  }
-
-  if (direction === "VENTE") {
-    trigger =
-      last.close < last.open &&
-      last.close < indicator.ema9;
-  }
-
-  if (!trigger) {
-    return {
-      confirmed: false,
-      touched: true,
-      trigger: false,
-      reason: "Pullback detecte, mais reprise non confirmee"
-    };
-  }
-
-  return {
-    confirmed: true,
-    touched: true,
-    trigger: true,
-    reason: direction === "ACHAT"
-      ? "Pullback suivi d'une reprise haussiere au-dessus de l'EMA 9"
-      : "Pullback suivi d'une reprise baissiere sous l'EMA 9"
-  };
-}
-
-// --------------------------------------------------
 // MOTEUR DE SCENARIOS ET DE SIGNAUX
+// AVEC CONFIRMATION DE PULLBACK M1
 // --------------------------------------------------
 
 function analyzeSetup(m1, m5, m15, settings) {
@@ -673,7 +584,8 @@ function analyzeSetup(m1, m5, m15, settings) {
   let buyScore = 0;
   let sellScore = 0;
 
-  // Direction principale : M15 et confirmation M5.
+  // 1. TENDANCES MULTI-TIMEFRAMES
+
   if (trend15 === "HAUSSIER") {
     buyScore += 20;
     buyReasons.push("Tendance M15 haussiere");
@@ -682,6 +594,11 @@ function analyzeSetup(m1, m5, m15, settings) {
   if (trend5 === "HAUSSIER") {
     buyScore += 20;
     buyReasons.push("Tendance M5 haussiere");
+  }
+
+  if (trend1 === "HAUSSIER") {
+    buyScore += 20;
+    buyReasons.push("Tendance M1 haussiere");
   }
 
   if (trend15 === "BAISSIER") {
@@ -694,18 +611,13 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellReasons.push("Tendance M5 baissiere");
   }
 
-  // Tendance M1 : confirmation supplementaire.
-  if (trend1 === "HAUSSIER") {
-    buyScore += 10;
-    buyReasons.push("Tendance M1 haussiere");
-  }
-
   if (trend1 === "BAISSIER") {
-    sellScore += 10;
+    sellScore += 20;
     sellReasons.push("Tendance M1 baissiere");
   }
 
-  // RSI M1.
+  // 2. CONFIRMATION RSI
+
   if (i1.rsi !== null) {
     if (i1.rsi >= 50 && i1.rsi <= 68) {
       buyScore += 15;
@@ -718,7 +630,6 @@ function analyzeSetup(m1, m5, m15, settings) {
     }
   }
 
-  // RSI M5.
   if (i5.rsi !== null) {
     if (i5.rsi >= 50 && i5.rsi <= 70) {
       buyScore += 10;
@@ -731,30 +642,84 @@ function analyzeSetup(m1, m5, m15, settings) {
     }
   }
 
-  // Pullback M1.
-  const buyPullback = detectPullback(
-    m1,
-    i1,
-    "ACHAT"
-  );
+  // 3. DETECTION DU PULLBACK M1
 
-  const sellPullback = detectPullback(
-    m1,
-    i1,
-    "VENTE"
-  );
+  const last = m1[m1.length - 1];
+  const previous = m1[m1.length - 2];
 
-  if (buyPullback.confirmed) {
-    buyScore += 25;
-    buyReasons.push(buyPullback.reason);
+  // Les cinq bougies precedentes sont examinees.
+  const recentBars = m1.slice(-6, -1);
+
+  const ema9 = i1.ema9;
+  const ema21 = i1.ema21;
+
+  const tolerance = i1.atr !== null
+    ? i1.atr * 0.15
+    : 0;
+
+  // Recherche d'un retour du prix vers EMA 9 ou EMA 21.
+
+  const pullbackTouched = recentBars.some(bar => {
+    const touchesEma9 =
+      ema9 !== null &&
+      bar.low <= ema9 + tolerance &&
+      bar.high >= ema9 - tolerance;
+
+    const touchesEma21 =
+      ema21 !== null &&
+      bar.low <= ema21 + tolerance &&
+      bar.high >= ema21 - tolerance;
+
+    return touchesEma9 || touchesEma21;
+  });
+
+  // Reprise baissiere apres le pullback.
+
+  const bearishResume =
+    pullbackTouched &&
+    ema9 !== null &&
+    last.close < ema9 &&
+    last.close < last.open &&
+    last.close < previous.close;
+
+  // Reprise haussiere apres le pullback.
+
+  const bullishResume =
+    pullbackTouched &&
+    ema9 !== null &&
+    last.close > ema9 &&
+    last.close > last.open &&
+    last.close > previous.close;
+
+  // Le pullback est valide uniquement si M5 et M15
+  // confirment la meme direction.
+
+  if (
+    bearishResume &&
+    trend5 === "BAISSIER" &&
+    trend15 === "BAISSIER"
+  ) {
+    sellScore += 15;
+
+    sellReasons.push(
+      "Pullback M1 confirme : rejet EMA 9/21 et reprise baissiere"
+    );
   }
 
-  if (sellPullback.confirmed) {
-    sellScore += 25;
-    sellReasons.push(sellPullback.reason);
+  if (
+    bullishResume &&
+    trend5 === "HAUSSIER" &&
+    trend15 === "HAUSSIER"
+  ) {
+    buyScore += 15;
+
+    buyReasons.push(
+      "Pullback M1 confirme : rejet EMA 9/21 et reprise haussiere"
+    );
   }
 
-  // Filtre de volatilite.
+  // 4. FILTRE DE VOLATILITE
+
   const atr = i1.atr;
 
   const atrPercent =
@@ -781,24 +746,17 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellScore = Math.min(sellScore, 49);
   }
 
-  // M5 et M15 doivent etre dans la meme direction.
+  // 5. ALIGNEMENT OBLIGATOIRE M5 / M15
+
   if (trend5 !== trend15 || trend5 === "NEUTRE") {
     buyScore = Math.min(buyScore, 69);
     sellScore = Math.min(sellScore, 69);
   }
 
-  // Le pullback est obligatoire pour declencher un signal.
-  if (!buyPullback.confirmed) {
-    buyScore = Math.min(buyScore, 74);
-  }
-
-  if (!sellPullback.confirmed) {
-    sellScore = Math.min(sellScore, 74);
-  }
-
-  // Les scores restent bornes entre 0 et 100.
   buyScore = Math.min(100, buyScore);
   sellScore = Math.min(100, sellScore);
+
+  // 6. GENERATION DU SIGNAL
 
   let signal = "ATTENDRE";
   let score = Math.max(buyScore, sellScore);
@@ -813,9 +771,6 @@ function analyzeSetup(m1, m5, m15, settings) {
   let stopPrice = null;
 
   if (
-    buyPullback.confirmed &&
-    trend5 === "HAUSSIER" &&
-    trend15 === "HAUSSIER" &&
     buyScore >= settings.minScore &&
     buyScore > sellScore
   ) {
@@ -832,9 +787,6 @@ function analyzeSetup(m1, m5, m15, settings) {
     );
 
   } else if (
-    sellPullback.confirmed &&
-    trend5 === "BAISSIER" &&
-    trend15 === "BAISSIER" &&
     sellScore >= settings.minScore &&
     sellScore > buyScore
   ) {
@@ -851,25 +803,12 @@ function analyzeSetup(m1, m5, m15, settings) {
     );
   }
 
-  if (signal === "ATTENDRE") {
-    reasons = [
-      "Configuration incomplete : aucune entree valide.",
-      `Pullback achat : ${buyPullback.reason}.`,
-      `Pullback vente : ${sellPullback.reason}.`,
-      `Score achat : ${buyScore}/100.`,
-      `Score vente : ${sellScore}/100.`,
-      `Seuil minimum : ${settings.minScore}/100.`
-    ];
-  }
-
   return {
     ok: true,
     instrument: CONFIG.INSTRUMENT,
 
     signal,
     score,
-
-    // Score technique, pas probabilite statistique de gain.
     confidence: `${score}%`,
 
     entry: roundPrice(entry),
@@ -911,12 +850,7 @@ function analyzeSetup(m1, m5, m15, settings) {
           ? null
           : Number(atr.toFixed(4)),
 
-      volatility,
-
-      pullbackM1: {
-        buy: buyPullback,
-        sell: sellPullback
-      }
+      volatility
     },
 
     reasons,
@@ -1061,9 +995,7 @@ async function handleHealth() {
       stopMove: CONFIG.STOP_MOVE,
       minimumScore: CONFIG.MIN_SCORE,
       selectiveSignals: true,
-      pullbackEnabled: true,
-      pullbackLookback: CONFIG.PULLBACK_LOOKBACK,
-      pullbackAtrTolerance: CONFIG.PULLBACK_ATR_TOLERANCE
+      pullbackConfirmation: true
     },
 
     dataValidation: {
