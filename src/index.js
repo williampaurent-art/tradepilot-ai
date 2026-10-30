@@ -1,7 +1,5 @@
 
 /**
- * 
-/**
  * TRADEPILOT AI — XAUUSD
  * Cloudflare Worker
  *
@@ -9,13 +7,14 @@
  * Aucun ordre réel n'est exécuté.
  *
  * Variables Cloudflare :
- * TELEGRAM_BOT_TOKEN : secret du bot Telegram
+ * TELEGRAM_BOT_TOKEN : secret Telegram
  * TELEGRAM_CHAT_ID   : identifiant du chat Telegram
+ * TELEGRAM_TEST_KEY  : secret de protection du test Telegram
  *
  * Binding KV :
  * TP_STATE -> namespace TRADEPILOT_STATE
  *
- * Cron :
+ * Cron Cloudflare à configurer :
  * */3 * * * *
  */
 
@@ -72,9 +71,7 @@ function json(data, status = 200) {
 function numberParam(url, name, fallback, min, max) {
   const raw = url.searchParams.get(name);
 
-  if (raw === null || raw.trim() === "") {
-    return fallback;
-  }
+  if (raw === null || raw.trim() === "") return fallback;
 
   const value = Number(raw);
 
@@ -118,7 +115,7 @@ function getSettings(url) {
 }
 
 // --------------------------------------------------
-// TIMESTAMPS ET BOUGIES
+// NORMALISATION DES TIMESTAMPS ET BOUGIES
 // --------------------------------------------------
 
 function toTimestamp(value) {
@@ -283,14 +280,12 @@ function inspectDataQuality(bars, timeframe = "M1") {
   const last = bars[bars.length - 1];
 
   const cutoff = last.time - CONFIG.QUALITY_LOOKBACK_MS;
-
   const recentBars = bars.filter(bar => bar.time >= cutoff);
   const gaps = [];
 
   for (let i = 1; i < recentBars.length; i++) {
     const previous = recentBars[i - 1];
     const current = recentBars[i];
-
     const delta = current.time - previous.time;
 
     if (delta > tf.ms + CONFIG.GAP_TOLERANCE_MS) {
@@ -329,7 +324,7 @@ function inspectDataQuality(bars, timeframe = "M1") {
 }
 
 // --------------------------------------------------
-// RECUPERATION DES DONNEES
+// RECUPERATION DES DONNEES DE MARCHE
 // --------------------------------------------------
 
 async function fetchCandles(timeframe = "M1", limit = 200) {
@@ -497,7 +492,7 @@ function roundPrice(value) {
 }
 
 // --------------------------------------------------
-// ANALYSE DES SIGNAUX
+// MOTEUR DE SCENARIOS ET DE SIGNAUX
 // --------------------------------------------------
 
 function analyzeSetup(m1, m5, m15, settings) {
@@ -618,7 +613,10 @@ function analyzeSetup(m1, m5, m15, settings) {
 
   let signal = "ATTENDRE";
   let score = Math.max(buyScore, sellScore);
-  let reasons = ["Aucune configuration ne satisfait les filtres."];
+
+  let reasons = [
+    "Aucune configuration ne satisfait les filtres."
+  ];
 
   const entry = i1.price;
 
@@ -832,7 +830,12 @@ async function readKV(env, key) {
   }
 }
 
-async function writeKV(env, key, value, ttl = 7 * 24 * 60 * 60) {
+async function writeKV(
+  env,
+  key,
+  value,
+  ttl = 7 * 24 * 60 * 60
+) {
   if (!env.TP_STATE) return false;
 
   await env.TP_STATE.put(
@@ -895,6 +898,7 @@ async function saveCronStatus(env, data) {
   };
 
   await writeKV(env, "cron_status", status);
+
   return status;
 }
 
@@ -938,6 +942,7 @@ async function scheduledCheck(env) {
       });
 
       console.log("TradePilot Cron: invalid data");
+
       return signal;
     }
 
@@ -952,6 +957,7 @@ async function scheduledCheck(env) {
       });
 
       console.log("TradePilot Cron: ATTENDRE", signal.score);
+
       return signal;
     }
 
@@ -969,11 +975,14 @@ async function scheduledCheck(env) {
       });
 
       console.log("TradePilot Cron: duplicate blocked");
+
       return signal;
     }
 
-    const message = buildAlertMessage(signal);
-    const telegramResult = await sendTelegram(env, message);
+    const telegramResult = await sendTelegram(
+      env,
+      buildAlertMessage(signal)
+    );
 
     await rememberAlert(env, signal, telegramResult);
 
@@ -1034,6 +1043,7 @@ async function handleHealth(env) {
     },
 
     telegramConfigured: telegramConfigured(env),
+    telegramTestConfigured: Boolean(env.TELEGRAM_TEST_KEY),
     kvConfigured: Boolean(env.TP_STATE),
 
     liveTrading: false,
@@ -1048,7 +1058,9 @@ async function handleHealth(env) {
       "/gold?timeframe=M5",
       "/gold?timeframe=M15",
       "/analyze",
-      "/scalp"
+      "/scalp",
+      "/backtest",
+      "POST /telegram-test"
     ],
 
     timestamp: new Date().toISOString()
@@ -1069,13 +1081,12 @@ async function handleStatus(env) {
     ok: true,
     service: CONFIG.SERVICE,
 
-    cronConfiguredInCode: true,
     kvConfigured: Boolean(env.TP_STATE),
     telegramConfigured: telegramConfigured(env),
 
     cron: cron || {
       status: "NOT_YET_EXECUTED",
-      message: "Aucune execution Cron enregistree pour le moment."
+      message: "Aucune execution Cron enregistree."
     },
 
     lastSignal: lastSignal
@@ -1141,7 +1152,7 @@ async function handleAnalyze(request) {
 }
 
 // --------------------------------------------------
-// ROUTE SCALP — TEST MANUEL
+// ROUTE SCALP
 // --------------------------------------------------
 
 async function handleScalp(request, env) {
@@ -1189,6 +1200,99 @@ async function handleScalp(request, env) {
 }
 
 // --------------------------------------------------
+// ROUTE BACKTEST
+// --------------------------------------------------
+
+async function handleBacktest(request) {
+  const settings = getSettings(new URL(request.url));
+
+  const [m1, m5, m15] = await Promise.all([
+    fetchCandles("M1", CONFIG.MAX_CANDLES),
+    fetchCandles("M5", CONFIG.MAX_CANDLES),
+    fetchCandles("M15", CONFIG.MAX_CANDLES)
+  ]);
+
+  const quality = {
+    M1: inspectDataQuality(m1, "M1"),
+    M5: inspectDataQuality(m5, "M5"),
+    M15: inspectDataQuality(m15, "M15")
+  };
+
+  const dataQualityOk = Object.values(quality)
+    .every(item => item.ok);
+
+  if (!dataQualityOk) {
+    return json({
+      ok: false,
+      mode: "SIGNAL ACTUEL",
+      signal: "ATTENDRE",
+      error: "Qualite des donnees insuffisante.",
+      dataQuality: quality
+    }, 503);
+  }
+
+  const result = analyzeSetup(m1, m5, m15, settings);
+  result.dataQuality = quality;
+
+  return json({
+    ok: true,
+    mode: "SIGNAL ACTUEL",
+    warning:
+      "Ce endpoint ne realise pas un backtest historique. " +
+      "Il renvoie le signal actuel et ne mesure pas la rentabilite.",
+    signal: result
+  });
+}
+
+// --------------------------------------------------
+// ROUTE TELEGRAM TEST
+// --------------------------------------------------
+
+async function handleTelegramTest(request, env) {
+  if (!env.TELEGRAM_TEST_KEY) {
+    return json({
+      ok: false,
+      error: "TELEGRAM_TEST_KEY non configure."
+    }, 503);
+  }
+
+  const suppliedKey = request.headers.get("x-test-key");
+
+  if (!suppliedKey || suppliedKey !== env.TELEGRAM_TEST_KEY) {
+    return json({
+      ok: false,
+      error: "Cle de test invalide."
+    }, 401);
+  }
+
+  if (!telegramConfigured(env)) {
+    return json({
+      ok: false,
+      error: "Configuration Telegram manquante."
+    }, 503);
+  }
+
+  try {
+    const result = await sendTelegram(
+      env,
+      "✅ TradePilot AI : notification Telegram de test réussie.\nAucun ordre réel exécuté."
+    );
+
+    return json({
+      ok: true,
+      message: "Notification Telegram envoyee.",
+      messageId: result.messageId
+    });
+
+  } catch (error) {
+    return json({
+      ok: false,
+      error: error.message
+    }, 502);
+  }
+}
+
+// --------------------------------------------------
 // WORKER CLOUDFLARE
 // --------------------------------------------------
 
@@ -1202,20 +1306,24 @@ export default {
         status: 204,
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, OPTIONS",
-          "access-control-allow-headers": "content-type"
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "content-type, x-test-key"
         }
       });
     }
 
-    if (request.method !== "GET") {
-      return json({
-        ok: false,
-        error: "Methode non prise en charge."
-      }, 405);
-    }
-
     try {
+      if (request.method === "POST" && path === "/telegram-test") {
+        return await handleTelegramTest(request, env);
+      }
+
+      if (request.method !== "GET") {
+        return json({
+          ok: false,
+          error: "Methode non prise en charge."
+        }, 405);
+      }
+
       if (path === "/" || path === "/health") {
         return await handleHealth(env);
       }
@@ -1236,6 +1344,10 @@ export default {
         return await handleScalp(request, env);
       }
 
+      if (path === "/backtest") {
+        return await handleBacktest(request);
+      }
+
       return json({
         ok: false,
         error: "Route inconnue",
@@ -1244,7 +1356,9 @@ export default {
           "/status",
           "/gold",
           "/analyze",
-          "/scalp"
+          "/scalp",
+          "/backtest",
+          "POST /telegram-test"
         ]
       }, 404);
 
@@ -1265,8 +1379,12 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       scheduledCheck(env).catch(error => {
-        console.error("Scheduled execution failed:", error.message);
+        console.error(
+          "Scheduled execution failed:",
+          error.message
+        );
       })
     );
   }
 };
+
