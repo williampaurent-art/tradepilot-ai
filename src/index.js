@@ -6,12 +6,11 @@
  * Signaux selectifs et alertes webhook.
  * Aucun ordre reel n'est execute.
  *
- * Parametres :
  * Capital de reference : 1000 USD
- * Taille : 0.5 lot / 1000 USD
+ * Taille indicative : 0.5 lot / 1000 USD
  * Levier indicatif : x500
- * Objectif : 2 USD de mouvement sur XAUUSD
- * Stop : 7 USD de mouvement sur XAUUSD
+ * Objectif : 2 USD de mouvement XAUUSD
+ * Stop : 7 USD de mouvement XAUUSD
  *
  * Variables Cloudflare optionnelles :
  * ALERT_WEBHOOK : URL HTTPS du webhook d'alerte
@@ -31,8 +30,15 @@ const CONFIG = {
 
   MIN_SCORE: 75,
   MAX_CANDLES: 250,
-  MAX_CANDLE_AGE_MS: 5 * 60 * 1000,
   COOLDOWN_MS: 5 * 60 * 1000,
+
+  // Fraicheur : deux intervalles + une minute de marge.
+  FRESHNESS_INTERVALS: 2,
+  FRESHNESS_GRACE_MS: 60 * 1000,
+
+  // Controle des interruptions recentes.
+  QUALITY_LOOKBACK_MS: 2 * 60 * 60 * 1000,
+  GAP_TOLERANCE_MS: 30 * 1000,
 
   SOURCE_URL: "https://biquote.io/api/XAUUSD/ohlc"
 };
@@ -163,7 +169,6 @@ function extractRows(payload) {
     }
   }
 
-  // Certaines API enveloppent les donnees dans data.data.
   for (const key of possibleKeys) {
     const nested = payload[key];
 
@@ -189,7 +194,6 @@ function normalizeBars(payload) {
   }
 
   const bars = rows.map((row) => {
-    // Format tableau : [timestamp, open, high, low, close]
     if (Array.isArray(row)) {
       return {
         time: toTimestamp(row[0]),
@@ -201,7 +205,6 @@ function normalizeBars(payload) {
       };
     }
 
-    // Format objet : openTime, open, high, low, close.
     return {
       time: toTimestamp(
         row.openTime ??
@@ -218,7 +221,6 @@ function normalizeBars(payload) {
       low: Number(row.low ?? row.l),
       close: Number(row.close ?? row.c),
 
-      // Conserver le statut d'ouverture fourni par la source.
       isOpen:
         row.isOpen === true ||
         row.is_open === true
@@ -252,6 +254,118 @@ function normalizeBars(payload) {
 }
 
 // --------------------------------------------------
+// FRAICHEUR DES DONNEES
+// --------------------------------------------------
+
+function validateFreshness(bars, timeframe = "M1") {
+  const tf = TIMEFRAMES[timeframe];
+  const last = bars?.[bars.length - 1];
+
+  if (!tf || !last) {
+    return {
+      fresh: false,
+      ageMs: null,
+      maxAgeMs: null,
+      timeframe
+    };
+  }
+
+  // Le timestamp de la source est suppose correspondre
+  // au debut de la bougie.
+  const candleCloseTime = last.time + tf.ms;
+  const ageMs = Date.now() - candleCloseTime;
+
+  const maxAgeMs =
+    tf.ms * CONFIG.FRESHNESS_INTERVALS +
+    CONFIG.FRESHNESS_GRACE_MS;
+
+  return {
+    fresh: ageMs >= 0 && ageMs <= maxAgeMs,
+    ageMs,
+    maxAgeMs,
+    timeframe
+  };
+}
+
+// --------------------------------------------------
+// QUALITE ET CONTINUITE DES HISTORIQUES
+// --------------------------------------------------
+
+function inspectDataQuality(bars, timeframe = "M1") {
+  const tf = TIMEFRAMES[timeframe];
+
+  if (!tf || !Array.isArray(bars) || bars.length < 30) {
+    return {
+      ok: false,
+      timeframe,
+      checkedCandles: bars?.length || 0,
+      freshness: null,
+      gapCount: 0,
+      gaps: [],
+      issues: ["Historique insuffisant"]
+    };
+  }
+
+  const freshness = validateFreshness(bars, timeframe);
+
+  const last = bars[bars.length - 1];
+
+  // On examine uniquement les interruptions proches
+  // de la derniere bougie, pas tout l'historique.
+  const cutoff =
+    last.time - CONFIG.QUALITY_LOOKBACK_MS;
+
+  const recentBars = bars.filter(
+    bar => bar.time >= cutoff
+  );
+
+  const gaps = [];
+
+  for (let i = 1; i < recentBars.length; i++) {
+    const previous = recentBars[i - 1];
+    const current = recentBars[i];
+
+    const delta = current.time - previous.time;
+    const expected = tf.ms;
+
+    if (delta > expected + CONFIG.GAP_TOLERANCE_MS) {
+      gaps.push({
+        from: new Date(previous.time).toISOString(),
+        to: new Date(current.time).toISOString(),
+        actualGapMs: delta,
+        expectedGapMs: expected,
+        missingIntervals: Math.max(
+          0,
+          Math.round(delta / expected) - 1
+        )
+      });
+    }
+  }
+
+  const issues = [];
+
+  if (!freshness.fresh) {
+    issues.push("Derniere bougie trop ancienne ou horodatage futur");
+  }
+
+  if (gaps.length > 0) {
+    issues.push(
+      "Interruption detectee dans l'historique recent"
+    );
+  }
+
+  return {
+    ok: freshness.fresh && gaps.length === 0,
+    timeframe,
+    checkedCandles: recentBars.length,
+    freshness,
+    gapCount: gaps.length,
+    gaps,
+    issues
+  };
+}
+
+// --------------------------------------------------
 // RECUPERATION DES DONNEES DE MARCHE
 // --------------------------------------------------
 
@@ -259,14 +373,20 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
   const tf = TIMEFRAMES[String(timeframe).toUpperCase()];
 
   if (!tf) {
-    throw new Error(`Timeframe non pris en charge : ${timeframe}`);
+    throw new Error(
+      `Timeframe non pris en charge : ${timeframe}`
+    );
   }
 
   const url = new URL(CONFIG.SOURCE_URL);
+
   url.searchParams.set("interval", tf.interval);
+
   url.searchParams.set(
     "limit",
-    String(Math.min(CONFIG.MAX_CANDLES, Math.max(30, limit)))
+    String(
+      Math.min(CONFIG.MAX_CANDLES, Math.max(30, limit))
+    )
   );
 
   const response = await fetch(url.toString(), {
@@ -293,12 +413,8 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
 
   const now = Date.now();
 
-  /*
-   * Le timestamp doit correspondre au debut de la bougie.
-   * On retire les bougies encore ouvertes ou trop recentes.
-   * On ne supprime pas automatiquement toutes les bougies
-   * lorsque le format de la source est inattendu.
-   */
+  // Hypothese : timestamp = debut de bougie.
+  // Les bougies encore ouvertes sont exclues.
   const closed = bars.filter((bar) =>
     !bar.isOpen &&
     bar.time + tf.ms <= now
@@ -311,26 +427,9 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
     );
   }
 
-  return closed.slice(-Math.min(limit, CONFIG.MAX_CANDLES));
-}
-
-function validateFreshness(bars, timeframe = "M1") {
-  const tf = TIMEFRAMES[timeframe];
-  const last = bars[bars.length - 1];
-
-  if (!tf || !last) {
-    return {
-      fresh: false,
-      ageMs: null
-    };
-  }
-
-  const ageMs = Date.now() - (last.time + tf.ms);
-
-  return {
-    fresh: ageMs >= 0 && ageMs <= CONFIG.MAX_CANDLE_AGE_MS,
-    ageMs
-  };
+  return closed.slice(
+    -Math.min(limit, CONFIG.MAX_CANDLES)
+  );
 }
 
 // --------------------------------------------------
@@ -344,7 +443,9 @@ function sma(values, period) {
 
   const slice = values.slice(-period);
 
-  return slice.reduce((sum, value) => sum + value, 0) / period;
+  return slice.reduce(
+    (sum, value) => sum + value, 0
+  ) / period;
 }
 
 function ema(values, period) {
@@ -359,7 +460,9 @@ function ema(values, period) {
     .reduce((sum, value) => sum + value, 0) / period;
 
   for (let i = period; i < values.length; i++) {
-    result = values[i] * k + result * (1 - k);
+    result =
+      values[i] * k +
+      result * (1 - k);
   }
 
   return result;
@@ -421,7 +524,7 @@ function calculateATR(bars, period = 14) {
 }
 
 function getIndicators(bars) {
-  const closes = bars.map((bar) => bar.close);
+  const closes = bars.map(bar => bar.close);
   const last = bars[bars.length - 1];
 
   return {
@@ -556,9 +659,9 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellReasons.push("Cassure du dernier plus bas");
   }
 
-  // Filtre de volatilite : les valeurs sont indicatives
-  // et devront etre calibrees avec un historique de marche.
+  // Filtre de volatilite indicatif.
   const atr = i1.atr;
+
   const atrPercent =
     atr !== null && i1.price > 0
       ? (atr / i1.price) * 100
@@ -583,7 +686,7 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellScore = Math.min(sellScore, 49);
   }
 
-  // Confirmation obligatoire des tendances M5 et M15.
+  // Confirmation M5 / M15 obligatoire.
   if (trend5 !== trend15 || trend5 === "NEUTRE") {
     buyScore = Math.min(buyScore, 69);
     sellScore = Math.min(sellScore, 69);
@@ -594,11 +697,13 @@ function analyzeSetup(m1, m5, m15, settings) {
 
   let signal = "ATTENDRE";
   let score = Math.max(buyScore, sellScore);
+
   let reasons = [
     "Aucune configuration ne satisfait les filtres."
   ];
 
   const entry = i1.price;
+
   let targetPrice = null;
   let stopPrice = null;
 
@@ -609,8 +714,15 @@ function analyzeSetup(m1, m5, m15, settings) {
     signal = "ACHAT";
     score = buyScore;
     reasons = buyReasons;
-    targetPrice = roundPrice(entry + settings.target);
-    stopPrice = roundPrice(entry - settings.stopDistance);
+
+    targetPrice = roundPrice(
+      entry + settings.target
+    );
+
+    stopPrice = roundPrice(
+      entry - settings.stopDistance
+    );
+
   } else if (
     sellScore >= settings.minScore &&
     sellScore > buyScore
@@ -618,13 +730,20 @@ function analyzeSetup(m1, m5, m15, settings) {
     signal = "VENTE";
     score = sellScore;
     reasons = sellReasons;
-    targetPrice = roundPrice(entry - settings.target);
-    stopPrice = roundPrice(entry + settings.stopDistance);
+
+    targetPrice = roundPrice(
+      entry - settings.target
+    );
+
+    stopPrice = roundPrice(
+      entry + settings.stopDistance
+    );
   }
 
   return {
     ok: true,
     instrument: CONFIG.INSTRUMENT,
+
     signal,
     score,
     confidence: `${score}%`,
@@ -640,6 +759,7 @@ function analyzeSetup(m1, m5, m15, settings) {
     capital: settings.capital,
     lotSize: settings.lots,
     leverage: settings.leverage,
+
     riskPercentRequested: settings.riskPercent,
 
     estimatedRiskReward: Number(
@@ -652,25 +772,33 @@ function analyzeSetup(m1, m5, m15, settings) {
       trendM15: trend15,
 
       rsiM1:
-        i1.rsi === null ? null : Number(i1.rsi.toFixed(2)),
+        i1.rsi === null
+          ? null
+          : Number(i1.rsi.toFixed(2)),
 
       rsiM5:
-        i5.rsi === null ? null : Number(i5.rsi.toFixed(2)),
+        i5.rsi === null
+          ? null
+          : Number(i5.rsi.toFixed(2)),
 
       atrM1:
-        atr === null ? null : Number(atr.toFixed(4)),
+        atr === null
+          ? null
+          : Number(atr.toFixed(4)),
 
       volatility
     },
 
     reasons,
+
     generatedAt: new Date().toISOString(),
+
     execution: "AUCUN ORDRE REEL"
   };
 }
 
 // --------------------------------------------------
-// ANALYSE COMPLETE
+// ANALYSE COMPLETE ET VALIDATION DES DONNEES
 // --------------------------------------------------
 
 async function getSignal(settings) {
@@ -680,20 +808,46 @@ async function getSignal(settings) {
     fetchCandles("M15", 200)
   ]);
 
-  const freshness = validateFreshness(m1, "M1");
+  const quality = {
+    M1: inspectDataQuality(m1, "M1"),
+    M5: inspectDataQuality(m5, "M5"),
+    M15: inspectDataQuality(m15, "M15")
+  };
 
-  if (!freshness.fresh) {
+  const dataQualityOk = Object.values(quality)
+    .every(item => item.ok);
+
+  if (!dataQualityOk) {
     return {
       ok: false,
       instrument: CONFIG.INSTRUMENT,
       signal: "ATTENDRE",
-      error: "Les donnees M1 sont trop anciennes.",
-      candleAgeMs: freshness.ageMs,
-      generatedAt: new Date().toISOString()
+      score: 0,
+
+      error: "Qualite des donnees insuffisante.",
+
+      dataQuality: quality,
+
+      reasons: [
+        "Analyse bloquee : verifier la fraicheur et la continuite des bougies."
+      ],
+
+      generatedAt: new Date().toISOString(),
+
+      execution: "AUCUN ORDRE REEL"
     };
   }
 
-  return analyzeSetup(m1, m5, m15, settings);
+  const result = analyzeSetup(
+    m1,
+    m5,
+    m15,
+    settings
+  );
+
+  result.dataQuality = quality;
+
+  return result;
 }
 
 // --------------------------------------------------
@@ -708,7 +862,10 @@ async function sendAlert(env, signal) {
     };
   }
 
-  if (signal.signal === "ATTENDRE") {
+  if (
+    !signal.ok ||
+    signal.signal === "ATTENDRE"
+  ) {
     return {
       sent: false,
       reason: "Aucun signal valide"
@@ -725,15 +882,19 @@ async function sendAlert(env, signal) {
       `Taille indicative: ${signal.lotSize} lot\n` +
       `Levier indicatif: x${signal.leverage}\n` +
       `Aucun ordre reel execute.`,
+
     signal
   };
 
   const response = await fetch(env.ALERT_WEBHOOK, {
     method: "POST",
+
     headers: {
       "content-type": "application/json"
     },
+
     body: JSON.stringify(message),
+
     signal: AbortSignal.timeout(10000)
   });
 
@@ -743,22 +904,25 @@ async function sendAlert(env, signal) {
     );
   }
 
-  return { sent: true };
+  return {
+    sent: true
+  };
 }
 
 // --------------------------------------------------
-// ROUTES HTTP
+// ROUTE HEALTH
 // --------------------------------------------------
 
 async function handleHealth() {
   return json({
     ok: true,
+
     service: CONFIG.SERVICE,
     status: "online",
     instrument: CONFIG.INSTRUMENT,
 
     strategy: {
-      capitalReference: 1000,
+      capitalReference: CONFIG.DEFAULT_CAPITAL,
       lotsPer1000: CONFIG.LOTS_PER_1000,
       leverage: CONFIG.LEVERAGE,
       targetMove: CONFIG.TARGET_MOVE,
@@ -767,12 +931,21 @@ async function handleHealth() {
       selectiveSignals: true
     },
 
+    dataValidation: {
+      enabled: true,
+      freshnessIntervals: CONFIG.FRESHNESS_INTERVALS,
+      freshnessGraceMs: CONFIG.FRESHNESS_GRACE_MS,
+      qualityLookbackMs: CONFIG.QUALITY_LOOKBACK_MS,
+      gapToleranceMs: CONFIG.GAP_TOLERANCE_MS
+    },
+
     liveTrading: false,
     automaticPushNotifications: false,
 
     endpoints: [
       "/health",
       "/gold?timeframe=M1",
+      "/gold?timeframe=M5",
       "/gold?timeframe=M15",
       "/analyze",
       "/scalp",
@@ -783,6 +956,10 @@ async function handleHealth() {
   });
 }
 
+// --------------------------------------------------
+// ROUTE GOLD
+// --------------------------------------------------
+
 async function handleGold(request) {
   const url = new URL(request.url);
 
@@ -790,29 +967,63 @@ async function handleGold(request) {
     url.searchParams.get("timeframe") || "M1"
   ).toUpperCase();
 
-  const bars = await fetchCandles(timeframe, 200);
+  const bars = await fetchCandles(
+    timeframe,
+    200
+  );
 
   return json({
     ok: true,
+
     instrument: CONFIG.INSTRUMENT,
     timeframe,
+
     count: bars.length,
+
     latest: bars[bars.length - 1],
-    freshness: validateFreshness(bars, timeframe),
+
+    freshness: validateFreshness(
+      bars,
+      timeframe
+    ),
+
+    dataQuality: inspectDataQuality(
+      bars,
+      timeframe
+    ),
+
     candles: bars,
+
     source: CONFIG.SOURCE_URL
   });
 }
 
+// --------------------------------------------------
+// ROUTE ANALYZE
+// --------------------------------------------------
+
 async function handleAnalyze(request) {
-  const settings = getSettings(new URL(request.url));
+  const settings = getSettings(
+    new URL(request.url)
+  );
+
   const result = await getSignal(settings);
 
-  return json(result, result.ok === false ? 503 : 200);
+  return json(
+    result,
+    result.ok === false ? 503 : 200
+  );
 }
 
+// --------------------------------------------------
+// ROUTE SCALP
+// --------------------------------------------------
+
 async function handleScalp(request, env) {
-  const settings = getSettings(new URL(request.url));
+  const settings = getSettings(
+    new URL(request.url)
+  );
+
   const result = await getSignal(settings);
 
   result.alert = {
@@ -820,9 +1031,15 @@ async function handleScalp(request, env) {
     reason: "Aucun signal valide"
   };
 
-  if (result.signal && result.signal !== "ATTENDRE") {
+  if (
+    result.ok &&
+    result.signal !== "ATTENDRE"
+  ) {
     try {
-      result.alert = await sendAlert(env, result);
+      result.alert = await sendAlert(
+        env,
+        result
+      );
     } catch (error) {
       result.alert = {
         sent: false,
@@ -831,11 +1048,20 @@ async function handleScalp(request, env) {
     }
   }
 
-  return json(result, result.ok === false ? 503 : 200);
+  return json(
+    result,
+    result.ok === false ? 503 : 200
+  );
 }
 
+// --------------------------------------------------
+// ROUTE BACKTEST
+// --------------------------------------------------
+
 async function handleBacktest(request) {
-  const settings = getSettings(new URL(request.url));
+  const settings = getSettings(
+    new URL(request.url)
+  );
 
   const [m1, m5, m15] = await Promise.all([
     fetchCandles("M1", CONFIG.MAX_CANDLES),
@@ -843,14 +1069,43 @@ async function handleBacktest(request) {
     fetchCandles("M15", CONFIG.MAX_CANDLES)
   ]);
 
-  const result = analyzeSetup(m1, m5, m15, settings);
+  const quality = {
+    M1: inspectDataQuality(m1, "M1"),
+    M5: inspectDataQuality(m5, "M5"),
+    M15: inspectDataQuality(m15, "M15")
+  };
+
+  const dataQualityOk = Object.values(quality)
+    .every(item => item.ok);
+
+  if (!dataQualityOk) {
+    return json({
+      ok: false,
+      mode: "SIGNAL ACTUEL",
+      signal: "ATTENDRE",
+      error: "Qualite des donnees insuffisante.",
+      dataQuality: quality
+    }, 503);
+  }
+
+  const result = analyzeSetup(
+    m1,
+    m5,
+    m15,
+    settings
+  );
+
+  result.dataQuality = quality;
 
   return json({
     ok: true,
+
     mode: "SIGNAL ACTUEL",
+
     warning:
       "Ce endpoint ne realise pas un backtest historique. " +
       "Il renvoie le signal actuel et ne mesure pas la rentabilite.",
+
     signal: result
   });
 }
@@ -876,18 +1131,25 @@ async function scheduledCheck(env) {
     await env.TP_STATE.put(
       "last_signal",
       JSON.stringify(signal),
-      { expirationTtl: 7 * 24 * 60 * 60 }
+      {
+        expirationTtl: 7 * 24 * 60 * 60
+      }
     );
   }
 
-  if (!signal.ok || signal.signal === "ATTENDRE") {
+  if (
+    !signal.ok ||
+    signal.signal === "ATTENDRE"
+  ) {
     return signal;
   }
 
   let shouldAlert = true;
 
   if (env.TP_STATE) {
-    const previous = await env.TP_STATE.get("last_alert");
+    const previous = await env.TP_STATE.get(
+      "last_alert"
+    );
 
     if (previous) {
       try {
@@ -898,7 +1160,8 @@ async function scheduledCheck(env) {
           old.entry === signal.entry;
 
         const recent =
-          Date.now() - old.time < CONFIG.COOLDOWN_MS;
+          Date.now() - old.time <
+          CONFIG.COOLDOWN_MS;
 
         if (sameSignal && recent) {
           shouldAlert = false;
@@ -920,7 +1183,9 @@ async function scheduledCheck(env) {
           entry: signal.entry,
           time: Date.now()
         }),
-        { expirationTtl: 24 * 60 * 60 }
+        {
+          expirationTtl: 24 * 60 * 60
+        }
       );
     }
   }
@@ -940,6 +1205,7 @@ export default {
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
+
         headers: {
           "access-control-allow-origin": "*",
           "access-control-allow-methods": "GET, OPTIONS",
@@ -956,7 +1222,10 @@ export default {
     }
 
     try {
-      if (path === "/" || path === "/health") {
+      if (
+        path === "/" ||
+        path === "/health"
+      ) {
         return await handleHealth();
       }
 
@@ -979,6 +1248,7 @@ export default {
       return json({
         ok: false,
         error: "Route inconnue",
+
         available: [
           "/health",
           "/gold",
@@ -991,10 +1261,14 @@ export default {
     } catch (error) {
       return json({
         ok: false,
+
         instrument: CONFIG.INSTRUMENT,
         signal: "ATTENDRE",
+
         error: "Erreur pendant l'analyse du signal.",
+
         details: error.message,
+
         timestamp: new Date().toISOString()
       }, 500);
     }
@@ -1010,7 +1284,9 @@ export default {
               error: error.message,
               time: new Date().toISOString()
             }),
-            { expirationTtl: 24 * 60 * 60 }
+            {
+              expirationTtl: 24 * 60 * 60
+            }
           );
         }
       })
