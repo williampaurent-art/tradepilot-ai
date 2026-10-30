@@ -1,14 +1,11 @@
 
-
-
-
-
 /**
  * TradePilot AI — XAUUSD
  * Cloudflare Worker
  *
  * Signaux selectifs avec confirmation de pullback M1.
- * Alertes Telegram.
+ * Alertes Telegram automatiques.
+ * Test Telegram securise.
  * Aucun ordre reel n'est execute.
  *
  * Capital de reference : 1000 USD
@@ -18,9 +15,10 @@
  * Stop : 7 USD de mouvement XAUUSD
  *
  * Variables Cloudflare :
- * TELEGRAM_BOT_TOKEN : Secret contenant le token du bot Telegram
+ * TELEGRAM_BOT_TOKEN : Secret du bot Telegram
  * TELEGRAM_CHAT_ID   : ID du chat Telegram
- * TP_STATE           : binding KV pour memoriser les signaux
+ * TELEGRAM_TEST_KEY  : Secret pour proteger le test Telegram
+ * TP_STATE           : Binding KV pour memoriser les signaux
  */
 
 const CONFIG = {
@@ -109,7 +107,6 @@ function getSettings(url) {
     url, "minScore", CONFIG.MIN_SCORE, 50, 100
   );
 
-  // 0.5 lot pour chaque tranche de 1000 USD.
   const lots = (capital / 1000) * CONFIG.LOTS_PER_1000;
 
   return {
@@ -274,7 +271,6 @@ function validateFreshness(bars, timeframe = "M1") {
     };
   }
 
-  // Hypothese : le timestamp correspond au debut de bougie.
   const candleCloseTime = last.time + tf.ms;
   const ageMs = Date.now() - candleCloseTime;
 
@@ -413,7 +409,6 @@ async function fetchCandles(timeframe = "M1", limit = 200) {
 
   const now = Date.now();
 
-  // Hypothese : timestamp = debut de bougie.
   const closed = bars.filter((bar) =>
     !bar.isOpen &&
     bar.time + tf.ms <= now
@@ -568,7 +563,6 @@ function roundPrice(value) {
 
 // --------------------------------------------------
 // MOTEUR DE SCENARIOS ET DE SIGNAUX
-// AVEC CONFIRMATION DE PULLBACK M1
 // --------------------------------------------------
 
 function analyzeSetup(m1, m5, m15, settings) {
@@ -586,7 +580,7 @@ function analyzeSetup(m1, m5, m15, settings) {
   let buyScore = 0;
   let sellScore = 0;
 
-  // 1. TENDANCES MULTI-TIMEFRAMES
+  // TENDANCES MULTI-TIMEFRAMES
 
   if (trend15 === "HAUSSIER") {
     buyScore += 20;
@@ -618,7 +612,7 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellReasons.push("Tendance M1 baissiere");
   }
 
-  // 2. CONFIRMATION RSI
+  // CONFIRMATION RSI
 
   if (i1.rsi !== null) {
     if (i1.rsi >= 50 && i1.rsi <= 68) {
@@ -644,12 +638,11 @@ function analyzeSetup(m1, m5, m15, settings) {
     }
   }
 
-  // 3. DETECTION DU PULLBACK M1
+  // DETECTION DU PULLBACK M1
 
   const last = m1[m1.length - 1];
   const previous = m1[m1.length - 2];
 
-  // Les cinq bougies precedentes sont examinees.
   const recentBars = m1.slice(-6, -1);
 
   const ema9 = i1.ema9;
@@ -658,8 +651,6 @@ function analyzeSetup(m1, m5, m15, settings) {
   const tolerance = i1.atr !== null
     ? i1.atr * 0.15
     : 0;
-
-  // Recherche d'un retour du prix vers EMA 9 ou EMA 21.
 
   const pullbackTouched = recentBars.some(bar => {
     const touchesEma9 =
@@ -675,8 +666,6 @@ function analyzeSetup(m1, m5, m15, settings) {
     return touchesEma9 || touchesEma21;
   });
 
-  // Reprise baissiere apres le pullback.
-
   const bearishResume =
     pullbackTouched &&
     ema9 !== null &&
@@ -684,17 +673,12 @@ function analyzeSetup(m1, m5, m15, settings) {
     last.close < last.open &&
     last.close < previous.close;
 
-  // Reprise haussiere apres le pullback.
-
   const bullishResume =
     pullbackTouched &&
     ema9 !== null &&
     last.close > ema9 &&
     last.close > last.open &&
     last.close > previous.close;
-
-  // Le pullback est valide uniquement si M5 et M15
-  // confirment la meme direction.
 
   if (
     bearishResume &&
@@ -720,7 +704,7 @@ function analyzeSetup(m1, m5, m15, settings) {
     );
   }
 
-  // 4. FILTRE DE VOLATILITE
+  // FILTRE DE VOLATILITE
 
   const atr = i1.atr;
 
@@ -748,7 +732,7 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellScore = Math.min(sellScore, 49);
   }
 
-  // 5. ALIGNEMENT OBLIGATOIRE M5 / M15
+  // ALIGNEMENT OBLIGATOIRE M5 / M15
 
   if (trend5 !== trend15 || trend5 === "NEUTRE") {
     buyScore = Math.min(buyScore, 69);
@@ -758,7 +742,7 @@ function analyzeSetup(m1, m5, m15, settings) {
   buyScore = Math.min(100, buyScore);
   sellScore = Math.min(100, sellScore);
 
-  // 6. GENERATION DU SIGNAL
+  // GENERATION DU SIGNAL
 
   let signal = "ATTENDRE";
   let score = Math.max(buyScore, sellScore);
@@ -917,7 +901,7 @@ async function getSignal(settings) {
 }
 
 // --------------------------------------------------
-// ALERTES TELEGRAM
+// ALERTES TELEGRAM AUTOMATIQUES
 // --------------------------------------------------
 
 async function sendAlert(env, signal) {
@@ -1015,6 +999,74 @@ async function sendAlert(env, signal) {
 }
 
 // --------------------------------------------------
+// TEST TELEGRAM INDEPENDANT DE LA STRATEGIE
+// --------------------------------------------------
+
+async function sendTelegramTest(env) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+
+  if (!token || !chatId) {
+    return {
+      ok: false,
+      error: "Configuration Telegram manquante"
+    };
+  }
+
+  const message = [
+    "🟢 TRADEPILOT AI",
+    "",
+    "TEST TELEGRAM REUSSI !",
+    "",
+    "Cloudflare communique correctement avec Telegram.",
+    "",
+    "Instrument : GOLD / XAUUSD",
+    "Statut : AUCUN ORDRE REEL",
+    "",
+    "Les notifications Telegram sont accessibles."
+  ].join("\n");
+
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${token}/sendMessage`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+          disable_web_page_preview: true
+        }),
+        signal: AbortSignal.timeout(10000)
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || result.ok !== true) {
+      return {
+        ok: false,
+        error: result.description || "Erreur Telegram"
+      };
+    }
+
+    return {
+      ok: true,
+      message: "Notification Telegram envoyee",
+      messageId: result.result?.message_id ?? null
+    };
+
+  } catch {
+    return {
+      ok: false,
+      error: "Impossible de communiquer avec Telegram"
+    };
+  }
+}
+
+// --------------------------------------------------
 // ANTI-DOUBLON DES ALERTES
 // --------------------------------------------------
 
@@ -1029,7 +1081,6 @@ function getAlertKey(signal) {
 
 async function shouldSendAlert(env, signal) {
   if (!env.TP_STATE) {
-    // Sans KV, aucun anti-doublon persistant n'est possible.
     return {
       allowed: true,
       reason: "KV non configure : anti-doublon indisponible"
@@ -1058,7 +1109,7 @@ async function shouldSendAlert(env, signal) {
       };
     }
   } catch {
-    // Un ancien etat invalide ne doit pas bloquer les alertes.
+    // Un ancien etat invalide ne bloque pas les alertes.
   }
 
   return {
@@ -1129,6 +1180,7 @@ async function handleHealth(env) {
 
     telegramAlertsEnabled: true,
     telegramAlertsConfigured: telegramConfigured,
+    telegramTestConfigured: Boolean(env.TELEGRAM_TEST_KEY),
     automaticPushNotifications: telegramConfigured,
 
     kvConfigured: Boolean(env.TP_STATE),
@@ -1140,7 +1192,8 @@ async function handleHealth(env) {
       "/gold?timeframe=M15",
       "/analyze",
       "/scalp",
-      "/backtest"
+      "/backtest",
+      "POST /telegram-test"
     ],
 
     timestamp: new Date().toISOString()
@@ -1384,17 +1437,52 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
 
+    // CORS
+
     if (request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
-
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, OPTIONS",
-          "access-control-allow-headers": "content-type"
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "content-type, x-test-key"
         }
       });
     }
+
+    // TEST TELEGRAM SECURISE
+    // Cette route est traitee avant le filtre GET.
+
+    if (path === "/telegram-test") {
+      if (request.method !== "POST") {
+        return json({
+          ok: false,
+          error: "Methode POST requise."
+        }, 405);
+      }
+
+      const testKey = request.headers.get("x-test-key");
+
+      if (
+        !env.TELEGRAM_TEST_KEY ||
+        !testKey ||
+        testKey !== env.TELEGRAM_TEST_KEY
+      ) {
+        return json({
+          ok: false,
+          error: "Acces non autorise."
+        }, 401);
+      }
+
+      const result = await sendTelegramTest(env);
+
+      return json(
+        result,
+        result.ok ? 200 : 502
+      );
+    }
+
+    // LES AUTRES ROUTES UTILISENT GET UNIQUEMENT
 
     if (request.method !== "GET") {
       return json({
@@ -1436,7 +1524,8 @@ export default {
           "/gold",
           "/analyze",
           "/scalp",
-          "/backtest"
+          "/backtest",
+          "POST /telegram-test"
         ]
       }, 404);
 
@@ -1475,3 +1564,11 @@ export default {
     );
   }
 };
+
+
+
+
+
+
+
+       
