@@ -1,4 +1,3 @@
-
 const CONFIG = {
   SERVICE: "TradePilot AI",
   SYMBOL: "XAUUSD",
@@ -41,22 +40,43 @@ function json(data, status = 200) {
   });
 }
 
-function getSettings(url) {
-  const number = (name, fallback, min, max) => {
-    const value = Number(url.searchParams.get(name));
-    return Number.isFinite(value)
-      ? Math.min(max, Math.max(min, value))
-      : fallback;
-  };
+function numberParam(url, name, fallback, min, max) {
+  const raw = url.searchParams.get(name);
 
-  const capital = number("capital", CONFIG.CAPITAL, 1, 100000000);
+  // Correction : un paramètre absent ou vide doit utiliser
+  // la valeur par défaut, et non être converti en zéro.
+  if (raw === null || raw.trim() === "") {
+    return fallback;
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(max, Math.max(min, value));
+}
+
+function getSettings(url) {
+  const capital = numberParam(
+    url, "capital", CONFIG.CAPITAL, 1, 100_000_000
+  );
 
   return {
     capital,
-    target: number("target", CONFIG.TARGET, 0.01, 1000),
-    stop: number("stopDistance", CONFIG.STOP, 0.01, 1000),
-    minScore: number("minScore", CONFIG.MIN_SCORE, 50, 100),
-    lots: Number(((capital / 1000) * CONFIG.LOTS_PER_1000).toFixed(4))
+    target: numberParam(
+      url, "target", CONFIG.TARGET, 0.01, 1000
+    ),
+    stop: numberParam(
+      url, "stopDistance", CONFIG.STOP, 0.01, 1000
+    ),
+    minScore: numberParam(
+      url, "minScore", CONFIG.MIN_SCORE, 50, 100
+    ),
+    lots: Number(
+      ((capital / 1000) * CONFIG.LOTS_PER_1000).toFixed(4)
+    )
   };
 }
 
@@ -65,33 +85,49 @@ function getSettings(url) {
 // --------------------------------------------------
 
 function toTimestamp(value) {
-  if (value === null || value === undefined) return NaN;
+  if (value === null || value === undefined) {
+    return NaN;
+  }
 
   if (typeof value === "number") {
     return value < 1e12 ? value * 1000 : value;
   }
 
   if (typeof value === "string") {
-    const numeric = Number(value);
+    const trimmed = value.trim();
 
-    if (value.trim() !== "" && Number.isFinite(numeric)) {
+    if (!trimmed) {
+      return NaN;
+    }
+
+    const numeric = Number(trimmed);
+
+    if (Number.isFinite(numeric)) {
       return numeric < 1e12 ? numeric * 1000 : numeric;
     }
 
-    return Date.parse(value);
+    const parsed = Date.parse(trimmed);
+    return Number.isFinite(parsed) ? parsed : NaN;
   }
 
   return NaN;
 }
 
 function extractRows(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== "object") return null;
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
 
   const keys = ["bars", "candles", "data", "results", "ohlc"];
 
   for (const key of keys) {
-    if (Array.isArray(payload[key])) return payload[key];
+    if (Array.isArray(payload[key])) {
+      return payload[key];
+    }
   }
 
   for (const key of keys) {
@@ -99,7 +135,9 @@ function extractRows(payload) {
 
     if (nested && typeof nested === "object") {
       for (const child of keys) {
-        if (Array.isArray(nested[child])) return nested[child];
+        if (Array.isArray(nested[child])) {
+          return nested[child];
+        }
       }
     }
   }
@@ -111,7 +149,9 @@ function normalizeBars(payload) {
   const rows = extractRows(payload);
 
   if (!rows) {
-    throw new Error("Format OHLC non reconnu.");
+    throw new Error(
+      "Format OHLC non reconnu. Verifier la reponse de la source."
+    );
   }
 
   const bars = rows.map(row => {
@@ -128,9 +168,13 @@ function normalizeBars(payload) {
 
     return {
       time: toTimestamp(
-        row.openTime ?? row.open_time ??
-        row.time ?? row.timestamp ??
-        row.t ?? row.datetime ?? row.date
+        row.openTime ??
+        row.open_time ??
+        row.time ??
+        row.timestamp ??
+        row.t ??
+        row.datetime ??
+        row.date
       ),
       open: Number(row.open ?? row.o),
       high: Number(row.high ?? row.h),
@@ -154,7 +198,10 @@ function normalizeBars(payload) {
   const unique = [];
 
   for (const bar of bars) {
-    if (unique.length && unique[unique.length - 1].time === bar.time) {
+    if (
+      unique.length &&
+      unique[unique.length - 1].time === bar.time
+    ) {
       unique[unique.length - 1] = bar;
     } else {
       unique.push(bar);
@@ -171,7 +218,9 @@ function normalizeBars(payload) {
 async function fetchCandles(timeframe, limit = 200) {
   const tf = TIMEFRAMES[timeframe];
 
-  if (!tf) throw new Error("Timeframe non pris en charge.");
+  if (!tf) {
+    throw new Error(`Timeframe non pris en charge : ${timeframe}`);
+  }
 
   const url = new URL(CONFIG.SOURCE_URL);
   url.searchParams.set("interval", tf.interval);
@@ -182,7 +231,7 @@ async function fetchCandles(timeframe, limit = 200) {
 
   const response = await fetch(url.toString(), {
     headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(12000)
+    signal: AbortSignal.timeout(12_000)
   });
 
   if (!response.ok) {
@@ -191,17 +240,20 @@ async function fetchCandles(timeframe, limit = 200) {
 
   const payload = await response.json();
   const bars = normalizeBars(payload);
-
   const now = Date.now();
 
-  // Hypothese : le timestamp indique le debut de la bougie.
+  // Hypothese : le timestamp correspond au debut de la bougie.
+  // Cette hypothese devra etre confirmee avec la documentation
+  // de la source OHLC.
   const closed = bars.filter(bar =>
-    !bar.isOpen && bar.time + tf.ms <= now
+    !bar.isOpen &&
+    bar.time + tf.ms <= now
   );
 
   if (closed.length < 55) {
     throw new Error(
-      `Historique insuffisant pour ${timeframe} : ${closed.length} bougies.`
+      `Historique insuffisant pour ${timeframe} : ` +
+      `${closed.length} bougies cloturees.`
     );
   }
 
@@ -214,10 +266,18 @@ async function fetchCandles(timeframe, limit = 200) {
 
 function inspectDataQuality(bars, timeframe) {
   const tf = TIMEFRAMES[timeframe];
-  const last = bars[bars.length - 1];
+  const last = bars?.[bars.length - 1];
 
   if (!tf || !last || bars.length < 30) {
-    return { ok: false, reason: "Historique insuffisant" };
+    return {
+      ok: false,
+      fresh: false,
+      ageMs: null,
+      maxAgeMs: null,
+      gapCount: 0,
+      gaps: [],
+      reason: "Historique insuffisant"
+    };
   }
 
   const ageMs = Date.now() - (last.time + tf.ms);
@@ -243,13 +303,24 @@ function inspectDataQuality(bars, timeframe) {
 
   const fresh = ageMs >= 0 && ageMs <= maxAgeMs;
 
+  const issues = [];
+
+  if (!fresh) {
+    issues.push("Derniere bougie trop ancienne ou timestamp futur.");
+  }
+
+  if (gaps.length) {
+    issues.push("Interruption detectee dans l'historique recent.");
+  }
+
   return {
     ok: fresh && gaps.length === 0,
     fresh,
     ageMs,
     maxAgeMs,
     gapCount: gaps.length,
-    gaps
+    gaps,
+    issues
   };
 }
 
@@ -258,7 +329,9 @@ function inspectDataQuality(bars, timeframe) {
 // --------------------------------------------------
 
 function sma(values, period) {
-  if (values.length < period) return null;
+  if (values.length < period) {
+    return null;
+  }
 
   const slice = values.slice(-period);
 
@@ -266,11 +339,14 @@ function sma(values, period) {
 }
 
 function ema(values, period) {
-  if (values.length < period) return null;
+  if (values.length < period) {
+    return null;
+  }
 
   const k = 2 / (period + 1);
 
-  let result = sma(values.slice(0, period), period);
+  let result =
+    values.slice(0, period).reduce((a, b) => a + b, 0) / period;
 
   for (let i = period; i < values.length; i++) {
     result = values[i] * k + result * (1 - k);
@@ -280,7 +356,9 @@ function ema(values, period) {
 }
 
 function calculateRSI(values, period = 14) {
-  if (values.length < period + 1) return null;
+  if (values.length < period + 1) {
+    return null;
+  }
 
   let gains = 0;
   let losses = 0;
@@ -288,14 +366,19 @@ function calculateRSI(values, period = 14) {
   for (let i = values.length - period; i < values.length; i++) {
     const change = values[i] - values[i - 1];
 
-    if (change > 0) gains += change;
-    else losses -= change;
+    if (change > 0) {
+      gains += change;
+    } else {
+      losses -= change;
+    }
   }
 
   const avgGain = gains / period;
   const avgLoss = losses / period;
 
-  if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
+  if (avgLoss === 0) {
+    return avgGain === 0 ? 50 : 100;
+  }
 
   const rs = avgGain / avgLoss;
 
@@ -303,7 +386,9 @@ function calculateRSI(values, period = 14) {
 }
 
 function calculateATR(bars, period = 14) {
-  if (bars.length < period + 1) return null;
+  if (bars.length < period + 1) {
+    return null;
+  }
 
   const ranges = [];
 
@@ -339,17 +424,23 @@ function getTrend(indicator) {
     indicator.ema9 === null ||
     indicator.ema21 === null ||
     indicator.ema50 === null
-  ) return "NEUTRE";
+  ) {
+    return "NEUTRE";
+  }
 
   if (
     indicator.ema9 > indicator.ema21 &&
     indicator.ema21 > indicator.ema50
-  ) return "HAUSSIER";
+  ) {
+    return "HAUSSIER";
+  }
 
   if (
     indicator.ema9 < indicator.ema21 &&
     indicator.ema21 < indicator.ema50
-  ) return "BAISSIER";
+  ) {
+    return "BAISSIER";
+  }
 
   return "NEUTRE";
 }
@@ -440,9 +531,10 @@ function analyzeSetup(m1, m5, m15, settings) {
     sellReasons.push("Cassure du dernier plus bas");
   }
 
-  const atrPercent = i1.atr !== null && i1.price > 0
-    ? (i1.atr / i1.price) * 100
-    : null;
+  const atrPercent =
+    i1.atr !== null && i1.price > 0
+      ? (i1.atr / i1.price) * 100
+      : null;
 
   let volatility = "NORMALE";
 
@@ -454,13 +546,12 @@ function analyzeSetup(m1, m5, m15, settings) {
     volatility = "TROP ELEVEE";
   }
 
-  const volatilityAllowed = volatility === "NORMALE";
-
-  if (!volatilityAllowed) {
+  if (volatility !== "NORMALE") {
     buyScore = Math.min(buyScore, 49);
     sellScore = Math.min(sellScore, 49);
   }
 
+  // Confirmation M5 / M15 obligatoire.
   if (t5 !== t15 || t5 === "NEUTRE") {
     buyScore = Math.min(buyScore, 69);
     sellScore = Math.min(sellScore, 69);
@@ -477,13 +568,19 @@ function analyzeSetup(m1, m5, m15, settings) {
 
   const entry = i1.price;
 
-  if (buyScore >= settings.minScore && buyScore > sellScore) {
+  if (
+    buyScore >= settings.minScore &&
+    buyScore > sellScore
+  ) {
     signal = "ACHAT";
     score = buyScore;
     reasons = buyReasons;
     targetPrice = entry + settings.target;
     stopPrice = entry - settings.stop;
-  } else if (sellScore >= settings.minScore && sellScore > buyScore) {
+  } else if (
+    sellScore >= settings.minScore &&
+    sellScore > buyScore
+  ) {
     signal = "VENTE";
     score = sellScore;
     reasons = sellReasons;
@@ -581,7 +678,7 @@ async function sendTelegram(env, textMessage) {
       text: textMessage,
       disable_web_page_preview: true
     }),
-    signal: AbortSignal.timeout(10000)
+    signal: AbortSignal.timeout(10_000)
   });
 
   const result = await response.json();
@@ -596,7 +693,9 @@ async function sendTelegram(env, textMessage) {
 }
 
 function buildAlertMessage(signal) {
-  const reasons = signal.reasons.map(reason => `• ${reason}`).join("\n");
+  const reasons = signal.reasons
+    .map(reason => `• ${reason}`)
+    .join("\n");
 
   return [
     `🚨 TRADEPILOT AI — ${signal.instrument}`,
@@ -629,7 +728,9 @@ function buildAlertMessage(signal) {
 // --------------------------------------------------
 
 async function readKV(env, key) {
-  if (!env.TP_STATE) return null;
+  if (!env.TP_STATE) {
+    return null;
+  }
 
   try {
     return await env.TP_STATE.get(key);
@@ -639,7 +740,9 @@ async function readKV(env, key) {
 }
 
 async function writeKV(env, key, value, ttl = 86400) {
-  if (!env.TP_STATE) return false;
+  if (!env.TP_STATE) {
+    return false;
+  }
 
   try {
     await env.TP_STATE.put(key, JSON.stringify(value), {
@@ -664,13 +767,15 @@ function getAlertKey(signal) {
 async function shouldSendAlert(env, signal) {
   const previousRaw = await readKV(env, "last_alert");
 
-  if (!previousRaw) return true;
+  if (!previousRaw) {
+    return true;
+  }
 
   try {
     const previous = JSON.parse(previousRaw);
-
     const sameSignal = previous.key === getAlertKey(signal);
-    const recent = Date.now() - previous.time < CONFIG.COOLDOWN_MS;
+    const recent =
+      Date.now() - previous.time < CONFIG.COOLDOWN_MS;
 
     return !(sameSignal && recent);
   } catch {
@@ -758,7 +863,6 @@ async function scheduledCheck(env) {
     });
 
     return signal;
-
   } catch (error) {
     await saveCronStatus(env, "ERROR", {
       message: error.message
@@ -790,7 +894,7 @@ async function handleStatus(env) {
     if (signalRaw) lastSignal = JSON.parse(signalRaw);
     if (alertRaw) lastAlert = JSON.parse(alertRaw);
   } catch {
-    // Les donnees KV invalides ne bloquent pas le diagnostic.
+    // Une donnee KV invalide ne bloque pas le diagnostic.
   }
 
   return json({
@@ -819,7 +923,10 @@ async function handleScalp(request, env) {
   if (!signal.ok || signal.signal === "ATTENDRE") {
     return json({
       ...signal,
-      alert: { sent: false, reason: "Aucun signal valide." }
+      alert: {
+        sent: false,
+        reason: "Aucun signal valide."
+      }
     }, signal.ok ? 200 : 503);
   }
 
@@ -833,21 +940,30 @@ async function handleScalp(request, env) {
   } catch (error) {
     return json({
       ...signal,
-      alert: { sent: false, error: error.message }
+      alert: {
+        sent: false,
+        error: error.message
+      }
     }, 502);
   }
 }
 
 async function handleTelegramTest(request, env) {
   if (!env.TELEGRAM_TEST_KEY) {
-    return json({ ok: false, error: "TELEGRAM_TEST_KEY absent." }, 503);
+    return json({
+      ok: false,
+      error: "TELEGRAM_TEST_KEY absent."
+    }, 503);
   }
 
   const url = new URL(request.url);
   const suppliedKey = url.searchParams.get("key");
 
   if (suppliedKey !== env.TELEGRAM_TEST_KEY) {
-    return json({ ok: false, error: "Cle de test invalide." }, 403);
+    return json({
+      ok: false,
+      error: "Cle de test invalide."
+    }, 403);
   }
 
   try {
@@ -862,7 +978,10 @@ async function handleTelegramTest(request, env) {
       messageId: result.result?.message_id
     });
   } catch (error) {
-    return json({ ok: false, error: error.message }, 502);
+    return json({
+      ok: false,
+      error: error.message
+    }, 502);
   }
 }
 
@@ -877,6 +996,35 @@ async function handleHealth(env) {
     cronExpected: "*/3 * * * *",
     liveTrading: false,
     execution: "AUCUN ORDRE REEL"
+  });
+}
+
+// Diagnostic des bougies : /gold?timeframe=M1
+async function handleGold(request) {
+  const url = new URL(request.url);
+  const timeframe = (
+    url.searchParams.get("timeframe") || "M1"
+  ).toUpperCase();
+
+  if (!TIMEFRAMES[timeframe]) {
+    return json({
+      ok: false,
+      error: "Timeframe non pris en charge.",
+      available: Object.keys(TIMEFRAMES)
+    }, 400);
+  }
+
+  const bars = await fetchCandles(timeframe, 200);
+  const quality = inspectDataQuality(bars, timeframe);
+
+  return json({
+    ok: true,
+    instrument: CONFIG.SYMBOL,
+    timeframe,
+    count: bars.length,
+    latest: bars[bars.length - 1],
+    dataQuality: quality,
+    source: CONFIG.SOURCE_URL
   });
 }
 
@@ -901,7 +1049,10 @@ export default {
     }
 
     if (request.method !== "GET") {
-      return json({ ok: false, error: "Methode non prise en charge." }, 405);
+      return json({
+        ok: false,
+        error: "Methode non prise en charge."
+      }, 405);
     }
 
     try {
@@ -911,6 +1062,10 @@ export default {
 
       if (path === "/status") {
         return await handleStatus(env);
+      }
+
+      if (path === "/gold") {
+        return await handleGold(request);
       }
 
       if (path === "/analyze") {
@@ -931,15 +1086,18 @@ export default {
         available: [
           "/health",
           "/status",
+          "/gold?timeframe=M1",
+          "/gold?timeframe=M5",
+          "/gold?timeframe=M15",
           "/analyze",
           "/scalp",
           "/telegram-test?key=VOTRE_CLE"
         ]
       }, 404);
-
     } catch (error) {
       return json({
         ok: false,
+        instrument: CONFIG.SYMBOL,
         error: error.message,
         timestamp: new Date().toISOString()
       }, 500);
@@ -956,4 +1114,3 @@ export default {
     );
   }
 };
-
