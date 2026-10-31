@@ -9,4 +9,4 @@ binding = "TP_STATE"
 id = "c6ebb2469afe4e8ebe236097ccb97d63"
 
 [triggers]
-crons = ["*/3 * * * *"]
+crons = ["*/10 * * * *"]
