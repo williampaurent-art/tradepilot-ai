@@ -962,28 +962,40 @@ async function handleTelegramTest(request, env) {
   ).trim();
 
   if (!suppliedKey && request.method === "POST") {
-    try {
-      const body = await request.json();
-      suppliedKey = String(body?.key || "").trim();
-    } catch {
-      return json({
-        ok: false,
-        error: "Corps JSON invalide. Envoyer { \"key\": \"VOTRE_CLE\" }."
-      }, 400);
+    const rawBody = await request.text();
+
+    if (rawBody.trim()) {
+      try {
+        const body = JSON.parse(rawBody);
+        suppliedKey = String(body?.key || "").trim();
+      } catch {
+        return json({
+          ok: false,
+          error: "JSON illisible.",
+          receivedContentType: request.headers.get("content-type") || "absent",
+          bodyLength: rawBody.length,
+          hint: "Choisir Body > JSON et envoyer un objet avec la propriete key."
+        }, 400);
+      }
     }
   }
 
   if (request.method !== "POST") {
     return json({
       ok: false,
-      error: "Utiliser POST avec la cle dans le corps JSON ou l'en-tete x-telegram-test-key."
+      error: "Utiliser POST avec la cle dans le JSON ou l'en-tete x-telegram-test-key."
     }, 405);
   }
 
   if (!suppliedKey || suppliedKey !== configuredKey) {
     return json({
       ok: false,
-      error: "Cle de test invalide."
+      error: "Cle de test invalide.",
+      diagnostic: {
+        keyReceived: Boolean(suppliedKey),
+        receivedLength: suppliedKey.length,
+        configuredLength: configuredKey.length
+      }
     }, 403);
   }
 
