@@ -10,3 +10,14 @@ id = "c6ebb2469afe4e8ebe236097ccb97d63"
 
 [triggers]
 crons = ["*/10 * * * *"]
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1.0
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = false
+head_sampling_rate = 1.0
+persist = true
