@@ -325,292 +325,291 @@ function inspectDataQuality(bars, timeframe) {
 }
 
 // --------------------------------------------------
-// INDICATEURS
+// INDICATEURS TECHNIQUES
 // --------------------------------------------------
 
 function sma(values, period) {
-  if (values.length < period) {
-    return null;
-  }
-
+  if (values.length < period) return null;
   const slice = values.slice(-period);
-
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
 function ema(values, period) {
-  if (values.length < period) {
-    return null;
-  }
-
+  if (values.length < period) return null;
   const k = 2 / (period + 1);
-
-  let result =
-    values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-
-  for (let i = period; i < values.length; i++) {
-    result = values[i] * k + result * (1 - k);
-  }
-
+  let result = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < values.length; i++) result = values[i] * k + result * (1 - k);
   return result;
 }
 
-function calculateRSI(values, period = 14) {
-  if (values.length < period + 1) {
-    return null;
+function emaSeries(values, period) {
+  if (values.length < period) return [];
+  const k = 2 / (period + 1);
+  const out = Array(values.length).fill(null);
+  let value = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  out[period - 1] = value;
+  for (let i = period; i < values.length; i++) {
+    value = values[i] * k + value * (1 - k);
+    out[i] = value;
   }
+  return out;
+}
 
-  let gains = 0;
-  let losses = 0;
-
+function calculateRSI(values, period = 14) {
+  if (values.length < period + 1) return null;
+  let gains = 0, losses = 0;
   for (let i = values.length - period; i < values.length; i++) {
     const change = values[i] - values[i - 1];
-
-    if (change > 0) {
-      gains += change;
-    } else {
-      losses -= change;
-    }
+    if (change > 0) gains += change;
+    else losses -= change;
   }
-
-  const avgGain = gains / period;
-  const avgLoss = losses / period;
-
-  if (avgLoss === 0) {
-    return avgGain === 0 ? 50 : 100;
-  }
-
-  const rs = avgGain / avgLoss;
-
-  return 100 - 100 / (1 + rs);
+  const avgGain = gains / period, avgLoss = losses / period;
+  if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
+  return 100 - 100 / (1 + avgGain / avgLoss);
 }
 
 function calculateATR(bars, period = 14) {
-  if (bars.length < period + 1) {
-    return null;
-  }
-
+  if (bars.length < period + 1) return null;
   const ranges = [];
-
   for (let i = 1; i < bars.length; i++) {
-    const current = bars[i];
-    const previous = bars[i - 1];
-
-    ranges.push(Math.max(
-      current.high - current.low,
-      Math.abs(current.high - previous.close),
-      Math.abs(current.low - previous.close)
-    ));
+    const c = bars[i], p = bars[i - 1];
+    ranges.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
   }
-
   return sma(ranges, period);
+}
+
+function calculateMACD(values) {
+  if (values.length < 35) return { macd: null, signal: null, histogram: null, previousHistogram: null };
+  const fast = emaSeries(values, 12), slow = emaSeries(values, 26);
+  const line = values.map((_, i) => fast[i] === null || slow[i] === null ? null : fast[i] - slow[i]);
+  const validStart = line.findIndex(v => v !== null);
+  const compact = line.slice(validStart);
+  const sigCompact = emaSeries(compact, 9);
+  const sig = Array(values.length).fill(null);
+  for (let i = 0; i < sigCompact.length; i++) sig[validStart + i] = sigCompact[i];
+  const i = values.length - 1, p = i - 1;
+  return {
+    macd: line[i],
+    signal: sig[i],
+    histogram: line[i] === null || sig[i] === null ? null : line[i] - sig[i],
+    previousHistogram: line[p] === null || sig[p] === null ? null : line[p] - sig[p]
+  };
+}
+
+function calculateBollinger(values, period = 20, deviations = 2) {
+  if (values.length < period) return { middle: null, upper: null, lower: null, bandwidth: null };
+  const slice = values.slice(-period);
+  const middle = slice.reduce((a, b) => a + b, 0) / period;
+  const variance = slice.reduce((sum, value) => sum + (value - middle) ** 2, 0) / period;
+  const sd = Math.sqrt(variance);
+  const upper = middle + deviations * sd, lower = middle - deviations * sd;
+  return { middle, upper, lower, bandwidth: middle !== 0 ? (upper - lower) / middle : null };
+}
+
+function calculateADX(bars, period = 14) {
+  if (bars.length < period * 2 + 1) return { adx: null, plusDI: null, minusDI: null };
+  const tr = [], plusDM = [], minusDM = [];
+  for (let i = 1; i < bars.length; i++) {
+    const c = bars[i], p = bars[i - 1];
+    const up = c.high - p.high, down = p.low - c.low;
+    tr.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
+    plusDM.push(up > down && up > 0 ? up : 0);
+    minusDM.push(down > up && down > 0 ? down : 0);
+  }
+  const dx = [];
+  let sumTR = 0, sumPlus = 0, sumMinus = 0;
+  for (let i = 0; i < tr.length; i++) {
+    if (i < period) { sumTR += tr[i]; sumPlus += plusDM[i]; sumMinus += minusDM[i]; }
+    else {
+      sumTR = sumTR - sumTR / period + tr[i];
+      sumPlus = sumPlus - sumPlus / period + plusDM[i];
+      sumMinus = sumMinus - sumMinus / period + minusDM[i];
+    }
+    if (i >= period - 1) {
+      const pdi = sumTR ? 100 * sumPlus / sumTR : 0;
+      const mdi = sumTR ? 100 * sumMinus / sumTR : 0;
+      dx.push({ dx: pdi + mdi ? 100 * Math.abs(pdi - mdi) / (pdi + mdi) : 0, pdi, mdi });
+    }
+  }
+  if (dx.length < period) return { adx: null, plusDI: null, minusDI: null };
+  const adx = sma(dx.map(x => x.dx), period);
+  return { adx, plusDI: dx[dx.length - 1].pdi, minusDI: dx[dx.length - 1].mdi };
+}
+
+function calculateStochastic(bars, period = 14, smooth = 3) {
+  if (bars.length < period + smooth) return { k: null, d: null, previousK: null, previousD: null };
+  const ks = [];
+  for (let i = period - 1; i < bars.length; i++) {
+    const window = bars.slice(i - period + 1, i + 1);
+    const highest = Math.max(...window.map(b => b.high));
+    const lowest = Math.min(...window.map(b => b.low));
+    ks.push(highest === lowest ? 50 : 100 * (bars[i].close - lowest) / (highest - lowest));
+  }
+  const ds = [];
+  for (let i = smooth - 1; i < ks.length; i++) ds.push(sma(ks.slice(0, i + 1), smooth));
+  return {
+    k: ks[ks.length - 1],
+    d: ds[ds.length - 1],
+    previousK: ks[ks.length - 2] ?? null,
+    previousD: ds[ds.length - 2] ?? null
+  };
+}
+
+function findSupportResistance(bars, lookback = 40) {
+  const recent = bars.slice(-lookback);
+  if (recent.length < 10) return { support: null, resistance: null };
+  const support = Math.min(...recent.map(b => b.low));
+  const resistance = Math.max(...recent.map(b => b.high));
+  return { support, resistance };
 }
 
 function getIndicators(bars) {
   const closes = bars.map(bar => bar.close);
-
   return {
     price: closes[closes.length - 1],
     ema9: ema(closes, 9),
     ema21: ema(closes, 21),
     ema50: ema(closes, 50),
     rsi: calculateRSI(closes, 14),
-    atr: calculateATR(bars, 14)
+    atr: calculateATR(bars, 14),
+    macd: calculateMACD(closes),
+    bollinger: calculateBollinger(closes, 20, 2),
+    adx: calculateADX(bars, 14),
+    stochastic: calculateStochastic(bars, 14, 3),
+    levels: findSupportResistance(bars, 40)
   };
 }
 
 function getTrend(indicator) {
-  if (
-    indicator.ema9 === null ||
-    indicator.ema21 === null ||
-    indicator.ema50 === null
-  ) {
-    return "NEUTRE";
-  }
-
-  if (
-    indicator.ema9 > indicator.ema21 &&
-    indicator.ema21 > indicator.ema50
-  ) {
-    return "HAUSSIER";
-  }
-
-  if (
-    indicator.ema9 < indicator.ema21 &&
-    indicator.ema21 < indicator.ema50
-  ) {
-    return "BAISSIER";
-  }
-
+  if (indicator.ema9 === null || indicator.ema21 === null || indicator.ema50 === null) return "NEUTRE";
+  if (indicator.ema9 > indicator.ema21 && indicator.ema21 > indicator.ema50) return "HAUSSIER";
+  if (indicator.ema9 < indicator.ema21 && indicator.ema21 < indicator.ema50) return "BAISSIER";
   return "NEUTRE";
 }
 
 // --------------------------------------------------
-// ANALYSE DU MARCHE
+// ANALYSE DU MARCHE : INDICATEURS + CASSURE/RETEST
 // --------------------------------------------------
 
 function analyzeSetup(m1, m5, m15, settings) {
-  const i1 = getIndicators(m1);
-  const i5 = getIndicators(m5);
-  const i15 = getIndicators(m15);
+  const i1 = getIndicators(m1), i5 = getIndicators(m5), i15 = getIndicators(m15);
+  const t1 = getTrend(i1), t5 = getTrend(i5), t15 = getTrend(i15);
+  let buyScore = 0, sellScore = 0;
+  const buyReasons = [], sellReasons = [];
+  const add = (side, points, reason) => {
+    if (side === "BUY") { buyScore += points; buyReasons.push(reason); }
+    else { sellScore += points; sellReasons.push(reason); }
+  };
 
-  const t1 = getTrend(i1);
-  const t5 = getTrend(i5);
-  const t15 = getTrend(i15);
+  if (t15 === "HAUSSIER") add("BUY", 12, "Tendance EMA M15 haussiere");
+  if (t5 === "HAUSSIER") add("BUY", 12, "Tendance EMA M5 haussiere");
+  if (t1 === "HAUSSIER") add("BUY", 8, "Tendance EMA M1 haussiere");
+  if (t15 === "BAISSIER") add("SELL", 12, "Tendance EMA M15 baissiere");
+  if (t5 === "BAISSIER") add("SELL", 12, "Tendance EMA M5 baissiere");
+  if (t1 === "BAISSIER") add("SELL", 8, "Tendance EMA M1 baissiere");
 
-  let buyScore = 0;
-  let sellScore = 0;
+  if (i1.rsi !== null && i1.rsi >= 50 && i1.rsi <= 70) add("BUY", 6, "RSI M1 favorable aux achats");
+  if (i1.rsi !== null && i1.rsi <= 50 && i1.rsi >= 30) add("SELL", 6, "RSI M1 favorable aux ventes");
+  if (i5.rsi !== null && i5.rsi >= 50 && i5.rsi <= 70) add("BUY", 5, "RSI M5 confirme les achats");
+  if (i5.rsi !== null && i5.rsi <= 50 && i5.rsi >= 30) add("SELL", 5, "RSI M5 confirme les ventes");
 
-  const buyReasons = [];
-  const sellReasons = [];
-
-  if (t15 === "HAUSSIER") {
-    buyScore += 20;
-    buyReasons.push("Tendance M15 haussiere");
+  const macd = i1.macd;
+  if (macd.histogram !== null && macd.previousHistogram !== null) {
+    if (macd.histogram > 0 && macd.histogram > macd.previousHistogram) add("BUY", 10, "MACD positif et en acceleration");
+    if (macd.histogram < 0 && macd.histogram < macd.previousHistogram) add("SELL", 10, "MACD negatif et en acceleration");
   }
 
-  if (t5 === "HAUSSIER") {
-    buyScore += 20;
-    buyReasons.push("Tendance M5 haussiere");
+  const bb = i1.bollinger;
+  if (bb.lower !== null && i1.price > bb.middle && i1.price < bb.upper) add("BUY", 4, "Prix dans la moitie haute des bandes de Bollinger");
+  if (bb.upper !== null && i1.price < bb.middle && i1.price > bb.lower) add("SELL", 4, "Prix dans la moitie basse des bandes de Bollinger");
+
+  if (i1.adx.adx !== null && i1.adx.adx >= 20) {
+    if (i1.adx.plusDI > i1.adx.minusDI) add("BUY", 10, "ADX confirme une force directionnelle haussiere");
+    if (i1.adx.minusDI > i1.adx.plusDI) add("SELL", 10, "ADX confirme une force directionnelle baissiere");
   }
 
-  if (t1 === "HAUSSIER") {
-    buyScore += 20;
-    buyReasons.push("Tendance M1 haussiere");
+  const st = i1.stochastic;
+  if (st.k !== null && st.d !== null && st.previousK !== null && st.previousD !== null) {
+    if (st.previousK <= st.previousD && st.k > st.d && st.k < 80) add("BUY", 6, "Croisement haussier du stochastique");
+    if (st.previousK >= st.previousD && st.k < st.d && st.k > 20) add("SELL", 6, "Croisement baissier du stochastique");
   }
 
-  if (t15 === "BAISSIER") {
-    sellScore += 20;
-    sellReasons.push("Tendance M15 baissiere");
-  }
+  const last = m1[m1.length - 1], previous = m1[m1.length - 2];
+  const levels = findSupportResistance(m1.slice(0, -1), 40);
+  const tolerance = Math.max((i1.atr || 0) * 0.25, 0.15);
+  const brokeUp = levels.resistance !== null && previous.close <= levels.resistance + tolerance && last.close > levels.resistance;
+  const brokeDown = levels.support !== null && previous.close >= levels.support - tolerance && last.close < levels.support;
+  const retestUp = levels.resistance !== null &&
+    m1.slice(-4, -1).some(b => b.low <= levels.resistance + tolerance && b.low >= levels.resistance - tolerance) &&
+    last.close > levels.resistance && last.close >= last.open;
+  const retestDown = levels.support !== null &&
+    m1.slice(-4, -1).some(b => b.high >= levels.support - tolerance && b.high <= levels.support + tolerance) &&
+    last.close < levels.support && last.close <= last.open;
 
-  if (t5 === "BAISSIER") {
-    sellScore += 20;
-    sellReasons.push("Tendance M5 baissiere");
-  }
+  // Le retest est volontairement exigeant : si aucune bougie récente
+  // ne revient tester le niveau cassé, il n'ajoute pas de points.
+  if (brokeUp || retestUp) add("BUY", retestUp ? 15 : 7, retestUp ? "Cassure haussiere puis retest confirme de resistance" : "Cassure haussiere de resistance (retest non confirme)");
+  if (brokeDown || retestDown) add("SELL", retestDown ? 15 : 7, retestDown ? "Cassure baissiere puis retest confirme du support" : "Cassure baissiere du support (retest non confirme)");
 
-  if (t1 === "BAISSIER") {
-    sellScore += 20;
-    sellReasons.push("Tendance M1 baissiere");
-  }
-
-  if (i1.rsi !== null) {
-    if (i1.rsi >= 50 && i1.rsi <= 68) {
-      buyScore += 15;
-      buyReasons.push("RSI M1 favorable aux achats");
-    }
-
-    if (i1.rsi <= 50 && i1.rsi >= 32) {
-      sellScore += 15;
-      sellReasons.push("RSI M1 favorable aux ventes");
-    }
-  }
-
-  if (i5.rsi !== null) {
-    if (i5.rsi >= 50 && i5.rsi <= 70) {
-      buyScore += 10;
-      buyReasons.push("RSI M5 confirme les achats");
-    }
-
-    if (i5.rsi <= 50 && i5.rsi >= 30) {
-      sellScore += 10;
-      sellReasons.push("RSI M5 confirme les ventes");
-    }
-  }
-
-  const last = m1[m1.length - 1];
-  const previous = m1[m1.length - 2];
-
-  if (last.close > previous.high && t1 === "HAUSSIER") {
-    buyScore += 15;
-    buyReasons.push("Cassure du dernier plus haut");
-  }
-
-  if (last.close < previous.low && t1 === "BAISSIER") {
-    sellScore += 15;
-    sellReasons.push("Cassure du dernier plus bas");
-  }
-
-  const atrPercent =
-    i1.atr !== null && i1.price > 0
-      ? (i1.atr / i1.price) * 100
-      : null;
-
+  const atrPercent = i1.atr !== null && i1.price > 0 ? (i1.atr / i1.price) * 100 : null;
   let volatility = "NORMALE";
+  if (atrPercent === null) volatility = "INDISPONIBLE";
+  else if (atrPercent < 0.001) volatility = "TROP FAIBLE";
+  else if (atrPercent > 0.25) volatility = "TROP ELEVEE";
 
-  if (atrPercent === null) {
-    volatility = "INDISPONIBLE";
-  } else if (atrPercent < 0.001) {
-    volatility = "TROP FAIBLE";
-  } else if (atrPercent > 0.25) {
-    volatility = "TROP ELEVEE";
-  }
-
-  if (volatility !== "NORMALE") {
-    buyScore = Math.min(buyScore, 49);
-    sellScore = Math.min(sellScore, 49);
-  }
-
-  // Confirmation M5 / M15 obligatoire.
-  if (t5 !== t15 || t5 === "NEUTRE") {
-    buyScore = Math.min(buyScore, 69);
-    sellScore = Math.min(sellScore, 69);
-  }
+  if (volatility !== "NORMALE") { buyScore = Math.min(buyScore, 49); sellScore = Math.min(sellScore, 49); }
+  if (t5 !== t15 || t5 === "NEUTRE") { buyScore = Math.min(buyScore, 69); sellScore = Math.min(sellScore, 69); }
 
   buyScore = Math.min(100, buyScore);
   sellScore = Math.min(100, sellScore);
-
-  let signal = "ATTENDRE";
-  let score = Math.max(buyScore, sellScore);
-  let reasons = ["Aucune configuration valide."];
-  let targetPrice = null;
-  let stopPrice = null;
-
+  let signal = "ATTENDRE", score = Math.max(buyScore, sellScore);
+  let reasons = ["Aucune configuration ne satisfait l'ensemble des filtres."];
+  let targetPrice = null, stopPrice = null;
   const entry = i1.price;
 
-  if (
-    buyScore >= settings.minScore &&
-    buyScore > sellScore
-  ) {
-    signal = "ACHAT";
-    score = buyScore;
-    reasons = buyReasons;
-    targetPrice = entry + settings.target;
-    stopPrice = entry - settings.stop;
-  } else if (
-    sellScore >= settings.minScore &&
-    sellScore > buyScore
-  ) {
-    signal = "VENTE";
-    score = sellScore;
-    reasons = sellReasons;
-    targetPrice = entry - settings.target;
-    stopPrice = entry + settings.stop;
+  if (buyScore >= settings.minScore && buyScore > sellScore) {
+    signal = "ACHAT"; score = buyScore; reasons = buyReasons;
+    targetPrice = entry + settings.target; stopPrice = entry - settings.stop;
+  } else if (sellScore >= settings.minScore && sellScore > buyScore) {
+    signal = "VENTE"; score = sellScore; reasons = sellReasons;
+    targetPrice = entry - settings.target; stopPrice = entry + settings.stop;
   }
 
   const round = value => Number(value.toFixed(2));
-
   return {
-    ok: true,
-    instrument: CONFIG.SYMBOL,
-    signal,
-    score,
-    entry: round(entry),
-    targetMove: settings.target,
-    stopMove: settings.stop,
+    ok: true, instrument: CONFIG.SYMBOL, signal, score,
+    entry: round(entry), targetMove: settings.target, stopMove: settings.stop,
     targetPrice: targetPrice === null ? null : round(targetPrice),
     stopPrice: stopPrice === null ? null : round(stopPrice),
-    capital: settings.capital,
-    lotSize: settings.lots,
-    leverage: CONFIG.LEVERAGE,
+    capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number((settings.target / settings.stop).toFixed(3)),
     market: {
-      trendM1: t1,
-      trendM5: t5,
-      trendM15: t15,
+      trendM1: t1, trendM5: t5, trendM15: t15,
       rsiM1: i1.rsi === null ? null : Number(i1.rsi.toFixed(2)),
       rsiM5: i5.rsi === null ? null : Number(i5.rsi.toFixed(2)),
       atrM1: i1.atr === null ? null : Number(i1.atr.toFixed(4)),
+      macdM1: {
+        value: i1.macd.macd === null ? null : Number(i1.macd.macd.toFixed(4)),
+        signal: i1.macd.signal === null ? null : Number(i1.macd.signal.toFixed(4)),
+        histogram: i1.macd.histogram === null ? null : Number(i1.macd.histogram.toFixed(4))
+      },
+      bollingerM1: {
+        middle: i1.bollinger.middle === null ? null : round(i1.bollinger.middle),
+        upper: i1.bollinger.upper === null ? null : round(i1.bollinger.upper),
+        lower: i1.bollinger.lower === null ? null : round(i1.bollinger.lower)
+      },
+      adxM1: {
+        adx: i1.adx.adx === null ? null : Number(i1.adx.adx.toFixed(2)),
+        plusDI: i1.adx.plusDI === null ? null : Number(i1.adx.plusDI.toFixed(2)),
+        minusDI: i1.adx.minusDI === null ? null : Number(i1.adx.minusDI.toFixed(2))
+      },
+      stochasticM1: {
+        k: i1.stochastic.k === null ? null : Number(i1.stochastic.k.toFixed(2)),
+        d: i1.stochastic.d === null ? null : Number(i1.stochastic.d.toFixed(2))
+      },
+      support: levels.support === null ? null : round(levels.support),
+      resistance: levels.resistance === null ? null : round(levels.resistance),
+      breakoutRetest: { brokeUp, brokeDown, retestUp, retestDown },
       volatility
     },
     reasons,
