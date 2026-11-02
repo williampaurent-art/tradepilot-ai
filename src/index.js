@@ -948,20 +948,30 @@ async function handleScalp(request, env) {
 }
 
 async function handleTelegramTest(request, env) {
-  if (!env.TELEGRAM_TEST_KEY) {
+  const configuredKey = String(env.TELEGRAM_TEST_KEY || "").trim();
+
+  if (!configuredKey) {
     return json({
       ok: false,
-      error: "TELEGRAM_TEST_KEY absent."
+      error: "TELEGRAM_TEST_KEY absent dans l'environnement Production."
     }, 503);
   }
 
   const url = new URL(request.url);
-  const suppliedKey = url.searchParams.get("key");
+  const queryKey = url.searchParams.get("key") || "";
+  const headerKey = request.headers.get("x-telegram-test-key") || "";
+  const suppliedKey = String(queryKey || headerKey).trim();
 
-  if (suppliedKey !== env.TELEGRAM_TEST_KEY) {
+  if (suppliedKey !== configuredKey) {
     return json({
       ok: false,
-      error: "Cle de test invalide."
+      error: "Cle de test invalide.",
+      diagnostic: {
+        keyReceived: Boolean(suppliedKey),
+        receivedLength: suppliedKey.length,
+        configuredLength: configuredKey.length,
+        hint: "Compare les longueurs sans partager la cle. Les espaces au debut ou a la fin sont ignores."
+      }
     }, 403);
   }
 
