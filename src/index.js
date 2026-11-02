@@ -957,8 +957,11 @@ async function handleTelegramTest(request, env) {
     }, 503);
   }
 
+  // Compatibilite avec les deux noms d'en-tete utilises pendant les tests.
   let suppliedKey = String(
-    request.headers.get("x-telegram-test-key") || ""
+    request.headers.get("x-test-key") ||
+    request.headers.get("x-telegram-test-key") ||
+    ""
   ).trim();
 
   if (!suppliedKey && request.method === "POST") {
@@ -983,7 +986,7 @@ async function handleTelegramTest(request, env) {
   if (request.method !== "POST") {
     return json({
       ok: false,
-      error: "Utiliser POST avec la cle dans le JSON ou l'en-tete x-telegram-test-key."
+      error: "Utiliser POST avec la cle dans le JSON (key) ou l'en-tete x-test-key / x-telegram-test-key."
     }, 405);
   }
 
@@ -1075,8 +1078,8 @@ export default {
         status: 204,
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, OPTIONS",
-          "access-control-allow-headers": "content-type"
+          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-headers": "content-type, x-test-key, x-telegram-test-key"
         }
       });
     }
