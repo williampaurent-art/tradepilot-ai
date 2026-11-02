@@ -957,21 +957,33 @@ async function handleTelegramTest(request, env) {
     }, 503);
   }
 
-  const url = new URL(request.url);
-  const queryKey = url.searchParams.get("key") || "";
-  const headerKey = request.headers.get("x-telegram-test-key") || "";
-  const suppliedKey = String(queryKey || headerKey).trim();
+  let suppliedKey = String(
+    request.headers.get("x-telegram-test-key") || ""
+  ).trim();
 
-  if (suppliedKey !== configuredKey) {
+  if (!suppliedKey && request.method === "POST") {
+    try {
+      const body = await request.json();
+      suppliedKey = String(body?.key || "").trim();
+    } catch {
+      return json({
+        ok: false,
+        error: "Corps JSON invalide. Envoyer { \"key\": \"VOTRE_CLE\" }."
+      }, 400);
+    }
+  }
+
+  if (request.method !== "POST") {
     return json({
       ok: false,
-      error: "Cle de test invalide.",
-      diagnostic: {
-        keyReceived: Boolean(suppliedKey),
-        receivedLength: suppliedKey.length,
-        configuredLength: configuredKey.length,
-        hint: "Compare les longueurs sans partager la cle. Les espaces au debut ou a la fin sont ignores."
-      }
+      error: "Utiliser POST avec la cle dans le corps JSON ou l'en-tete x-telegram-test-key."
+    }, 405);
+  }
+
+  if (!suppliedKey || suppliedKey !== configuredKey) {
+    return json({
+      ok: false,
+      error: "Cle de test invalide."
     }, 403);
   }
 
@@ -1057,7 +1069,10 @@ export default {
       });
     }
 
-    if (request.method !== "GET") {
+    if (
+      request.method !== "GET" &&
+      !(request.method === "POST" && path === "/telegram-test")
+    ) {
       return json({
         ok: false,
         error: "Methode non prise en charge."
