@@ -9,7 +9,8 @@ const CONFIG = {
 
   TARGET: 2,
   STOP: 7,
-  MIN_SCORE: 75,
+  EARLY_SCORE: 45,
+  MIN_SCORE: 60,
 
   MAX_CANDLES: 250,
   COOLDOWN_MS: 5 * 60 * 1000,
@@ -608,17 +609,20 @@ function analyzeSetup(m1, m5, m15, settings) {
   let targetPrice = null, stopPrice = null;
   const entry = i1.price;
 
-  if (buyScore >= settings.minScore && buyScore > sellScore) {
+  if (buyScore >= CONFIG.EARLY_SCORE && buyScore > sellScore) {
     signal = "ACHAT"; score = buyScore; reasons = buyReasons;
     targetPrice = entry + settings.target; stopPrice = entry - settings.stop;
-  } else if (sellScore >= settings.minScore && sellScore > buyScore) {
+  } else if (sellScore >= CONFIG.EARLY_SCORE && sellScore > buyScore) {
     signal = "VENTE"; score = sellScore; reasons = sellReasons;
     targetPrice = entry - settings.target; stopPrice = entry + settings.stop;
   }
 
+  const alertLevel = signal === "ATTENDRE" ? "NONE" :
+    score >= settings.minScore ? "CONFIRMED" : "EARLY";
+
   const round = value => Number(value.toFixed(2));
   return {
-    ok: true, instrument: CONFIG.SYMBOL, signal, score,
+    ok: true, instrument: CONFIG.SYMBOL, signal, score, alertLevel,
     entry: round(entry), targetMove: settings.target, stopMove: settings.stop,
     targetPrice: targetPrice === null ? null : round(targetPrice),
     stopPrice: stopPrice === null ? null : round(stopPrice),
@@ -741,6 +745,7 @@ function buildAlertMessage(signal) {
     `🚨 TRADEPILOT AI — ${signal.instrument}`,
     "",
     `📊 SIGNAL : ${signal.signal}`,
+    `🏷️ Niveau : ${signal.alertLevel === "CONFIRMED" ? "SIGNAL CONFIRME" : "OPPORTUNITE A SURVEILLER"}`,
     `🎯 Score technique : ${signal.score}/100`,
     "",
     `💰 Entrée indicative : ${signal.entry}`,
