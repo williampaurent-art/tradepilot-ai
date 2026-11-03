@@ -551,6 +551,23 @@ function analyzeSetup(m1, m5, m15, settings) {
   if (brokeUp || retestUp) add("BUY", retestUp ? 15 : 7, retestUp ? "Cassure haussiere puis retest confirme de resistance" : "Cassure haussiere de resistance (retest non confirme)");
   if (brokeDown || retestDown) add("SELL", retestDown ? 15 : 7, retestDown ? "Cassure baissiere puis retest confirme du support" : "Cassure baissiere du support (retest non confirme)");
 
+  // RSI extreme : ne bloque pas automatiquement le scalping,
+  // mais penalise les entrees tardives dans un mouvement deja etire.
+  if (i1.rsi !== null) {
+    if (i1.rsi >= 75) {
+      buyScore -= 8;
+      buyReasons.push("Penalite : RSI M1 en zone de surachat");
+    } else if (i1.rsi <= 25) {
+      sellScore -= 8;
+      sellReasons.push("Penalite : RSI M1 en zone de survente");
+    }
+  }
+
+  // Un signal oppose a la tendance M1 doit obtenir davantage
+  // de confirmations ; on reduit son score sans veto automatique.
+  if (t1 === "BAISSIER") buyScore -= 5;
+  if (t1 === "HAUSSIER") sellScore -= 5;
+
   const atrPercent = i1.atr !== null && i1.price > 0 ? (i1.atr / i1.price) * 100 : null;
   let volatility = "NORMALE";
   if (atrPercent === null) volatility = "INDISPONIBLE";
