@@ -557,11 +557,35 @@ function analyzeSetup(m1, m5, m15, settings) {
   else if (atrPercent < 0.001) volatility = "TROP FAIBLE";
   else if (atrPercent > 0.25) volatility = "TROP ELEVEE";
 
-  if (volatility !== "NORMALE") { buyScore = Math.min(buyScore, 49); sellScore = Math.min(sellScore, 49); }
-  if (t5 !== t15 || t5 === "NEUTRE") { buyScore = Math.min(buyScore, 69); sellScore = Math.min(sellScore, 69); }
+  // Les filtres de volatilite et de tendance superieure
+  // modulent le score au lieu de bloquer automatiquement tout signal.
+  // La qualite/fraicheur des donnees reste, elle, un blocage strict.
+  if (volatility === "TROP FAIBLE") {
+    buyScore -= 8;
+    sellScore -= 8;
+    buyReasons.push("Penalite : volatilite faible");
+    sellReasons.push("Penalite : volatilite faible");
+  } else if (volatility === "TROP ELEVEE") {
+    buyScore -= 12;
+    sellScore -= 12;
+    buyReasons.push("Penalite : volatilite tres elevee");
+    sellReasons.push("Penalite : volatilite tres elevee");
+  } else if (volatility === "INDISPONIBLE") {
+    buyScore -= 15;
+    sellScore -= 15;
+  }
 
-  buyScore = Math.min(100, buyScore);
-  sellScore = Math.min(100, sellScore);
+  if (t5 === "NEUTRE" || t15 === "NEUTRE") {
+    buyScore -= 5;
+    sellScore -= 5;
+  } else if (t5 !== t15) {
+    // Divergence M5/M15 : penalite, pas veto absolu.
+    if (t5 === "HAUSSIER") sellScore -= 8;
+    else if (t5 === "BAISSIER") buyScore -= 8;
+  }
+
+  buyScore = Math.max(0, Math.min(100, buyScore));
+  sellScore = Math.max(0, Math.min(100, sellScore));
   let signal = "ATTENDRE", score = Math.max(buyScore, sellScore);
   let reasons = ["Aucune configuration ne satisfait l'ensemble des filtres."];
   let targetPrice = null, stopPrice = null;
