@@ -13,7 +13,7 @@ const CONFIG = {
   MIN_SCORE: 60,
 
   MAX_CANDLES: 250,
-  COOLDOWN_MS: 5 * 60 * 1000,
+  COOLDOWN_MS: 15 * 60 * 1000,
 
   FRESHNESS_GRACE_MS: 60_000,
   QUALITY_LOOKBACK_MS: 2 * 60 * 60 * 1000,
@@ -801,12 +801,9 @@ async function writeKV(env, key, value, ttl = 86400) {
 }
 
 function getAlertKey(signal) {
-  return [
-    signal.signal,
-    signal.entry,
-    signal.targetPrice,
-    signal.stopPrice
-  ].join("_");
+  // Cle stable par direction et niveau : evite les doublons
+  // provoques par les petites variations du prix d'entree.
+  return [signal.signal, signal.alertLevel || "CONFIRMED"].join("_");
 }
 
 async function shouldSendAlert(env, signal) {
@@ -896,6 +893,7 @@ async function scheduledCheck(env) {
     await writeKV(env, "last_alert", {
       key: getAlertKey(signal),
       signal: signal.signal,
+      alertLevel: signal.alertLevel || "CONFIRMED",
       entry: signal.entry,
       time: Date.now()
     }, 7 * 86400);
