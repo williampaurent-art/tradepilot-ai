@@ -1265,6 +1265,43 @@ async function handleTelegramTest(request, env) {
   }
 }
 
+async function handleCalendarKeyCheck(env) {
+  const apiKey = String(env.FINANCE_CALENDAR_API_KEY || "").trim();
+
+  if (!apiKey) {
+    return json({ configured: false, valid: false, status: "API_KEY_MISSING" }, 503);
+  }
+
+  try {
+    const response = await fetch("https://www.financecalendar.com/wp-json/fc/v1/keys/me", {
+      headers: { accept: "application/json", "X-API-Key": apiKey },
+      signal: AbortSignal.timeout(10000)
+    });
+    const body = await response.text();
+    let details = null;
+    try { details = body ? JSON.parse(body) : null; } catch { details = null; }
+
+    return json({
+      configured: true,
+      valid: response.ok,
+      httpStatus: response.status,
+      status: response.status === 200 ? "KEY_VALID" :
+        response.status === 401 ? "KEY_INVALID_OR_UNAUTHORIZED" :
+        response.status === 403 ? "KEY_REVOKED" :
+        response.status === 503 ? "USAGE_CHECK_UNAVAILABLE" : "KEY_CHECK_ERROR",
+      message: response.ok
+        ? "La clé est acceptée par Finance Calendar."
+        : "Finance Calendar n'a pas validé la clé.",
+      details
+    }, response.ok ? 200 : 502);
+  } catch (error) {
+    return json({
+      configured: true, valid: false, status: "NETWORK_ERROR",
+      message: error.message
+    }, 502);
+  }
+}
+
 async function handleHealth(env) {
   return json({
     ok: true,
@@ -1353,6 +1390,10 @@ export default {
 
       if (path === "/calendar") {
         return json(await getEconomicContext(env));
+      }
+
+      if (path === "/calendar-key-check") {
+        return await handleCalendarKeyCheck(env);
       }
 
       if (path === "/analyze") {
