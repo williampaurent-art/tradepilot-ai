@@ -667,7 +667,7 @@ function analyzeSetup(m1, m5, m15, settings) {
 // ANALYSE COMPLETE
 // --------------------------------------------------
 
-async function getSignal(settings) {
+async function getSignal(settings, env) {
   const [m1, m5, m15] = await Promise.all([
     fetchCandles("M1"),
     fetchCandles("M5"),
@@ -695,7 +695,8 @@ async function getSignal(settings) {
   const result = analyzeSetup(m1, m5, m15, settings);
   result.dataQuality = quality;
 
-  return result;
+  const economicContext = await getEconomicContext(env);
+  return applyEconomicFilter(result, economicContext);
 }
 
 // --------------------------------------------------
@@ -800,6 +801,190 @@ async function writeKV(env, key, value, ttl = 86400) {
   }
 }
 
+
+// --------------------------------------------------
+// CALENDRIER ECONOMIQUE — Finance Calendar API
+// --------------------------------------------------
+
+const ECONOMIC_CALENDAR = {
+  URL: "https://www.financecalendar.com/wp-json/fc/v1/calendar",
+  CACHE_KEY: "economic_calendar_cache",
+  REFRESH_MS: 15 * 60 * 1000,
+  BEFORE_MS: 15 * 60 * 1000,
+  AFTER_MS: 15 * 60 * 1000
+};
+
+function evaluateEconomicEvents(events, fetchedAt, stale = false) {
+  const now = Date.now();
+  const relevant = events.filter(event =>
+    String(event.impact || "").toLowerCase() === "high" &&
+    ["US", "EU"].includes(String(event.country || "").toUpperCase()) &&
+    ["economic-indicators", "central-banks-monetary-policy"].includes(event.category) &&
+    event.status !== "cancelled" &&
+    event.data_stale !== true
+  );
+
+  const timed = relevant.map(event => ({
+    ...event,
+    releaseMs: Date.parse(event.release_at_utc || event.time_utc || "")
+  })).filter(event => Number.isFinite(event.releaseMs));
+
+  const activeEvent = timed.find(event =>
+    now >= event.releaseMs - ECONOMIC_CALENDAR.BEFORE_MS &&
+    now <= event.releaseMs + ECONOMIC_CALENDAR.AFTER_MS
+  ) || null;
+
+  return {
+    configured: true,
+    status: stale ? "STALE_CACHE" : "OK",
+    source: "Finance Calendar",
+    sourceUrl: "https://www.financecalendar.com",
+    fetchedAt,
+    stale,
+    eventCount: relevant.length,
+    blackout: Boolean(activeEvent),
+    activeEvent: activeEvent ? {
+      id: activeEvent.id || null,
+      name: activeEvent.name || activeEvent.title || activeEvent.series_name || "Annonce économique",
+      country: activeEvent.country || null,
+      impact: activeEvent.impact || null,
+      releaseAt: activeEvent.release_at_utc || activeEvent.time_utc || null,
+      url: activeEvent.url || null
+    } : null,
+    events: relevant.slice(0, 30),
+    safeToTrade: !stale
+  };
+}
+
+async function getEconomicContext(env) {
+  const apiKey = String(env.FINANCE_CALENDAR_API_KEY || "").trim();
+
+  if (!apiKey) {
+    return {
+      configured: false,
+      status: "API_KEY_MISSING",
+      source: "Finance Calendar",
+      blackout: false,
+      safeToTrade: false,
+      message: "Secret FINANCE_CALENDAR_API_KEY absent."
+    };
+  }
+
+  const cachedRaw = await readKV(env, ECONOMIC_CALENDAR.CACHE_KEY);
+  let cached = null;
+
+  try {
+    if (cachedRaw) cached = JSON.parse(cachedRaw);
+  } catch {
+    cached = null;
+  }
+
+  if (
+    cached &&
+    Array.isArray(cached.events) &&
+    Date.now() - Number(cached.fetchedAt || 0) < ECONOMIC_CALENDAR.REFRESH_MS
+  ) {
+    return evaluateEconomicEvents(cached.events, cached.fetchedAt, false);
+  }
+
+  try {
+    const now = new Date();
+    const from = now.toISOString().slice(0, 10);
+    const to = new Date(now.getTime() + 7 * 86400 * 1000)
+      .toISOString().slice(0, 10);
+
+    const url = new URL(ECONOMIC_CALENDAR.URL);
+    url.searchParams.set("from", from);
+    url.searchParams.set("to", to);
+    url.searchParams.set("country", "US,EU");
+    url.searchParams.set("impact", "high");
+    url.searchParams.set(
+      "category",
+      "economic-indicators,central-banks-monetary-policy"
+    );
+    url.searchParams.set("tz", "Europe/Paris");
+    url.searchParams.set("limit", "200");
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        accept: "application/json",
+        "X-API-Key": apiKey
+      },
+      signal: AbortSignal.timeout(12_000)
+    });
+
+    if (!response.ok) {
+      throw new Error("Calendrier économique HTTP " + response.status);
+    }
+
+    const payload = await response.json();
+    if (!Array.isArray(payload.events)) {
+      throw new Error("Réponse du calendrier économique invalide.");
+    }
+
+    const fetchedAt = Date.now();
+    await writeKV(env, ECONOMIC_CALENDAR.CACHE_KEY, {
+      fetchedAt,
+      events: payload.events
+    }, 2 * 86400);
+
+    return evaluateEconomicEvents(payload.events, fetchedAt, false);
+  } catch (error) {
+    if (cached && Array.isArray(cached.events)) {
+      const fallback = evaluateEconomicEvents(
+        cached.events,
+        cached.fetchedAt,
+        true
+      );
+      return {
+        ...fallback,
+        status: "API_ERROR_USING_STALE_CACHE",
+        message: error.message,
+        safeToTrade: false
+      };
+    }
+
+    return {
+      configured: true,
+      status: "API_ERROR",
+      source: "Finance Calendar",
+      blackout: false,
+      safeToTrade: false,
+      message: error.message
+    };
+  }
+}
+
+function applyEconomicFilter(signal, context) {
+  signal.economicCalendar = {
+    configured: context.configured,
+    status: context.status,
+    blackout: context.blackout,
+    safeToTrade: context.safeToTrade,
+    activeEvent: context.activeEvent || null,
+    source: context.source || "Finance Calendar",
+    sourceUrl: context.sourceUrl || "https://www.financecalendar.com"
+  };
+
+  if (!context.safeToTrade || context.blackout) {
+    signal.technicalSignal = signal.signal;
+    signal.technicalScore = signal.score;
+    signal.signal = "ATTENDRE";
+    signal.alertLevel = "NONE";
+    signal.blockedByEconomicCalendar = true;
+    signal.reasons = [
+      context.blackout
+        ? "Entrée bloquée : annonce économique majeure dans la fenêtre de sécurité de 15 minutes."
+        : "Entrée bloquée : calendrier économique indisponible ou non vérifié.",
+      ...(signal.reasons || [])
+    ];
+  } else {
+    signal.blockedByEconomicCalendar = false;
+  }
+
+  return signal;
+}
+
 function getAlertKey(signal) {
   // Cle stable par direction et niveau : evite les doublons
   // provoques par les petites variations du prix d'entree.
@@ -853,7 +1038,7 @@ async function scheduledCheck(env) {
       lots: CONFIG.LOTS_PER_1000
     };
 
-    const signal = await getSignal(settings);
+    const signal = await getSignal(settings, env);
 
     await writeKV(env, "last_signal", signal, 7 * 86400);
 
@@ -952,7 +1137,7 @@ async function handleStatus(env) {
   });
 }
 
-async function handleAnalyze(request) {
+async function handleAnalyze(request, env) {
   const settings = getSettings(new URL(request.url));
   const signal = await getSignal(settings);
 
@@ -1151,8 +1336,12 @@ export default {
         return await handleGold(request);
       }
 
+      if (path === "/calendar") {
+        return json(await getEconomicContext(env));
+      }
+
       if (path === "/analyze") {
-        return await handleAnalyze(request);
+        return await handleAnalyze(request, env);
       }
 
       if (path === "/scalp") {
@@ -1173,6 +1362,7 @@ export default {
           "/gold?timeframe=M5",
           "/gold?timeframe=M15",
           "/analyze",
+          "/calendar",
           "/scalp",
           "/telegram-test?key=VOTRE_CLE"
         ]
