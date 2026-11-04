@@ -1265,18 +1265,49 @@ async function handleScalp(request, env) {
   const settings = getSettings(new URL(request.url));
   const signal = await getSignal(settings, env);
 
-  if (!signal.ok || signal.signal === "ATTENDRE") {
+  // Telegram ne reçoit que les décisions pleinement confirmées.
+  // Les signaux EARLY restent visibles dans l'analyse, mais ne déclenchent
+  // jamais de notification présentée comme une entrée immédiate.
+  if (
+    !signal.ok ||
+    signal.signal === "ATTENDRE" ||
+    signal.alertLevel !== "CONFIRMED"
+  ) {
     return json({
       ...signal,
       alert: {
         sent: false,
-        reason: "Aucun signal valide."
+        reason: !signal.ok
+          ? "Analyse indisponible : aucune alerte envoyee."
+          : signal.signal === "ATTENDRE"
+            ? "Aucun signal valide."
+            : "Signal precoce non confirme : notification Telegram ignoree."
       }
     }, signal.ok ? 200 : 503);
   }
 
+  // Même anti-doublon que le Cron : une même direction confirmée
+  // ne peut pas être renvoyée pendant la période de refroidissement.
+  if (!(await shouldSendAlert(env, signal))) {
+    return json({
+      ...signal,
+      alert: {
+        sent: false,
+        reason: "Signal confirme deja notifie recemment."
+      }
+    });
+  }
+
   try {
     await sendTelegram(env, buildAlertMessage(signal));
+
+    await writeKV(env, "last_alert", {
+      key: getAlertKey(signal),
+      signal: signal.signal,
+      alertLevel: "CONFIRMED",
+      entry: signal.entry,
+      time: Date.now()
+    }, 7 * 86400);
 
     return json({
       ...signal,
