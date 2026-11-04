@@ -826,13 +826,28 @@ function evaluateEconomicEvents(events, fetchedAt, stale = false) {
 
   const timed = relevant.map(event => ({
     ...event,
-    releaseMs: Date.parse(event.release_at_utc || event.time_utc || "")
-  })).filter(event => Number.isFinite(event.releaseMs));
+    releaseMs: Date.parse(event.release_at_utc || event.time_utc || ""),
+    windowStartMs: Date.parse(event.time_window_start || ""),
+    windowEndMs: Date.parse(event.time_window_end || "")
+  }));
 
-  const activeEvent = timed.find(event =>
-    now >= event.releaseMs - ECONOMIC_CALENDAR.BEFORE_MS &&
-    now <= event.releaseMs + ECONOMIC_CALENDAR.AFTER_MS
-  ) || null;
+  const activeEvent = timed.find(event => {
+    if (Number.isFinite(event.releaseMs)) {
+      return now >= event.releaseMs - ECONOMIC_CALENDAR.BEFORE_MS &&
+        now <= event.releaseMs + ECONOMIC_CALENDAR.AFTER_MS;
+    }
+
+    if (
+      Number.isFinite(event.windowStartMs) &&
+      Number.isFinite(event.windowEndMs)
+    ) {
+      return now >= event.windowStartMs - ECONOMIC_CALENDAR.BEFORE_MS &&
+        now <= event.windowEndMs + ECONOMIC_CALENDAR.AFTER_MS;
+    }
+
+    // Une date sans heure exacte ne déclenche pas de blocage arbitraire.
+    return false;
+  }) || null;
 
   return {
     configured: true,
