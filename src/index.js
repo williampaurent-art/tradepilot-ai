@@ -280,7 +280,10 @@ async function fetchLiveQuote() {
   const ask = Number(quote.ask);
   const mid = Number(quote.mid);
   const timestamp = Date.parse(quote.timestamp || "");
-  const reportedAge = Number(quote.quoteAgeSeconds);
+  const rawReportedAge = quote.quoteAgeSeconds;
+  const reportedAge = rawReportedAge === null || rawReportedAge === undefined || rawReportedAge === ""
+    ? NaN
+    : Number(rawReportedAge);
   const ageSeconds = Number.isFinite(reportedAge)
     ? reportedAge
     : (Date.now() - timestamp) / 1000;
