@@ -913,10 +913,6 @@ async function getEconomicContext(env) {
     url.searchParams.set("to", to);
     url.searchParams.set("country", "US,EU");
     url.searchParams.set("impact", "high");
-    url.searchParams.set(
-      "category",
-      "economic-indicators,central-banks-monetary-policy"
-    );
     url.searchParams.set("tz", "Europe/Paris");
     url.searchParams.set("limit", "200");
 
@@ -929,7 +925,11 @@ async function getEconomicContext(env) {
     });
 
     if (!response.ok) {
-      throw new Error("Calendrier économique HTTP " + response.status);
+      const errorBody = await response.text();
+      throw new Error(
+        "Calendrier économique HTTP " + response.status +
+        " : " + errorBody.slice(0, 500)
+      );
     }
 
     const payload = await response.json();
