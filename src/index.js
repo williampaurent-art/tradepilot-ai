@@ -908,13 +908,12 @@ async function getEconomicContext(env) {
     const to = new Date(now.getTime() + 7 * 86400 * 1000)
       .toISOString().slice(0, 10);
 
+    // Requête minimale conforme à l'exemple officiel de l'API.
+    // On réintroduira les filtres de dates/fuseau après validation.
     const url = new URL(ECONOMIC_CALENDAR.URL);
-    url.searchParams.set("from", from);
-    url.searchParams.set("to", to);
-    url.searchParams.set("country", "US,EU");
+    url.searchParams.set("country", "US,GB");
     url.searchParams.set("impact", "high");
-    url.searchParams.set("tz", "Europe/Paris");
-    url.searchParams.set("limit", "200");
+    url.searchParams.set("limit", "5");
 
     const response = await fetch(url.toString(), {
       headers: {
