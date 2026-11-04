@@ -1139,14 +1139,14 @@ async function handleStatus(env) {
 
 async function handleAnalyze(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings);
+  const signal = await getSignal(settings, env);
 
   return json(signal, signal.ok ? 200 : 503);
 }
 
 async function handleScalp(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings);
+  const signal = await getSignal(settings, env);
 
   if (!signal.ok || signal.signal === "ATTENDRE") {
     return json({
