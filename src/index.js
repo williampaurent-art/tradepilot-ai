@@ -16,6 +16,7 @@ const CONFIG = {
   COOLDOWN_MS: 15 * 60 * 1000,
 
   FRESHNESS_GRACE_MS: 60_000,
+  LIVE_QUOTE_MAX_AGE_SECONDS: 60,
   QUALITY_LOOKBACK_MS: 2 * 60 * 60 * 1000,
   GAP_TOLERANCE_MS: 30_000
 };
@@ -261,6 +262,58 @@ async function fetchCandles(timeframe, limit = 200) {
   return closed.slice(-Math.min(limit, CONFIG.MAX_CANDLES));
 }
 
+async function fetchLiveQuote() {
+  const url = new URL(`https://biquote.io/api/${CONFIG.SYMBOL}`);
+  url.searchParams.set("allowStale", "false");
+
+  const response = await fetch(url.toString(), {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(8_000)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Cours live indisponible : HTTP ${response.status}`);
+  }
+
+  const quote = await response.json();
+  const bid = Number(quote.bid);
+  const ask = Number(quote.ask);
+  const mid = Number(quote.mid);
+  const timestamp = Date.parse(quote.timestamp || "");
+  const reportedAge = Number(quote.quoteAgeSeconds);
+  const ageSeconds = Number.isFinite(reportedAge)
+    ? reportedAge
+    : (Date.now() - timestamp) / 1000;
+
+  if (
+    quote.marketState !== "open" ||
+    quote.stale === true ||
+    !Number.isFinite(bid) ||
+    !Number.isFinite(ask) ||
+    !Number.isFinite(mid) ||
+    bid <= 0 ||
+    ask < bid ||
+    !Number.isFinite(ageSeconds) ||
+    ageSeconds < 0 ||
+    ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS
+  ) {
+    throw new Error("Cours XAUUSD fermé, périmé ou incomplet. Aucun signal immédiat autorisé.");
+  }
+
+  return {
+    bid,
+    ask,
+    mid,
+    spread: Number.isFinite(Number(quote.spread))
+      ? Number(quote.spread)
+      : ask - bid,
+    timestamp: quote.timestamp,
+    quoteAgeSeconds: Number(ageSeconds.toFixed(1)),
+    marketState: quote.marketState,
+    source: quote.source || "BiQuote"
+  };
+}
+
 // --------------------------------------------------
 // FRAICHEUR ET CONTINUITE
 // --------------------------------------------------
@@ -492,7 +545,7 @@ function getTrend(indicator) {
 // ANALYSE DU MARCHE : INDICATEURS + CASSURE/RETEST
 // --------------------------------------------------
 
-function analyzeSetup(m1, m5, m15, settings) {
+function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   const i1 = getIndicators(m1), i5 = getIndicators(m5), i15 = getIndicators(m15);
   const t1 = getTrend(i1), t5 = getTrend(i5), t15 = getTrend(i15);
   let buyScore = 0, sellScore = 0;
@@ -607,14 +660,18 @@ function analyzeSetup(m1, m5, m15, settings) {
   let signal = "ATTENDRE", score = Math.max(buyScore, sellScore);
   let reasons = ["Aucune configuration ne satisfait l'ensemble des filtres."];
   let targetPrice = null, stopPrice = null;
-  const entry = i1.price;
+  let entry = liveQuote.mid;
 
   if (buyScore >= CONFIG.EARLY_SCORE && buyScore > sellScore) {
     signal = "ACHAT"; score = buyScore; reasons = buyReasons;
-    targetPrice = entry + settings.target; stopPrice = entry - settings.stop;
+    entry = liveQuote.ask;
+    targetPrice = entry + settings.target;
+    stopPrice = entry - settings.stop;
   } else if (sellScore >= CONFIG.EARLY_SCORE && sellScore > buyScore) {
     signal = "VENTE"; score = sellScore; reasons = sellReasons;
-    targetPrice = entry - settings.target; stopPrice = entry + settings.stop;
+    entry = liveQuote.bid;
+    targetPrice = entry - settings.target;
+    stopPrice = entry + settings.stop;
   }
 
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
@@ -628,6 +685,15 @@ function analyzeSetup(m1, m5, m15, settings) {
     stopPrice: stopPrice === null ? null : round(stopPrice),
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number((settings.target / settings.stop).toFixed(3)),
+    liveQuote: {
+      bid: Number(liveQuote.bid.toFixed(2)),
+      ask: Number(liveQuote.ask.toFixed(2)),
+      mid: Number(liveQuote.mid.toFixed(2)),
+      spread: Number(liveQuote.spread.toFixed(3)),
+      timestamp: liveQuote.timestamp,
+      quoteAgeSeconds: liveQuote.quoteAgeSeconds,
+      source: liveQuote.source
+    },
     market: {
       trendM1: t1, trendM5: t5, trendM15: t15,
       rsiM1: i1.rsi === null ? null : Number(i1.rsi.toFixed(2)),
@@ -668,11 +734,25 @@ function analyzeSetup(m1, m5, m15, settings) {
 // --------------------------------------------------
 
 async function getSignal(settings, env) {
-  const [m1, m5, m15] = await Promise.all([
-    fetchCandles("M1"),
-    fetchCandles("M5"),
-    fetchCandles("M15")
-  ]);
+  let m1, m5, m15, liveQuote;
+
+  try {
+    [m1, m5, m15, liveQuote] = await Promise.all([
+      fetchCandles("M1"),
+      fetchCandles("M5"),
+      fetchCandles("M15"),
+      fetchLiveQuote()
+    ]);
+  } catch (error) {
+    return {
+      ok: false,
+      instrument: CONFIG.SYMBOL,
+      signal: "ATTENDRE",
+      score: 0,
+      error: error.message,
+      execution: "AUCUN ORDRE REEL"
+    };
+  }
 
   const quality = {
     M1: inspectDataQuality(m1, "M1"),
@@ -692,7 +772,7 @@ async function getSignal(settings, env) {
     };
   }
 
-  const result = analyzeSetup(m1, m5, m15, settings);
+  const result = analyzeSetup(m1, m5, m15, settings, liveQuote);
   result.dataQuality = quality;
 
   const economicContext = await getEconomicContext(env);
@@ -741,17 +821,24 @@ function buildAlertMessage(signal) {
   const reasons = signal.reasons
     .map(reason => `• ${reason}`)
     .join("\n");
+  const confirmed = signal.alertLevel === "CONFIRMED";
+  const action = signal.signal === "ACHAT" ? "ACHAT" : "VENTE";
+  const entrySide = signal.signal === "ACHAT" ? "ASK" : "BID";
 
   return [
     `🚨 TRADEPILOT AI — ${signal.instrument}`,
     "",
-    `📊 SIGNAL : ${signal.signal}`,
-    `🏷️ Niveau : ${signal.alertLevel === "CONFIRMED" ? "SIGNAL CONFIRME" : "OPPORTUNITE A SURVEILLER"}`,
+    confirmed
+      ? `📊 DECISION : ${action} MAINTENANT`
+      : `📊 SIGNAL : ${action} — À SURVEILLER, PAS D'ENTRÉE`,
     `🎯 Score technique : ${signal.score}/100`,
     "",
-    `💰 Entrée indicative : ${signal.entry}`,
-    `✅ Take Profit : ${signal.targetPrice}`,
-    `🛑 Stop Loss : ${signal.stopPrice}`,
+    `💰 Cours marché ${entrySide} au moment de l'analyse : ${signal.entry}`,
+    `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
+    `🕒 Âge du cours reçu : ${signal.liveQuote.quoteAgeSeconds}s`,
+    `🕓 Horodatage du cours : ${signal.liveQuote.timestamp}`,
+    `✅ Take Profit calculé : ${signal.targetPrice}`,
+    `🛑 Stop Loss calculé : ${signal.stopPrice}`,
     "",
     `📦 Taille indicative : ${signal.lotSize} lot`,
     `💵 Capital de référence : ${signal.capital} USD`,
@@ -765,7 +852,9 @@ function buildAlertMessage(signal) {
     "Motifs :",
     reasons,
     "",
-    "⚠️ Signal indicatif uniquement. Aucun ordre réel exécuté."
+    confirmed
+      ? "⚠️ Signal basé sur un cours live BiQuote. Vérifie le prix affiché sur MT5 avant toute entrée manuelle. Aucun ordre réel exécuté."
+      : "⚠️ Score sous le seuil de confirmation : ne pas entrer sur ce signal. Aucun ordre réel exécuté."
   ].join("\n");
 }
 
@@ -1071,6 +1160,17 @@ async function scheduledCheck(env) {
         score: signal.score,
         alertSent: false,
         message: "Analyse terminee : aucun signal valide."
+      });
+
+      return signal;
+    }
+
+    if (signal.alertLevel !== "CONFIRMED") {
+      await saveCronStatus(env, "COMPLETED", {
+        signal: signal.signal,
+        score: signal.score,
+        alertSent: false,
+        message: "Signal sous le seuil de confirmation : conserve en surveillance, sans alerte d'entree."
       });
 
       return signal;
