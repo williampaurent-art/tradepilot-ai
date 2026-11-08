@@ -2247,7 +2247,7 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const momentumConfirmation = direction === "HAUSSIER" ? bullishMomentum && bullishEmaCross :
     direction === "BAISSIER" ? bearishMomentum && bearishEmaCross : false;
   const oppositeTrend = direction !== "MIXTE" && trend !== "NEUTRE" && trend !== direction;
-  let stage = "AUCUN_RETournEMENT";
+  let stage = "AUCUN_RETOURNEMENT";
   let status = "PAS_DE_RETOURNEMENT";
   if (direction === "MIXTE" || dominant - opposing < 2) {
     stage = "SIGNAUX_CONTRADICTOIRES"; status = "SIGNAUX_MIXTES";
