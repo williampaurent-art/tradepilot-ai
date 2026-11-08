@@ -1517,16 +1517,49 @@ async function handleStatus(env) {
   });
 }
 
+async function handleSniperStats(env) {
+  const raw = await readKV(env, SNIPER_STATS.KEY);
+  let state;
+  try { state = raw ? JSON.parse(raw) : null; } catch { state = null; }
+  const samples = Array.isArray(state?.samples) ? state.samples : [];
+  const buckets = [];
+  for (const direction of ["BUY", "SELL"]) {
+    for (const regime of ["TENDANCE", "RANGE", "TRANSITION", "INDETERMINE"]) {
+      const stats = getSniperBucketStats(samples, direction, regime);
+      if (stats.samples > 0) buckets.push(stats);
+    }
+  }
+  return json({
+    ok: true,
+    instrument: CONFIG.SYMBOL,
+    strategy: { target: CONFIG.TARGET, stop: CONFIG.STOP },
+    validation: {
+      targetHistoricalWinRate: SNIPER_STATS.TARGET_WIN_RATE * 100,
+      minimumResolvedPerDirectionAndRegime: SNIPER_STATS.MIN_RESOLVED,
+      maxHoldingMinutes: SNIPER_STATS.MAX_HOLD_MS / 60000,
+      sampleRetentionDays: SNIPER_STATS.SAMPLE_TTL_SECONDS / 86400
+    },
+    storageConfigured: Boolean(env.TP_STATE),
+    totalSamples: samples.length,
+    pending: samples.filter(sample => sample.outcome === "PENDING").length,
+    resolved: samples.filter(sample => ["WIN", "LOSS"].includes(sample.outcome)).length,
+    timeouts: samples.filter(sample => sample.outcome === "TIMEOUT").length,
+    buckets,
+    updatedAt: state?.updatedAt ? new Date(state.updatedAt).toISOString() : null,
+    note: "Résultats simulés sur OHLC M1, spread d'entrée pris en compte de façon prudente; commissions, slippage et prix bid/ask historiques ne sont pas disponibles. Aucun taux n'est garanti."
+  });
+}
+
 async function handleAnalyze(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings, env, true);
+  const signal = await getSignal(settings, env, false);
 
   return json(signal, signal.ok ? 200 : 503);
 }
 
 async function handleScalp(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings, env);
+  const signal = await getSignal(settings, env, true);
 
   // Telegram ne reçoit que les décisions pleinement confirmées.
   // Les signaux EARLY restent visibles dans l'analyse, mais ne déclenchent
@@ -1796,6 +1829,10 @@ export default {
         return await handleAnalyze(request, env);
       }
 
+      if (path === "/sniper-stats") {
+        return await handleSniperStats(env);
+      }
+
       if (path === "/scalp") {
         return await handleScalp(request, env);
       }
@@ -1814,6 +1851,7 @@ export default {
           "/gold?timeframe=M5",
           "/gold?timeframe=M15",
           "/analyze",
+          "/sniper-stats",
           "/calendar",
           "/scalp",
           "/telegram-test?key=VOTRE_CLE"
