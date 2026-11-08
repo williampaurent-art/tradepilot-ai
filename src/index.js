@@ -573,6 +573,10 @@ function analyzeMarketRegime(bars, indicator) {
     breakoutCandidateUp: false, breakoutCandidateDown: false,
     breakoutState: "INDISPONIBLE", breakoutDirection: "NEUTRE",
     fakeoutUp: false, fakeoutDown: false,
+    rangeReentryUp: false, rangeReentryDown: false,
+    rangeReentryDirection: "NEUTRE", rangeReentryDepthAtr: null,
+    rangeReentryWickBodyRatio: null, rangeReentryClosePosition: null,
+    rangeReentryQuality: "NON_EVALUE",
     retestUp: false, retestDown: false,
     rangeQuality: 0, rangeWidthAtr: null, emaCompressionAtr: null,
     followThrough: false, explanation: "Historique insuffisant pour classifier le régime."
@@ -632,6 +636,29 @@ function analyzeMarketRegime(bars, indicator) {
     (previous.close > rangeHigh + buffer && last.close < rangeHigh);
   const fakeoutDown = (last.low < rangeLow - buffer && last.close >= rangeLow) ||
     (previous.close < rangeLow - buffer && last.close > rangeLow);
+
+  // Réintégration stricte sur la dernière bougie clôturée : la mèche traverse
+  // la borne du range, mais la clôture revient à l'intérieur.
+  // Une simple clôture précédente hors range ne suffit pas à qualifier la mèche.
+  const rangeReentryUp = last.high > rangeHigh + buffer && last.close < rangeHigh;
+  const rangeReentryDown = last.low < rangeLow - buffer && last.close > rangeLow;
+  const rangeReentryDirection = rangeReentryDown ? "HAUSSIER"
+    : rangeReentryUp ? "BAISSIER" : "NEUTRE";
+  const reentryDepth = rangeReentryDown ? rangeLow - last.low
+    : rangeReentryUp ? last.high - rangeHigh : null;
+  const reentryWick = rangeReentryDown ? Math.min(last.open, last.close) - last.low
+    : rangeReentryUp ? last.high - Math.max(last.open, last.close) : null;
+  const reentryWickBodyRatio = reentryWick === null ? null
+    : reentryWick / Math.max(Math.abs(last.close - last.open), indicator.atr * 0.01);
+  const reentryClosePosition = (last.close - last.low) / candleRange;
+  const reentryAlignedClose = rangeReentryDown ? reentryClosePosition >= 0.60
+    : rangeReentryUp ? reentryClosePosition <= 0.40 : false;
+  const rangeReentryQuality = !rangeReentryUp && !rangeReentryDown ? "NON_EVALUE"
+    : reentryDepth / indicator.atr >= 0.08 && reentryWickBodyRatio >= 1.5 && reentryAlignedClose
+      ? "FORTE"
+      : reentryDepth / indicator.atr >= 0.03 && reentryWickBodyRatio >= 1 &&
+        (rangeReentryDown ? reentryClosePosition >= 0.55 : reentryClosePosition <= 0.45)
+        ? "MODEREE" : "FAIBLE";
 
   const breakoutCandidateUp = last.close > rangeHigh + buffer;
   const breakoutCandidateDown = last.close < rangeLow - buffer;
@@ -728,6 +755,11 @@ function analyzeMarketRegime(bars, indicator) {
     breakoutUp, breakoutDown, breakoutCandidateUp, breakoutCandidateDown,
     breakoutState, breakoutDirection, followThrough,
     fakeoutUp, fakeoutDown, retestUp, retestDown,
+    rangeReentryUp, rangeReentryDown, rangeReentryDirection,
+    rangeReentryDepthAtr: reentryDepth === null ? null : Number((reentryDepth / indicator.atr).toFixed(2)),
+    rangeReentryWickBodyRatio: reentryWickBodyRatio === null ? null : Number(reentryWickBodyRatio.toFixed(2)),
+    rangeReentryClosePosition: Number(reentryClosePosition.toFixed(2)),
+    rangeReentryQuality,
     rangeQuality: Math.round(rangeQuality),
     rangeWidthAtr: Number(rangeWidthAtr.toFixed(2)),
     emaCompressionAtr: Number(emaCompressionAtr.toFixed(2)),
@@ -2323,14 +2355,19 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
       : false;
   const alignedRetest = direction === "HAUSSIER" ? regime?.retestUp === true
     : direction === "BAISSIER" ? regime?.retestDown === true : false;
-  const reversalConfluenceCount = [alignedSweep, structureConfirmation, alignedRetest]
+  const alignedRangeReentry = direction !== "MIXTE" &&
+    regime?.rangeReentryDirection === direction &&
+    ["FORTE", "MODEREE"].includes(regime?.rangeReentryQuality);
+  const reversalConfluenceCount = [alignedSweep, structureConfirmation, alignedRetest, alignedRangeReentry]
     .filter(Boolean).length;
-  const reversalConfluenceStatus = reversalConfluenceCount === 3 ? "TRIPLE_CONFLUENCE"
-    : structureConfirmation && (alignedSweep || alignedRetest) ? "CHOCH_ET_CONFIRMATION"
-      : alignedSweep && alignedRetest ? "BALAYAGE_ET_RETEST"
-        : structureConfirmation ? "CHOCH_SEUL"
-          : alignedSweep ? "BALAYAGE_SEUL"
-            : alignedRetest ? "RETEST_SEUL" : "AUCUNE_CONFLUENCE";
+  const reversalConfluenceStatus = reversalConfluenceCount >= 3 ? "TRIPLE_CONFLUENCE"
+    : alignedRangeReentry && (structureConfirmation || alignedSweep || alignedRetest) ? "RANGE_REENTRY_ET_CONFIRMATION"
+      : structureConfirmation && (alignedSweep || alignedRetest) ? "CHOCH_ET_CONFIRMATION"
+        : alignedSweep && alignedRetest ? "BALAYAGE_ET_RETEST"
+          : alignedRangeReentry ? "REINTEGRATION_RANGE"
+            : structureConfirmation ? "CHOCH_SEUL"
+              : alignedSweep ? "BALAYAGE_SEUL"
+                : alignedRetest ? "RETEST_SEUL" : "AUCUNE_CONFLUENCE";
   let stage = "AUCUN_RETOURNEMENT";
   let status = "PAS_DE_RETOURNEMENT";
   if (direction === "MIXTE" || dominant - opposing < 2) {
@@ -2382,7 +2419,11 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     candleConfirmation, structureConfirmation, structureBreakConfirmed,
     breakQuality, breakDistanceAtr: breakDistanceAtr === null ? null : Number(breakDistanceAtr.toFixed(2)),
     breakCandleAligned, directionalConflict, momentumConfirmation,
-    alignedSweep, alignedRetest, reversalConfluenceCount, reversalConfluenceStatus,
+    alignedSweep, alignedRetest, alignedRangeReentry,
+    rangeReentryDirection: regime?.rangeReentryDirection || "NEUTRE",
+    rangeReentryQuality: regime?.rangeReentryQuality || "NON_EVALUE",
+    rangeReentryDepthAtr: regime?.rangeReentryDepthAtr ?? null,
+    reversalConfluenceCount, reversalConfluenceStatus,
     trendExhaustion, trendContext: trend, againstTrend: oppositeTrend,
     emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
     macdSlowing, macdDecelerationConfirmed, adxFalling, adxFallingConfirmed,
@@ -2538,7 +2579,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     else if (active && (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER")) earlyCount++;
     details.push({
       timeframe: tf, stage: invalidated ? "SCENARIO_INVALIDE" : stage, direction, trend, active, invalidated, againstTrend, withTrend, weight: weights[tf],
-      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), breakQuality: r.breakQuality || null, breakDistanceAtr: r.breakDistanceAtr ?? null, structureBreakConfirmed: r.structureBreakConfirmed === true, directionalConflict: r.directionalConflict === true, alignedSweep: r.alignedSweep === true, alignedRetest: r.alignedRetest === true, reversalConfluenceCount: r.reversalConfluenceCount ?? 0, reversalConfluenceStatus: r.reversalConfluenceStatus || "AUCUNE_CONFLUENCE", invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
+      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), breakQuality: r.breakQuality || null, breakDistanceAtr: r.breakDistanceAtr ?? null, structureBreakConfirmed: r.structureBreakConfirmed === true, directionalConflict: r.directionalConflict === true, alignedSweep: r.alignedSweep === true, alignedRetest: r.alignedRetest === true, alignedRangeReentry: r.alignedRangeReentry === true, rangeReentryDirection: r.rangeReentryDirection || "NEUTRE", rangeReentryQuality: r.rangeReentryQuality || "NON_EVALUE", rangeReentryDepthAtr: r.rangeReentryDepthAtr ?? null, reversalConfluenceCount: r.reversalConfluenceCount ?? 0, reversalConfluenceStatus: r.reversalConfluenceStatus || "AUCUNE_CONFLUENCE", invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
     });
   }
   const bias = Math.abs(bullishWeight - bearishWeight) < 0.001
