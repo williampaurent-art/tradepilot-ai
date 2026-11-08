@@ -2271,16 +2271,26 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
           : stage === "SIGNAUX_CONTRADICTOIRES"
             ? "Les éléments haussiers et baissiers se contredisent : aucun sens de retournement ne domine."
             : "Aucun faisceau suffisant d'indices de retournement n'est identifié sur la dernière bougie clôturée.";
-  const invalidationLevel = direction === "HAUSSIER"
+  const reversalActive = ["PRECURSEUR", "REJET_A_SURVEILLER",
+    "RETOURNEMENT_EN_FORMATION", "RETOURNEMENT_CONFIRME"].includes(stage);
+  const invalidationLevel = reversalActive && direction === "HAUSSIER"
     ? (Number.isFinite(st.lastSwingLow) ? st.lastSwingLow : null)
-    : direction === "BAISSIER"
+    : reversalActive && direction === "BAISSIER"
       ? (Number.isFinite(st.lastSwingHigh) ? st.lastSwingHigh : null)
       : null;
-  const invalidationLabel = direction === "HAUSSIER"
-    ? "Invalidation sous le dernier creux confirmé"
-    : direction === "BAISSIER"
-      ? "Invalidation au-dessus du dernier sommet confirmé"
-      : "Aucun niveau : scénario contradictoire";
+  const invalidationDistance = invalidationLevel !== null
+    ? Math.abs(last.close - invalidationLevel) : null;
+  const invalidationDistanceAtr = invalidationDistance !== null
+    ? invalidationDistance / indicator.atr : null;
+  const invalidationBreached = invalidationLevel !== null &&
+    (direction === "HAUSSIER" ? last.close < invalidationLevel : last.close > invalidationLevel);
+  const invalidationLabel = !reversalActive
+    ? "Aucun scénario actif à invalider"
+    : direction === "HAUSSIER"
+      ? "Invalidation si clôture sous le dernier creux confirmé"
+      : direction === "BAISSIER"
+        ? "Invalidation si clôture au-dessus du dernier sommet confirmé"
+        : "Aucun niveau : scénario contradictoire";
   return {
     status, stage, direction,
     bullishScore, bearishScore,
@@ -2291,9 +2301,14 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     macdSlowing, adxFalling,
     invalidationLevel,
     invalidationLabel,
-    invalidationBasis: invalidationLevel === null
-      ? "Aucun pivot structurel confirmé disponible."
-      : "Dernier pivot opposé confirmé ; niveau technique à revalider selon le spread et les conditions du courtier.",
+    invalidationDistance: invalidationDistance === null ? null : Number(invalidationDistance.toFixed(3)),
+    invalidationDistanceAtr: invalidationDistanceAtr === null ? null : Number(invalidationDistanceAtr.toFixed(2)),
+    invalidationBreached,
+    invalidationBasis: !reversalActive
+      ? "Aucun retournement actif : aucun niveau d'invalidation n'est présenté."
+      : invalidationLevel === null
+        ? "Aucun pivot structurel confirmé disponible."
+        : "Distance calculée depuis la dernière clôture ; le niveau est invalidé uniquement par une clôture au-delà du pivot, pas par une simple mèche.";
     explanation,
     note: "Score heuristique d'indices, pas une probabilité de réussite. Le niveau d'invalidation est un repère structurel, pas un stop-loss calculé ni un ordre. Confirmation locale à cette unité de temps, non garantie multi-timeframe."
   };
