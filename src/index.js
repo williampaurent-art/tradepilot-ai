@@ -2204,6 +2204,112 @@ function analyzeMultiTimeframeConfluence(results, marketOpen) {
   };
 }
 
+function analyzeSetupConfluence(results, marketOpen) {
+  if (marketOpen !== true) {
+    return {
+      status: marketOpen === false ? "MARCHE_FERME" : "ETAT_NON_CONFIRME",
+      bullish: null, bearish: null,
+      explanation: "Aucune confluence exploitable en direct : marché ouvert et cours frais non confirmés."
+    };
+  }
+
+  const byTf = Object.fromEntries(results.filter(x => x.ok && x.analysis?.dataQuality?.ok)
+    .map(x => [x.timeframe, x.analysis]));
+  const execution = byTf.M15 || byTf.M5 || byTf.M1;
+  const higher = ["H1", "H4", "D1"].map(tf => byTf[tf]).filter(Boolean);
+  if (!execution || higher.length < 1) {
+    return {
+      status: "COUVERTURE_INSUFFISANTE", bullish: null, bearish: null,
+      explanation: "Données fraîches insuffisantes pour croiser l'unité d'exécution et le contexte supérieur."
+    };
+  }
+
+  const evaluate = direction => {
+    const opposite = direction === "HAUSSIER" ? "BAISSIER" : "HAUSSIER";
+    let score = 0;
+    const factors = [];
+    const add = (points, label) => { score += points; factors.push({ points, label }); };
+
+    const higherAligned = higher.filter(a => a.trend?.direction === direction).length;
+    const higherOpposed = higher.filter(a => a.trend?.direction === opposite).length;
+    if (higherAligned) add(Math.min(24, higherAligned * 8), higherAligned + " unité(s) supérieure(s) alignée(s)");
+    if (higherOpposed) add(-Math.min(24, higherOpposed * 8), higherOpposed + " unité(s) supérieure(s) opposée(s)");
+
+    const trend = execution.trend?.direction;
+    if (trend === direction) add(12, "Tendance de l'unité d'exécution alignée");
+    else if (trend === opposite) add(-12, "Tendance de l'unité d'exécution opposée");
+
+    const st = execution.structure || {};
+    const expectedBreak = direction === "HAUSSIER" ? "BOS_HAUSSIER" : "BOS_BAISSIER";
+    const expectedChoch = direction === "HAUSSIER" ? "CHOCH_HAUSSIER" : "CHOCH_BAISSIER";
+    const opposingBreak = direction === "HAUSSIER" ? "BOS_BAISSIER" : "BOS_HAUSSIER";
+    if (st.breakEvent === expectedBreak) add(18, "BOS " + direction.toLowerCase() + " confirmé");
+    else if (st.breakEvent === expectedChoch) add(14, "CHOCH " + direction.toLowerCase() + " détecté");
+    else if (st.breakEvent === opposingBreak) add(-18, "BOS opposé détecté");
+
+    const sm = execution.smartMoney || {};
+    const matchingOb = sm.orderBlock?.direction === direction;
+    if (matchingOb) add(10, "Order Block candidat " + direction.toLowerCase());
+    const matchingFvg = (sm.fairValueGaps || []).some(g => g.direction === direction && !g.mitigated);
+    if (matchingFvg) add(8, "FVG non mitigé " + direction.toLowerCase());
+
+    const liquidity = execution.liquidity || {};
+    const expectedSweep = direction === "HAUSSIER"
+      ? "BALAYAGE LIQUIDITE BAISSIERE REJETE"
+      : "BALAYAGE LIQUIDITE HAUSSIERE REJETE";
+    if (liquidity.sweep === expectedSweep) add(16, "Balayage de liquidité rejeté dans le sens " + direction.toLowerCase());
+    else if (liquidity.sweep !== "AUCUN") add(-8, "Balayage détecté dans le sens opposé");
+
+    const regime = execution.regime || {};
+    if ((direction === "HAUSSIER" && (regime.retestUp || regime.breakoutUp)) ||
+        (direction === "BAISSIER" && (regime.retestDown || regime.breakoutDown))) {
+      add(12, "Cassure ou retest cohérent avec le scénario");
+    } else if ((direction === "HAUSSIER" && regime.fakeoutDown) ||
+               (direction === "BAISSIER" && regime.fakeoutUp)) {
+      add(8, "Fausse cassure opposée : rejet compatible avec le scénario");
+    } else if ((direction === "HAUSSIER" && regime.fakeoutUp) ||
+               (direction === "BAISSIER" && regime.fakeoutDown)) {
+      add(-12, "Fausse cassure contre le scénario");
+    }
+
+    const vol = execution.volatility || {};
+    if (vol.status === "EXTREME") add(-15, "Volatilité extrême : pénalité de risque");
+    else if (vol.status === "CONTRACTION") add(-5, "Volatilité contractée : attendre une expansion");
+    else if (vol.status === "ACCELERATION") add(3, "Volatilité en accélération : confirmation nécessaire");
+
+    return {
+      score: Math.max(0, Math.min(100, 50 + score)),
+      factors: factors.sort((a,b) => Math.abs(b.points) - Math.abs(a.points)).slice(0, 6),
+      higherAligned, higherOpposed,
+      orderBlock: matchingOb, fairValueGap: matchingFvg,
+      liquiditySweep: liquidity.sweep === expectedSweep
+    };
+  };
+
+  const bullish = evaluate("HAUSSIER");
+  const bearish = evaluate("BAISSIER");
+  const difference = Math.abs(bullish.score - bearish.score);
+  const leading = bullish.score > bearish.score ? "HAUSSIER" :
+    bearish.score > bullish.score ? "BAISSIER" : "NEUTRE";
+  const status = difference < 8 ? "CONFIGURATION_NON_CONCLUANTE" :
+    Math.max(bullish.score, bearish.score) >= 75 ? "CONFLUENCE_FORTE_A_VALIDER" :
+    Math.max(bullish.score, bearish.score) >= 62 ? "CONFLUENCE_PARTIELLE" :
+    "CONFLUENCE_FAIBLE";
+  return {
+    status, leading, bullish, bearish,
+    executionTimeframe: byTf.M15 ? "M15" : byTf.M5 ? "M5" : "M1",
+    higherTimeframesUsed: higher.length,
+    explanation: status === "CONFLUENCE_FORTE_A_VALIDER"
+      ? "Plusieurs éléments techniques convergent. Vérifier le prix live, le spread, le calendrier et la clôture avant toute décision manuelle."
+      : status === "CONFLUENCE_PARTIELLE"
+        ? "Certains éléments convergent, mais la configuration reste incomplète."
+        : status === "CONFLUENCE_FAIBLE"
+          ? "Les confirmations sont insuffisantes ou contradictoires : attendre."
+          : "Les deux scénarios sont trop proches pour privilégier une direction.",
+    note: "Score de confluence heuristique, non calibré statistiquement et jamais assimilable à une probabilité de gain ou à un ordre."
+  };
+}
+
 async function handleDashboardData(env) {
   const timeframes = Object.keys(TIMEFRAMES);
   const results = await Promise.all(timeframes.map(async timeframe => {
@@ -2231,6 +2337,7 @@ async function handleDashboardData(env) {
   const marketOpen = quote ? true :
     (quoteError && /marché XAUUSD fermé/i.test(quoteError) ? false : null);
   const multiTimeframeConfluence = analyzeMultiTimeframeConfluence(results, marketOpen);
+  const setupConfluence = analyzeSetupConfluence(results, marketOpen);
   return json({
     ok: available.length > 0,
     instrument: CONFIG.SYMBOL,
@@ -2250,6 +2357,7 @@ async function handleDashboardData(env) {
     source: CONFIG.SOURCE_URL,
     timeframes: results,
     multiTimeframeConfluence,
+    setupConfluence,
     economicCalendar: calendar,
     execution: "AUCUN ORDRE REEL",
     note: "Analyse technique descriptive. Un score technique n'est pas une probabilité."
