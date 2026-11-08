@@ -1135,6 +1135,16 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     : signal === "VENTE"
       ? buildStructuralTradePlan(m1, "SELL", liveQuote.bid, i1.atr, settings.target)
       : { confirmed: false, reason: "Aucun signal directionnel." };
+  if (tradePlan.confirmed && regime === "RANGE") {
+    const structuralObstacleDistance = signal === "ACHAT"
+      ? regimeAnalysis.rangeHigh - liveQuote.ask
+      : liveQuote.bid - regimeAnalysis.rangeLow;
+    if (!Number.isFinite(structuralObstacleDistance) ||
+        structuralObstacleDistance < tradePlan.targetMove + obstacleBuffer) {
+      tradePlan.confirmed = false;
+      tradePlan.reason = "Espace insuffisant jusqu'à l'obstacle structurel pour respecter le ratio gain/risque.";
+    }
+  }
   if (tradePlan.confirmed) {
     targetPrice = tradePlan.targetPrice;
     stopPrice = tradePlan.stopPrice;
