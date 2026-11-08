@@ -7,8 +7,8 @@ const CONFIG = {
   LOTS_PER_1000: 0.5,
   LEVERAGE: 500,
 
-  TARGET: 2,
-  STOP: 10,
+  TARGET: 5,
+  STOP: 5,
   EARLY_SCORE: 45,
   MIN_SCORE: 60,
 
@@ -4120,7 +4120,7 @@ async function handleStrategyBacktest(request, env) {
     const stopDistance = Number(setup.stopMove);
     const targetDistance = Number(setup.targetMove);
     if (!Number.isFinite(stopDistance) || !Number.isFinite(targetDistance) ||
-        stopDistance <= 0 || targetDistance / stopDistance < 1.5) {
+        stopDistance <= 0 || targetDistance <= 0) {
       diagnostics.rejected.rewardRisk++;
       continue;
     }
