@@ -1489,6 +1489,10 @@ async function sendTelegram(env, textMessage) {
 }
 
 function buildAlertMessage(signal) {
+  const intelligence = signal.advancedIntelligence || {};
+  const anticipation = intelligence.anticipation || {};
+  const reversal = intelligence.reversal || {};
+  const eventMonitoring = intelligence.eventMonitoring || {};
   const reasons = signal.reasons
     .map(reason => `• ${reason}`)
     .join("\n");
@@ -1526,6 +1530,16 @@ function buildAlertMessage(signal) {
     `M1 : ${signal.market.trendM1}`,
     `M5 : ${signal.market.trendM5}`,
     `M15 : ${signal.market.trendM15}`,
+    "",
+    "🧠 Intelligence multi-unités :",
+    `Anticipation : ${anticipation.phase || "NON EVALUÉE"} — ${anticipation.direction || "INDETERMINE"} (${anticipation.confluenceIndex ?? "—"}/100)`,
+    `Retournement : ${reversal.status || "NON EVALUÉ"} — ${reversal.bias || "NEUTRE"}`,
+    `Unités analysées : ${(intelligence.availableTimeframes || []).join(", ") || "M1/M5/M15"}`,
+    eventMonitoring.active
+      ? `📰 Fenêtre annonce active : ${eventMonitoring.activeEvent || "publication majeure"} — entrée suspendue pendant la fenêtre de sécurité.`
+      : eventMonitoring.nextEvent
+        ? `📰 Prochaine annonce : ${eventMonitoring.nextEvent.name} dans ${eventMonitoring.nextEvent.minutesUntil} min.`
+        : "📰 Calendrier : aucune annonce majeure imminente détectée.",
     "",
     "Motifs :",
     reasons,
