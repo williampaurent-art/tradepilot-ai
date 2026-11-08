@@ -599,13 +599,10 @@ function analyzeMarketRegime(bars, indicator) {
   const emaSlopeAtr = priorEma21 === null ? null :
     (indicator.ema21 - priorEma21) / (indicator.atr * 5);
 
-  const lastThree = recent.slice(-3);
-  const fakeoutUp = lastThree.some(b =>
-    b.high > rangeHigh + buffer && b.close <= rangeHigh
-  ) || (previous.close > rangeHigh + buffer && last.close < rangeHigh);
-  const fakeoutDown = lastThree.some(b =>
-    b.low < rangeLow - buffer && b.close >= rangeLow
-  ) || (previous.close < rangeLow - buffer && last.close > rangeLow);
+  const fakeoutUp = (last.high > rangeHigh + buffer && last.close <= rangeHigh) ||
+    (previous.close > rangeHigh + buffer && last.close < rangeHigh);
+  const fakeoutDown = (last.low < rangeLow - buffer && last.close >= rangeLow) ||
+    (previous.close < rangeLow - buffer && last.close > rangeLow);
 
   const breakoutUp = last.close > rangeHigh + buffer;
   const breakoutDown = last.close < rangeLow - buffer;
