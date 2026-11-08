@@ -164,9 +164,17 @@ function backtest(candles, strategy, options = {}) {
       // Si SL et TP sont touchés dans la même bougie, retenir le SL :
       // hypothèse conservatrice, car l'ordre intrabougie est inconnu en OHLC.
       if (stopTouched) {
-        closePosition(position.stop, i, targetTouched ? "stop_and_target_same_bar" : "stop_loss");
+        const gapThroughStop = position.direction === 1
+          ? candle.open < position.stop
+          : candle.open > position.stop;
+        const stopFill = gapThroughStop ? candle.open : position.stop;
+        closePosition(stopFill, i, targetTouched ? "stop_and_target_same_bar" : "stop_loss");
       } else if (targetTouched) {
-        closePosition(position.target, i, "take_profit");
+        const favorableGap = position.direction === 1
+          ? candle.open > position.target
+          : candle.open < position.target;
+        const targetFill = favorableGap ? candle.open : position.target;
+        closePosition(targetFill, i, "take_profit");
       }
     }
 
