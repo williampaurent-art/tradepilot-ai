@@ -1532,10 +1532,13 @@ function classifyGoldEvent(event) {
 
 function numericMacroValue(value) {
   if (value === null || value === undefined || value === "") return null;
-  const match = String(value).trim().replace(/\s/g, "").replace(/,/g, ".") .match(/[-+]?\d+(?:\.\d+)?/);
+  const match = String(value).trim().replace(/\s/g, "").replace(/,/g, ".").match(/[-+]?\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : null;
 }
 function evaluateGoldMacroSurprise(event) {
+  if (event.observation_status === "stale") return null;
+  const quality = event.data_quality?.fields || {};
+  if (quality.actual?.availability === "unavailable" || quality.consensus?.availability === "unavailable") return null;
   const actual = numericMacroValue(event.actual);
   const consensus = numericMacroValue(event.consensus);
   if (actual === null || consensus === null) return null;
