@@ -500,33 +500,71 @@ function calculateBollinger(values, period = 20, deviations = 2) {
 }
 
 function calculateADX(bars, period = 14) {
-  if (bars.length < period * 2 + 1) return { adx: null, plusDI: null, minusDI: null };
-  const tr = [], plusDM = [], minusDM = [];
+  if (!Array.isArray(bars) || bars.length < period * 2 + 1) {
+    return { adx: null, plusDI: null, minusDI: null };
+  }
+
+  const trueRanges = [];
+  const plusDM = [];
+  const minusDM = [];
+
   for (let i = 1; i < bars.length; i++) {
-    const c = bars[i], p = bars[i - 1];
-    const up = c.high - p.high, down = p.low - c.low;
-    tr.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
-    plusDM.push(up > down && up > 0 ? up : 0);
-    minusDM.push(down > up && down > 0 ? down : 0);
+    const current = bars[i];
+    const previous = bars[i - 1];
+    const upwardMove = current.high - previous.high;
+    const downwardMove = previous.low - current.low;
+
+    trueRanges.push(Math.max(
+      current.high - current.low,
+      Math.abs(current.high - previous.close),
+      Math.abs(current.low - previous.close)
+    ));
+    plusDM.push(upwardMove > downwardMove && upwardMove > 0 ? upwardMove : 0);
+    minusDM.push(downwardMove > upwardMove && downwardMove > 0 ? downwardMove : 0);
   }
-  const dx = [];
-  let sumTR = 0, sumPlus = 0, sumMinus = 0;
-  for (let i = 0; i < tr.length; i++) {
-    if (i < period) { sumTR += tr[i]; sumPlus += plusDM[i]; sumMinus += minusDM[i]; }
-    else {
-      sumTR = sumTR - sumTR / period + tr[i];
-      sumPlus = sumPlus - sumPlus / period + plusDM[i];
-      sumMinus = sumMinus - sumMinus / period + minusDM[i];
+
+  const directional = [];
+  let smoothedTR = 0;
+  let smoothedPlusDM = 0;
+  let smoothedMinusDM = 0;
+
+  for (let i = 0; i < trueRanges.length; i++) {
+    if (i < period) {
+      smoothedTR += trueRanges[i];
+      smoothedPlusDM += plusDM[i];
+      smoothedMinusDM += minusDM[i];
+    } else {
+      smoothedTR = smoothedTR - smoothedTR / period + trueRanges[i];
+      smoothedPlusDM = smoothedPlusDM - smoothedPlusDM / period + plusDM[i];
+      smoothedMinusDM = smoothedMinusDM - smoothedMinusDM / period + minusDM[i];
     }
+
     if (i >= period - 1) {
-      const pdi = sumTR ? 100 * sumPlus / sumTR : 0;
-      const mdi = sumTR ? 100 * sumMinus / sumTR : 0;
-      dx.push({ dx: pdi + mdi ? 100 * Math.abs(pdi - mdi) / (pdi + mdi) : 0, pdi, mdi });
+      const plusDI = smoothedTR > 0 ? 100 * smoothedPlusDM / smoothedTR : 0;
+      const minusDI = smoothedTR > 0 ? 100 * smoothedMinusDM / smoothedTR : 0;
+      const denominator = plusDI + minusDI;
+      const dx = denominator > 0
+        ? 100 * Math.abs(plusDI - minusDI) / denominator
+        : 0;
+      directional.push({ dx, plusDI, minusDI });
     }
   }
-  if (dx.length < period) return { adx: null, plusDI: null, minusDI: null };
-  const adx = sma(dx.map(x => x.dx), period);
-  return { adx, plusDI: dx[dx.length - 1].pdi, minusDI: dx[dx.length - 1].mdi };
+
+  if (directional.length < period) {
+    return { adx: null, plusDI: null, minusDI: null };
+  }
+
+  // ADX de Wilder : première valeur = moyenne des premiers DX,
+  // puis lissage récursif de Wilder jusqu'au dernier chandelier.
+  let adx = directional.slice(0, period)
+    .reduce((sum, item) => sum + item.dx, 0) / period;
+
+  for (let i = period; i < directional.length; i++) {
+    adx = ((adx * (period - 1)) + directional[i].dx) / period;
+  }
+
+  const latest = directional[directional.length - 1];
+  return { adx, plusDI: latest.plusDI, minusDI: latest.minusDI };
 }
 
 function calculateStochastic(bars, period = 14, smooth = 3) {
