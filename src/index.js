@@ -3213,7 +3213,9 @@ function assistantCleanText(value, max = 240) {
 }
 
 function assistantNumber(value) {
-  return Number.isFinite(Number(value)) ? Number(value) : null;
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function buildAssistantMarketContext(raw) {
