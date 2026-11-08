@@ -842,6 +842,57 @@ function analyzeMarketRegime(bars, indicator) {
 // ANALYSE DU MARCHE : INDICATEURS + CASSURE/RETEST
 // --------------------------------------------------
 
+function buildStructuralTradePlan(bars, side, entry, atr, minimumTarget) {
+  if (!Array.isArray(bars) || bars.length < 12 ||
+      !Number.isFinite(entry) || !Number.isFinite(atr) || atr <= 0) {
+    return { confirmed: false, reason: "Historique M1 ou ATR insuffisant." };
+  }
+  // Use only the latest closed candles. The current signal candle is closed
+  // before this function is called in live and historical replay.
+  const window = bars.slice(-12);
+  const swingLow = Math.min(...window.map(bar => Number(bar.low)));
+  const swingHigh = Math.max(...window.map(bar => Number(bar.high)));
+  if (!Number.isFinite(swingLow) || !Number.isFinite(swingHigh) ||
+      swingHigh <= swingLow) {
+    return { confirmed: false, reason: "Structure de prix inexploitable." };
+  }
+  const buffer = Math.max(atr * 0.20, 0.10);
+  const minStop = Math.max(atr * 0.70, 0.50);
+  const maxStop = Math.max(atr * 3.00, 2.00);
+  const stopPrice = side === "BUY" ? swingLow - buffer : swingHigh + buffer;
+  const stopMove = side === "BUY" ? entry - stopPrice : stopPrice - entry;
+  if (!Number.isFinite(stopMove) || stopMove < minStop || stopMove > maxStop) {
+    return {
+      confirmed: false,
+      reason: "Stop structurel hors de la plage de risque autorisée.",
+      swingLow: Number(swingLow.toFixed(2)),
+      swingHigh: Number(swingHigh.toFixed(2)),
+      stopMove: Number.isFinite(stopMove) ? Number(stopMove.toFixed(2)) : null,
+      minStop: Number(minStop.toFixed(2)),
+      maxStop: Number(maxStop.toFixed(2))
+    };
+  }
+  const targetMove = Math.max(Number(minimumTarget) || 0, stopMove * 1.5);
+  const targetPrice = side === "BUY" ? entry + targetMove : entry - targetMove;
+  const riskReward = targetMove / stopMove;
+  return {
+    confirmed: true,
+    side,
+    entry: Number(entry.toFixed(2)),
+    stopPrice: Number(stopPrice.toFixed(2)),
+    targetPrice: Number(targetPrice.toFixed(2)),
+    stopMove: Number(stopMove.toFixed(2)),
+    targetMove: Number(targetMove.toFixed(2)),
+    riskReward: Number(riskReward.toFixed(3)),
+    invalidationLevel: Number((side === "BUY" ? swingLow : swingHigh).toFixed(2)),
+    swingLow: Number(swingLow.toFixed(2)),
+    swingHigh: Number(swingHigh.toFixed(2)),
+    buffer: Number(buffer.toFixed(2)),
+    rewardRiskMinimum: 1.5,
+    lookbackBars: window.length
+  };
+}
+
 function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   const i1 = getIndicators(m1), i5 = getIndicators(m5), i15 = getIndicators(m15);
   const t1 = getTrend(i1), t5 = getTrend(i5), t15 = getTrend(i15);
@@ -1079,9 +1130,20 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
       ? retestDown ? "RETEST_BAISSIER" : bearishTriggerCandle ? "IMPULSION_M1_BAISSIERE" : "DECLENCHEUR_INSUFFISANT"
       : "AUCUN_SIGNAL";
 
-  const riskReward = settings.stop > 0 ? settings.target / settings.stop : 0;
-  const breakEvenWinRate = settings.target + settings.stop > 0
-    ? settings.stop / (settings.target + settings.stop)
+  const tradePlan = signal === "ACHAT"
+    ? buildStructuralTradePlan(m1, "BUY", liveQuote.ask, i1.atr, settings.target)
+    : signal === "VENTE"
+      ? buildStructuralTradePlan(m1, "SELL", liveQuote.bid, i1.atr, settings.target)
+      : { confirmed: false, reason: "Aucun signal directionnel." };
+  if (tradePlan.confirmed) {
+    targetPrice = tradePlan.targetPrice;
+    stopPrice = tradePlan.stopPrice;
+  }
+  const effectiveTarget = tradePlan.confirmed ? tradePlan.targetMove : settings.target;
+  const effectiveStop = tradePlan.confirmed ? tradePlan.stopMove : settings.stop;
+  const riskReward = effectiveStop > 0 ? effectiveTarget / effectiveStop : 0;
+  const breakEvenWinRate = effectiveTarget + effectiveStop > 0
+    ? effectiveStop / (effectiveTarget + effectiveStop)
     : 1;
   const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
   const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
@@ -1101,22 +1163,25 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     rangeLocation,
     buyRoomOK,
     sellRoomOK,
-    entryTriggerConfirmed
+    entryTriggerConfirmed,
+    structuralPlanConfirmed: tradePlan.confirmed
   };
 
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
-    score >= settings.minScore && spreadOK && entryTriggerConfirmed
+    score >= settings.minScore && spreadOK && entryTriggerConfirmed && tradePlan.confirmed
       ? "CONFIRMED"
       : "EARLY";
 
   const round = value => Number(value.toFixed(2));
   return {
     ok: true, instrument: CONFIG.SYMBOL, signal, score, alertLevel,
-    entry: round(entry), targetMove: settings.target, stopMove: settings.stop,
+    entry: round(entry), targetMove: tradePlan.confirmed ? tradePlan.targetMove : settings.target,
+    stopMove: tradePlan.confirmed ? tradePlan.stopMove : settings.stop,
     targetPrice: targetPrice === null ? null : round(targetPrice),
     stopPrice: stopPrice === null ? null : round(stopPrice),
+    tradePlan,
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
-    riskReward: Number((settings.target / settings.stop).toFixed(3)),
+    riskReward: Number(riskReward.toFixed(3)),
     riskChecks,
     entryQuality: {
       confirmed: entryTriggerConfirmed,
@@ -1651,8 +1716,9 @@ function buildAlertMessage(signal) {
     "",
     `💰 Prix de référence ${entrySide} à l'alerte : ${signal.entry}`,
     `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
-    `🎯 Objectif de mouvement : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
-    `🛑 Invalidation : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
+    `🎯 Objectif structurel : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
+    `🛑 Stop structurel : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
+    `📏 Invalidation structurelle : ${signal.tradePlan?.invalidationLevel ?? "indisponible"}`,
     `⚠️ Niveaux affichés calculés depuis le prix de l'alerte : recalcule TP/SL depuis le prix réel d'exécution MT5.`,
     `🕒 Âge du cours reçu : ${signal.liveQuote.quoteAgeSeconds}s`,
     `🕓 Horodatage du cours : ${signal.liveQuote.timestamp}`,
@@ -3963,7 +4029,7 @@ async function handleStrategyBacktest(request, env) {
     }
     setup.score = Math.round(setup.score);
     setup.alertLevel = setup.score >= settings.minScore && setup.riskChecks?.spreadOK &&
-      setup.entryQuality?.confirmed === true
+      setup.entryQuality?.confirmed === true && setup.tradePlan?.confirmed === true
       ? "CONFIRMED" : "EARLY";
     if (setup.alertLevel !== "CONFIRMED") continue;
 
@@ -3971,8 +4037,12 @@ async function handleStrategyBacktest(request, env) {
     const entryBarIndex = i + 1;
     const entryBar = m1[entryBarIndex];
     const entry = entryBar.open + direction * (spread / 2 + slippage);
-    const stop = entry - direction * settings.stop;
-    const target = entry + direction * settings.target;
+    const stopDistance = Number(setup.stopMove);
+    const targetDistance = Number(setup.targetMove);
+    if (!Number.isFinite(stopDistance) || !Number.isFinite(targetDistance) ||
+        stopDistance <= 0 || targetDistance / stopDistance < 1.5) continue;
+    const stop = entry - direction * stopDistance;
+    const target = entry + direction * targetDistance;
     const lastExitIndex = Math.min(m1.length - 1, i + maxHoldBars);
     if (hasCandleGapInRange(m1, "M1", entryBarIndex, lastExitIndex)) { gapSkippedHoldingWindows++; continue; }
     let exit = null;
@@ -4052,8 +4122,8 @@ async function handleStrategyBacktest(request, env) {
       slippagePerSide: slippage,
       maxHoldMinutes,
       cooldownMinutes: cooldownMs / 60000,
-      target: settings.target,
-      stop: settings.stop,
+      target: "Structurel : au moins 1,5R, minimum configurable conservé",
+      stop: "Structurel : swing M1 12 bougies + buffer ATR, plage de risque bornée",
       minScore: settings.minScore,
       sameBarStopAndTarget: "Stop prioritaire",
       commissions: "Non incluses",
