@@ -21,3 +21,19 @@ persist = true
 enabled = false
 head_sampling_rate = 1.0
 persist = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = [
+  "/health",
+  "/status",
+  "/dashboard-data",
+  "/analyze",
+  "/scalp",
+  "/gold*",
+  "/calendar",
+  "/calendar-key-check",
+  "/sniper-stats",
+  "/telegram-test"
+]

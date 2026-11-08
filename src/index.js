@@ -24,7 +24,10 @@ const CONFIG = {
 const TIMEFRAMES = {
   M1: { interval: "1m", ms: 60_000 },
   M5: { interval: "5m", ms: 300_000 },
-  M15: { interval: "15m", ms: 900_000 }
+  M15: { interval: "15m", ms: 900_000 },
+  H1: { interval: "1h", ms: 3_600_000 },
+  H4: { interval: "4h", ms: 14_400_000 },
+  D1: { interval: "1d", ms: 86_400_000 }
 };
 
 // --------------------------------------------------
@@ -288,19 +291,19 @@ async function fetchLiveQuote() {
     ? reportedAge
     : (Date.now() - timestamp) / 1000;
 
-  if (
-    quote.marketState !== "open" ||
-    quote.stale === true ||
-    !Number.isFinite(bid) ||
-    !Number.isFinite(ask) ||
-    !Number.isFinite(mid) ||
-    bid <= 0 ||
-    ask < bid ||
-    !Number.isFinite(ageSeconds) ||
-    ageSeconds < 0 ||
-    ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS
-  ) {
-    throw new Error("Cours XAUUSD fermé, périmé ou incomplet. Aucun signal immédiat autorisé.");
+  if (quote.marketState === "closed") {
+    throw new Error("Marché XAUUSD fermé selon la source BiQuote.");
+  }
+  if (quote.marketState !== "open") {
+    throw new Error("État du marché XAUUSD non confirmé par la source.");
+  }
+  if (quote.stale === true || !Number.isFinite(ageSeconds) ||
+      ageSeconds < 0 || ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS) {
+    throw new Error("Cours XAUUSD périmé. Aucun signal immédiat autorisé.");
+  }
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) ||
+      !Number.isFinite(mid) || bid <= 0 || ask < bid) {
+    throw new Error("Cours XAUUSD incomplet ou incohérent.");
   }
 
   return {
@@ -525,8 +528,10 @@ function getIndicators(bars) {
   return {
     price: closes[closes.length - 1],
     ema9: ema(closes, 9),
+    ema20: ema(closes, 20),
     ema21: ema(closes, 21),
     ema50: ema(closes, 50),
+    ema200: ema(closes, 200),
     rsi: calculateRSI(closes, 14),
     atr: calculateATR(bars, 14),
     macd: calculateMACD(closes),
@@ -542,6 +547,59 @@ function getTrend(indicator) {
   if (indicator.ema9 > indicator.ema21 && indicator.ema21 > indicator.ema50) return "HAUSSIER";
   if (indicator.ema9 < indicator.ema21 && indicator.ema21 < indicator.ema50) return "BAISSIER";
   return "NEUTRE";
+}
+
+function analyzeMarketRegime(bars, indicator) {
+  const recent = bars.slice(-40);
+  if (recent.length < 25 || indicator.adx.adx === null ||
+      indicator.bollinger.bandwidth === null || indicator.atr === null) {
+    return { regime: "INDETERMINE", phase: "DONNEES_INSUFFISANTES",
+      rangeHigh: null, rangeLow: null, rangePosition: null,
+      touchesHigh: 0, touchesLow: 0, emaSlopeAtr: null,
+      breakoutUp: false, breakoutDown: false, explanation: "Historique insuffisant pour classifier le régime." };
+  }
+  const closed = recent.slice(0, -1);
+  const rangeHigh = Math.max(...closed.map(b => b.high));
+  const rangeLow = Math.min(...closed.map(b => b.low));
+  const width = rangeHigh - rangeLow;
+  const price = indicator.price;
+  const rangePosition = width > 0 ? (price - rangeLow) / width : 0.5;
+  const tolerance = Math.max(indicator.atr * 0.25, width * 0.06);
+  const touchesHigh = closed.filter(b => Math.abs(b.high - rangeHigh) <= tolerance).length;
+  const touchesLow = closed.filter(b => Math.abs(b.low - rangeLow) <= tolerance).length;
+  const closes = bars.map(b => b.close);
+  const priorEma21 = ema(closes.slice(0, -5), 21);
+  const emaSlopeAtr = priorEma21 === null ? null : (indicator.ema21 - priorEma21) / (indicator.atr * 5);
+  const breakoutUp = price > rangeHigh + indicator.atr * 0.10;
+  const breakoutDown = price < rangeLow - indicator.atr * 0.10;
+  const adx = indicator.adx.adx;
+  const compressed = indicator.bollinger.bandwidth < 0.0035;
+  const flat = emaSlopeAtr !== null && Math.abs(emaSlopeAtr) < 0.18;
+  const rangeStructure = touchesHigh >= 2 && touchesLow >= 2 && rangePosition >= 0 && rangePosition <= 1;
+  let regime = "TRANSITION";
+  let phase = "MARCHE_MIXTE";
+  let explanation = "Signaux de régime contradictoires : prudence.";
+  if (breakoutUp && adx >= 18) {
+    regime = "TENDANCE"; phase = "CASSURE_HAUSSIERE";
+    explanation = "Cassure haussière de la zone récente avec force directionnelle.";
+  } else if (breakoutDown && adx >= 18) {
+    regime = "TENDANCE"; phase = "CASSURE_BAISSIERE";
+    explanation = "Cassure baissière de la zone récente avec force directionnelle.";
+  } else if (adx <= 18 && flat && (rangeStructure || compressed)) {
+    regime = "RANGE"; phase = rangePosition <= 0.25 ? "PROCHE_SUPPORT" :
+      rangePosition >= 0.75 ? "PROCHE_RESISTANCE" : "MILIEU_RANGE";
+    explanation = "ADX faible, pente EMA réduite et marché contenu dans une zone horizontale.";
+  } else if (adx >= 25 && emaSlopeAtr !== null && Math.abs(emaSlopeAtr) >= 0.18) {
+    regime = "TENDANCE"; phase = getTrend(indicator) === "HAUSSIER" ? "TENDANCE_HAUSSIERE" :
+      getTrend(indicator) === "BAISSIER" ? "TENDANCE_BAISSIERE" : "TENDANCE_EN_CONSTRUCTION";
+    explanation = "ADX et pente EMA indiquent une dynamique directionnelle.";
+  }
+  return { regime, phase, rangeHigh, rangeLow,
+    rangePosition: Number(rangePosition.toFixed(3)), touchesHigh, touchesLow,
+    emaSlopeAtr: emaSlopeAtr === null ? null : Number(emaSlopeAtr.toFixed(3)),
+    breakoutUp, breakoutDown, adx: Number(adx.toFixed(2)),
+    bollingerBandwidth: Number(indicator.bollinger.bandwidth.toFixed(5)),
+    compressed, flat, explanation };
 }
 
 // --------------------------------------------------
@@ -653,9 +711,79 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     buyScore -= 5;
     sellScore -= 5;
   } else if (t5 !== t15) {
-    // Divergence M5/M15 : penalite, pas veto absolu.
     if (t5 === "HAUSSIER") sellScore -= 8;
     else if (t5 === "BAISSIER") buyScore -= 8;
+  }
+
+  // Classification multi-critères du régime M15, puis adaptation du setup.
+  const regimeAnalysis = analyzeMarketRegime(m15, i15);
+  const regime = regimeAnalysis.regime;
+  let rangeLocation = "HORS_RANGE";
+  if (regime === "RANGE" && regimeAnalysis.rangePosition !== null) {
+    const p = regimeAnalysis.rangePosition;
+    rangeLocation = p <= 0.25 ? "BORNE_BASSE" : p >= 0.75 ? "BORNE_HAUTE" : "CENTRE";
+    if (rangeLocation === "BORNE_BASSE") {
+      buyScore += 9;
+      sellScore -= 7;
+      buyReasons.push("Range M15 : proximité de la borne basse, rebond acheteur à confirmer");
+      sellReasons.push("Range M15 : vente pénalisée près du support");
+    } else if (rangeLocation === "BORNE_HAUTE") {
+      sellScore += 9;
+      buyScore -= 7;
+      sellReasons.push("Range M15 : proximité de la borne haute, rejet vendeur à confirmer");
+      buyReasons.push("Range M15 : achat pénalisé près de la résistance");
+    } else {
+      buyScore -= 12;
+      sellScore -= 12;
+      buyReasons.push("Range M15 : prix au milieu de la zone, entrée sans avantage");
+      sellReasons.push("Range M15 : prix au milieu de la zone, entrée sans avantage");
+    }
+  } else if (regime === "TENDANCE") {
+    const direction = regimeAnalysis.phase.includes("BAISSIERE") ? "SELL" :
+      regimeAnalysis.phase.includes("HAUSSIERE") ? "BUY" : null;
+    if (direction === "BUY") {
+      buyScore += 5; sellScore -= 8;
+      buyReasons.push("Régime M15 directionnel haussier confirmé");
+    } else if (direction === "SELL") {
+      sellScore += 5; buyScore -= 8;
+      sellReasons.push("Régime M15 directionnel baissier confirmé");
+    }
+  } else if (regime === "TRANSITION") {
+    buyScore -= 6; sellScore -= 6;
+    buyReasons.push("Marché en transition : confirmations supplémentaires nécessaires");
+    sellReasons.push("Marché en transition : confirmations supplémentaires nécessaires");
+  }
+
+  // Dans un range, un rebond doit montrer un rejet réel de la borne.
+  const lastRangeBar = m15[m15.length - 1];
+  const bullishRejection = lastRangeBar.close > lastRangeBar.open &&
+    (lastRangeBar.close - lastRangeBar.low) > (lastRangeBar.high - lastRangeBar.low) * 0.60;
+  const bearishRejection = lastRangeBar.close < lastRangeBar.open &&
+    (lastRangeBar.high - lastRangeBar.close) > (lastRangeBar.high - lastRangeBar.low) * 0.60;
+  if (regime === "RANGE" && rangeLocation === "BORNE_BASSE" && bullishRejection) {
+    buyScore += 6;
+    buyReasons.push("Bougie M15 de rejet haussier sur la borne basse");
+  }
+  if (regime === "RANGE" && rangeLocation === "BORNE_HAUTE" && bearishRejection) {
+    sellScore += 6;
+    sellReasons.push("Bougie M15 de rejet baissier sur la borne haute");
+  }
+
+  // Vérifie qu'un obstacle opposé ne se trouve pas avant l'objectif de +2 points.
+  const obstacleBuffer = Math.max((i1.atr || 0) * 0.15, 0.10);
+  const buyObstacleDistance = regimeAnalysis.rangeHigh !== null
+    ? regimeAnalysis.rangeHigh - liveQuote.ask : Infinity;
+  const sellObstacleDistance = regimeAnalysis.rangeLow !== null
+    ? liveQuote.bid - regimeAnalysis.rangeLow : Infinity;
+  const buyRoomOK = regime !== "RANGE" || buyObstacleDistance >= settings.target + obstacleBuffer;
+  const sellRoomOK = regime !== "RANGE" || sellObstacleDistance >= settings.target + obstacleBuffer;
+  if (regime === "RANGE" && !buyRoomOK) {
+    buyScore -= 15;
+    buyReasons.push("Espace insuffisant avant la borne haute pour viser l'objectif");
+  }
+  if (regime === "RANGE" && !sellRoomOK) {
+    sellScore -= 15;
+    sellReasons.push("Espace insuffisant avant la borne basse pour viser l'objectif");
   }
 
   buyScore = Math.max(0, Math.min(100, buyScore));
@@ -677,8 +805,51 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     stopPrice = entry + settings.stop;
   }
 
+  // En range, aucune entrée immédiate sans rejet de borne et espace suffisant.
+  if (regime === "RANGE") {
+    const validRangeBuy = rangeLocation === "BORNE_BASSE" && bullishRejection && buyRoomOK;
+    const validRangeSell = rangeLocation === "BORNE_HAUTE" && bearishRejection && sellRoomOK;
+    if ((signal === "ACHAT" && !validRangeBuy) ||
+        (signal === "VENTE" && !validRangeSell)) {
+      signal = "ATTENDRE";
+      reasons = [
+        "Range détecté : aucune entrée immédiate sans rejet confirmé de la borne et espace suffisant jusqu'à l'objectif.",
+        ...reasons
+      ];
+      targetPrice = null;
+      stopPrice = null;
+      entry = liveQuote.mid;
+    }
+  }
+
+  const riskReward = settings.stop > 0 ? settings.target / settings.stop : 0;
+  const breakEvenWinRate = settings.target + settings.stop > 0
+    ? settings.stop / (settings.target + settings.stop)
+    : 1;
+  const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
+  const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
+  const marketRegime = regimeAnalysis.regime;
+
+  // A signal can only be labelled CONFIRMED when the technical score
+  // and the deterministic risk checks both pass. No broker order is sent.
+  const riskChecks = {
+    riskReward: Number(riskReward.toFixed(3)),
+    breakEvenWinRate: Number((breakEvenWinRate * 100).toFixed(2)),
+    // The break-even rate excludes spread, commissions and slippage.
+    spreadToATR: spreadToATR === null ? null : Number(spreadToATR.toFixed(3)),
+    maxSpreadToATR: 0.20,
+    spreadOK,
+    marketRegime,
+    marketPhase: regimeAnalysis.phase,
+    rangeLocation,
+    buyRoomOK,
+    sellRoomOK
+  };
+
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
-    score >= settings.minScore ? "CONFIRMED" : "EARLY";
+    score >= settings.minScore && spreadOK
+      ? "CONFIRMED"
+      : "EARLY";
 
   const round = value => Number(value.toFixed(2));
   return {
@@ -688,6 +859,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     stopPrice: stopPrice === null ? null : round(stopPrice),
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number((settings.target / settings.stop).toFixed(3)),
+    riskChecks,
     liveQuote: {
       bid: Number(liveQuote.bid.toFixed(2)),
       ask: Number(liveQuote.ask.toFixed(2)),
@@ -724,7 +896,31 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
       support: levels.support === null ? null : round(levels.support),
       resistance: levels.resistance === null ? null : round(levels.resistance),
       breakoutRetest: { brokeUp, brokeDown, retestUp, retestDown },
-      volatility
+      volatility,
+      marketRegime,
+      marketPhase: regimeAnalysis.phase,
+      regimeExplanation: regimeAnalysis.explanation,
+      range: {
+        high: regimeAnalysis.rangeHigh === null ? null : round(regimeAnalysis.rangeHigh),
+        low: regimeAnalysis.rangeLow === null ? null : round(regimeAnalysis.rangeLow),
+        position: regimeAnalysis.rangePosition,
+        location: rangeLocation,
+        upperTouches: regimeAnalysis.touchesHigh,
+        lowerTouches: regimeAnalysis.touchesLow,
+        buyRoomOK,
+        sellRoomOK,
+        bullishRejection,
+        bearishRejection
+      },
+      regimeDiagnostics: {
+        adxM15: regimeAnalysis.adx ?? null,
+        emaSlopeAtr: regimeAnalysis.emaSlopeAtr,
+        bollingerBandwidthM15: regimeAnalysis.bollingerBandwidth ?? null,
+        compressed: regimeAnalysis.compressed ?? null,
+        flat: regimeAnalysis.flat ?? null,
+        breakoutUp: regimeAnalysis.breakoutUp,
+        breakoutDown: regimeAnalysis.breakoutDown
+      }
     },
     reasons,
     generatedAt: new Date().toISOString(),
@@ -733,10 +929,244 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
 }
 
 // --------------------------------------------------
+// TRADEPILOT SNIPER — VALIDATION STATISTIQUE
+// --------------------------------------------------
+
+const SNIPER_STATS = {
+  KEY: "sniper_stats_v1",
+  TARGET_WIN_RATE: 0.90,
+  MIN_RESOLVED: 100,
+  MAX_HOLD_MS: 30 * 60 * 1000,
+  SAMPLE_TTL_SECONDS: 90 * 86400,
+  MAX_SAMPLES: 3000,
+  SAMPLE_INTERVAL_MS: 15 * 60 * 1000
+};
+
+function wilsonInterval(wins, total, z = 1.96) {
+  if (!total) return { lower: null, upper: null };
+  const p = wins / total;
+  const z2 = z * z;
+  const denominator = 1 + z2 / total;
+  const center = (p + z2 / (2 * total)) / denominator;
+  const margin = z * Math.sqrt((p * (1 - p) / total) + z2 / (4 * total * total)) / denominator;
+  return {
+    lower: Number(Math.max(0, center - margin).toFixed(4)),
+    upper: Number(Math.min(1, center + margin).toFixed(4))
+  };
+}
+
+function getSniperBucketStats(samples, direction, regime) {
+  const bucket = samples.filter(sample =>
+    sample.direction === direction &&
+    sample.regime === regime &&
+    ["WIN", "LOSS", "TIMEOUT"].includes(sample.outcome)
+  );
+  const wins = bucket.filter(sample => sample.outcome === "WIN").length;
+  const losses = bucket.filter(sample => sample.outcome === "LOSS").length;
+  const timeouts = bucket.filter(sample => sample.outcome === "TIMEOUT").length;
+  // A timeout is a non-winning setup for the requested TP-before-SL test.
+  // It stays visible separately but is included in the conservative denominator.
+  const resolved = wins + losses + timeouts;
+  const winRate = resolved ? wins / resolved : null;
+  const interval = wilsonInterval(wins, resolved);
+  return {
+    direction,
+    regime,
+    samples: bucket.length,
+    resolved,
+    wins,
+    losses,
+    timeouts,
+    winRate: winRate === null ? null : Number((winRate * 100).toFixed(2)),
+    confidence95: {
+      lower: interval.lower === null ? null : Number((interval.lower * 100).toFixed(2)),
+      upper: interval.upper === null ? null : Number((interval.upper * 100).toFixed(2))
+    },
+    targetWinRate: SNIPER_STATS.TARGET_WIN_RATE * 100,
+    minimumResolved: SNIPER_STATS.MIN_RESOLVED,
+    qualified: resolved >= SNIPER_STATS.MIN_RESOLVED &&
+      winRate >= SNIPER_STATS.TARGET_WIN_RATE
+  };
+}
+
+async function updateSniperStatistics(env, signal, m1) {
+  const raw = await readKV(env, SNIPER_STATS.KEY);
+  let state;
+  try {
+    state = raw ? JSON.parse(raw) : null;
+  } catch {
+    state = null;
+  }
+  if (!state || !Array.isArray(state.samples)) state = { version: 1, samples: [] };
+
+  const now = Date.now();
+  const cutoff = now - SNIPER_STATS.SAMPLE_TTL_SECONDS * 1000;
+  let samples = state.samples.filter(sample =>
+    Number(sample.createdAt) >= cutoff
+  );
+
+  // Résolution chronologique : en cas de TP et SL dans la même bougie,
+  // on retient le SL par prudence (l'ordre intrabougie est inconnu).
+  for (const sample of samples) {
+    if (sample.outcome !== "PENDING") continue;
+    const eligible = m1.filter(bar =>
+      bar.time >= sample.firstEligibleBarTime &&
+      bar.time + TIMEFRAMES.M1.ms <= sample.expiresAt &&
+      bar.time + TIMEFRAMES.M1.ms <= now
+    );
+    let resolved = false;
+
+    for (const bar of eligible) {
+      const hitTarget = sample.direction === "BUY"
+        ? bar.high >= sample.targetMid
+        : bar.low <= sample.targetMid;
+      const hitStop = sample.direction === "BUY"
+        ? bar.low <= sample.stopMid
+        : bar.high >= sample.stopMid;
+
+      if (hitTarget && hitStop) {
+        sample.outcome = "LOSS";
+        sample.resolvedAt = bar.time;
+        sample.resolution = "TP_ET_SL_DANS_MEME_BOUGIE_SL_RETENU_PAR_PRUDENCE";
+        resolved = true;
+        break;
+      }
+      if (hitStop) {
+        sample.outcome = "LOSS";
+        sample.resolvedAt = bar.time;
+        sample.resolution = "SL";
+        resolved = true;
+        break;
+      }
+      if (hitTarget) {
+        sample.outcome = "WIN";
+        sample.resolvedAt = bar.time;
+        sample.resolution = "TP";
+        resolved = true;
+        break;
+      }
+    }
+
+    if (!resolved && now >= sample.expiresAt) {
+      sample.outcome = "TIMEOUT";
+      sample.resolvedAt = sample.expiresAt;
+      sample.resolution = "DUREE_MAXIMALE_ATTEINTE";
+    }
+  }
+
+  const direction = signal.signal === "ACHAT" ? "BUY" :
+    signal.signal === "VENTE" ? "SELL" : null;
+  const regime = signal.market?.marketRegime || "INDETERMINE";
+
+  // On n'entraîne le journal que sur les configurations techniques
+  // qui auraient franchi le filtre pré-statistique. Les analyses /analyze
+  // simples ne sont pas ajoutées au jeu d'apprentissage.
+  if (
+    direction &&
+    signal.alertLevel === "CONFIRMED" &&
+    !signal.blockedByEconomicCalendar &&
+    signal.riskChecks?.spreadOK &&
+    Number.isFinite(Number(signal.liveQuote?.mid)) &&
+    Number.isFinite(Number(signal.liveQuote?.spread))
+  ) {
+    const sampleWindow = Math.floor(now / SNIPER_STATS.SAMPLE_INTERVAL_MS);
+    const sampleId = direction + "_" + regime + "_" + sampleWindow;
+    const exists = samples.some(sample => sample.id === sampleId);
+
+    if (!exists) {
+      const mid = Number(signal.liveQuote.mid);
+      const spread = Math.max(0, Number(signal.liveQuote.spread));
+      const target = Number(signal.targetMove);
+      const stop = Number(signal.stopMove);
+      const buy = direction === "BUY";
+      samples.push({
+        id: sampleId,
+        direction,
+        regime,
+        score: signal.score,
+        createdAt: now,
+        firstEligibleBarTime: Math.floor(now / 60000) * 60000 + 60000,
+        expiresAt: now + SNIPER_STATS.MAX_HOLD_MS,
+        // OHLC candles are treated as approximate mid-price candles.
+        // Convert executable entry (ASK for BUY / BID for SELL) to mid
+        // using half the observed spread. This is still an approximation
+        // because historical bid/ask ticks are not supplied by the feed.
+        entryExecutable: buy ? Number(signal.liveQuote.ask) : Number(signal.liveQuote.bid),
+        entryMid: mid,
+        spreadAtEntry: spread,
+        targetMid: buy
+          ? mid + target + spread / 2
+          : mid - target - spread / 2,
+        stopMid: buy
+          ? mid - stop + spread / 2
+          : mid + stop - spread / 2,
+        targetMove: target,
+        stopMove: stop,
+        outcome: "PENDING",
+        resolution: null
+      });
+    }
+  }
+
+  samples.sort((a, b) => a.createdAt - b.createdAt);
+  if (samples.length > SNIPER_STATS.MAX_SAMPLES) {
+    samples = samples.slice(-SNIPER_STATS.MAX_SAMPLES);
+  }
+
+  const saved = await writeKV(env, SNIPER_STATS.KEY, {
+    version: 1,
+    updatedAt: now,
+    samples
+  }, SNIPER_STATS.SAMPLE_TTL_SECONDS);
+
+  const stats = direction
+    ? getSniperBucketStats(samples, direction, regime)
+    : null;
+
+  if (stats) {
+    signal.statisticalValidation = {
+      ...stats,
+      status: !saved ? "STORAGE_UNAVAILABLE" :
+        stats.resolved < SNIPER_STATS.MIN_RESOLVED ? "WAITING_FOR_SAMPLE" :
+        stats.qualified ? "QUALIFIED_HISTORICALLY" : "BELOW_TARGET",
+      sampleMethod: "Signaux techniques confirmés, TP/SL évalués sur bougies M1 clôturées",
+      maxHoldingMinutes: SNIPER_STATS.MAX_HOLD_MS / 60000,
+      spreadAdjustment: "Seuils ajustés de la moitié du spread d'entrée sur OHLC mid approximatif; commissions, slippage et bid/ask historiques non modélisés",
+      sameCandleRule: "Si TP et SL sont touchés dans la même bougie, résultat compté comme perte",
+      warning: "Statistique historique, non prédictive et sans garantie de résultat."
+    };
+
+    // Une alerte d'entrée exige désormais le filtre technique ET
+    // 100 résultats résolus minimum avec au moins 90 % de réussite observée.
+    if (
+      signal.alertLevel === "CONFIRMED" &&
+      (!saved || !stats.qualified)
+    ) {
+      signal.alertLevel = "EARLY";
+      signal.statisticalValidation.blockReason = !saved
+        ? "Stockage statistique indisponible."
+        : stats.resolved < SNIPER_STATS.MIN_RESOLVED
+          ? "Historique statistique insuffisant."
+          : "Taux de réussite historique inférieur à 90 %.";
+    }
+  } else {
+    signal.statisticalValidation = {
+      status: "NO_DIRECTIONAL_SETUP",
+      targetWinRate: 90,
+      minimumResolved: SNIPER_STATS.MIN_RESOLVED
+    };
+  }
+
+  signal.statisticalValidationStorage = saved ? "OK" : "UNAVAILABLE";
+  signal.execution = "AUCUN ORDRE REEL";
+  return signal;
+}
+
+// --------------------------------------------------
 // ANALYSE COMPLETE
 // --------------------------------------------------
 
-async function getSignal(settings, env) {
+async function getSignal(settings, env, recordStatistics = false) {
   let m1, m5, m15, liveQuote;
 
   try {
@@ -779,7 +1209,10 @@ async function getSignal(settings, env) {
   result.dataQuality = quality;
 
   const economicContext = await getEconomicContext(env);
-  return applyEconomicFilter(result, economicContext);
+  const filtered = applyEconomicFilter(result, economicContext);
+  return recordStatistics
+    ? await updateSniperStatistics(env, filtered, m1)
+    : filtered;
 }
 
 // --------------------------------------------------
@@ -836,8 +1269,11 @@ function buildAlertMessage(signal) {
       : `📊 SIGNAL : ${action} — À SURVEILLER, PAS D'ENTRÉE`,
     `🎯 Score technique : ${signal.score}/100`,
     "",
-    `💰 Cours marché ${entrySide} au moment de l'analyse : ${signal.entry}`,
+    `💰 Prix de référence ${entrySide} à l'alerte : ${signal.entry}`,
     `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
+    `🎯 Objectif de mouvement : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
+    `🛑 Invalidation : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
+    `⚠️ Niveaux affichés calculés depuis le prix de l'alerte : recalcule TP/SL depuis le prix réel d'exécution MT5.`,
     `🕒 Âge du cours reçu : ${signal.liveQuote.quoteAgeSeconds}s`,
     `🕓 Horodatage du cours : ${signal.liveQuote.timestamp}`,
     `✅ Take Profit calculé : ${signal.targetPrice}`,
@@ -846,6 +1282,10 @@ function buildAlertMessage(signal) {
     `📦 Taille indicative : ${signal.lotSize} lot`,
     `💵 Capital de référence : ${signal.capital} USD`,
     `⚙️ Levier indicatif : x${signal.leverage}`,
+    `⚖️ Ratio gain/risque : ${signal.riskReward}`,
+    `📊 Point mort théorique hors frais : ${signal.riskChecks.breakEvenWinRate}%`,
+    `🧪 Validation historique : ${signal.statisticalValidation?.winRate ?? "en constitution"}% (${signal.statisticalValidation?.resolved ?? 0}/100 trades résolus)`,
+    `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
     "",
     "📈 Tendances :",
     `M1 : ${signal.market.trendM1}`,
@@ -1003,8 +1443,12 @@ async function getEconomicContext(env) {
     // Requête minimale conforme à l'exemple officiel de l'API.
     // On réintroduira les filtres de dates/fuseau après validation.
     const url = new URL(ECONOMIC_CALENDAR.URL);
-    url.searchParams.set("country", "US,GB");
+    // Gold is primarily USD-sensitive; include Euro-area releases as well.
+    url.searchParams.set("from", from);
+    url.searchParams.set("to", to);
+    url.searchParams.set("country", "US,EU");
     url.searchParams.set("impact", "high");
+    url.searchParams.set("tz", "Europe/Paris");
     url.searchParams.set("limit", "5");
 
     const response = await fetch(url.toString(), {
@@ -1144,7 +1588,7 @@ async function scheduledCheck(env) {
       lots: CONFIG.LOTS_PER_1000
     };
 
-    const signal = await getSignal(settings, env);
+    const signal = await getSignal(settings, env, true);
 
     await writeKV(env, "last_signal", signal, 7 * 86400);
 
@@ -1217,6 +1661,194 @@ async function scheduledCheck(env) {
   }
 }
 
+
+function findSwingPoints(bars, left = 2, right = 2) {
+  const highs = [], lows = [];
+  for (let i = left; i < bars.length - right; i++) {
+    const h = bars[i].high, l = bars[i].low;
+    let isHigh = true, isLow = true;
+    for (let j = i - left; j <= i + right; j++) {
+      if (j === i) continue;
+      if (bars[j].high >= h) isHigh = false;
+      if (bars[j].low <= l) isLow = false;
+    }
+    if (isHigh) highs.push({ index: i, price: h, time: bars[i].time });
+    if (isLow) lows.push({ index: i, price: l, time: bars[i].time });
+  }
+  return { highs, lows };
+}
+
+function analyzeStructure(bars, indicator) {
+  const recent = bars.slice(-100);
+  const swings = findSwingPoints(recent);
+  const highs = swings.highs.slice(-3), lows = swings.lows.slice(-3);
+  const last = recent[recent.length - 1];
+  const previous = recent[recent.length - 2];
+  const lastHigh = swings.highs[swings.highs.length - 1] || null;
+  const lastLow = swings.lows[swings.lows.length - 1] || null;
+  const priorHigh = swings.highs[swings.highs.length - 2] || null;
+  const priorLow = swings.lows[swings.lows.length - 2] || null;
+  const bullishStructure = Boolean(lastHigh && priorHigh && lastLow && priorLow &&
+    lastHigh.price > priorHigh.price && lastLow.price > priorLow.price);
+  const bearishStructure = Boolean(lastHigh && priorHigh && lastLow && priorLow &&
+    lastHigh.price < priorHigh.price && lastLow.price < priorLow.price);
+  const bosUp = Boolean(lastHigh && previous.close <= lastHigh.price && last.close > lastHigh.price);
+  const bosDown = Boolean(lastLow && previous.close >= lastLow.price && last.close < lastLow.price);
+  const chochDown = bearishStructure === false && bullishStructure && Boolean(lastLow && last.close < lastLow.price);
+  const chochUp = bearishStructure && Boolean(lastHigh && last.close > lastHigh.price);
+  const closes = recent.map(b => b.close);
+  const rsiAt = index => calculateRSI(closes.slice(0, index + 1), 14);
+  let bullishDivergence = false, bearishDivergence = false;
+  const pivotLows = swings.lows.slice(-2), pivotHighs = swings.highs.slice(-2);
+  if (pivotLows.length === 2) {
+    const [a,b] = pivotLows;
+    const ra = rsiAt(a.index), rb = rsiAt(b.index);
+    bullishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
+      b.price < a.price && rb > ra;
+  }
+  if (pivotHighs.length === 2) {
+    const [a,b] = pivotHighs;
+    const ra = rsiAt(a.index), rb = rsiAt(b.index);
+    bearishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
+      b.price > a.price && rb < ra;
+  }
+  return {
+    structure: bullishStructure ? "SOMMETS ET CREUX ASCENDANTS" :
+      bearishStructure ? "SOMMETS ET CREUX DESCENDANTS" : "STRUCTURE MIXTE",
+    bos: bosUp ? "BOS_HAUSSIER" : bosDown ? "BOS_BAISSIER" : "AUCUN",
+    choch: chochUp ? "CHOCH_HAUSSIER" : chochDown ? "CHOCH_BAISSIER" : "AUCUN",
+    bullishDivergence, bearishDivergence,
+    lastSwingHigh: lastHigh ? lastHigh.price : null,
+    lastSwingLow: lastLow ? lastLow.price : null,
+    recentHighs: highs.map(x => x.price),
+    recentLows: lows.map(x => x.price)
+  };
+}
+
+function describeTrendStrength(indicator, trend) {
+  const adx = indicator.adx?.adx;
+  let strength = "INDISPONIBLE";
+  if (Number.isFinite(adx)) {
+    strength = adx < 15 ? "FAIBLE" : adx < 25 ? "MODEREE" : adx < 40 ? "FORTE" : "TRES FORTE";
+  }
+  return {
+    direction: trend,
+    strength,
+    adx: Number.isFinite(adx) ? Number(adx.toFixed(2)) : null,
+    technicalScore: Number.isFinite(adx)
+      ? Math.max(0, Math.min(100, Math.round(adx * 2)))
+      : null,
+    scoreMeaning: "Indice technique descriptif, pas une probabilité de réussite."
+  };
+}
+
+function buildDashboardFrame(timeframe, bars) {
+  const indicator = getIndicators(bars);
+  const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
+    ? (indicator.ema20 > indicator.ema50 && indicator.ema50 > indicator.ema200 ? "HAUSSIER" :
+       indicator.ema20 < indicator.ema50 && indicator.ema50 < indicator.ema200 ? "BAISSIER" : "NEUTRE")
+    : "NEUTRE";
+  const regime = analyzeMarketRegime(bars, indicator);
+  const structure = analyzeStructure(bars, indicator);
+  const quality = inspectDataQuality(bars, timeframe);
+  const macd = indicator.macd || {};
+  const bb = indicator.bollinger || {};
+  const adx = indicator.adx || {};
+  const last = bars[bars.length - 1];
+  const previous = bars[bars.length - 2];
+  const slowing = Boolean(
+    Number.isFinite(macd.histogram) &&
+    Number.isFinite(macd.previousHistogram) &&
+    Math.abs(macd.histogram) < Math.abs(macd.previousHistogram)
+  );
+  const reversalWarnings = [];
+  if (structure.bullishDivergence) reversalWarnings.push("Divergence RSI haussiere");
+  if (structure.bearishDivergence) reversalWarnings.push("Divergence RSI baissiere");
+  if (structure.choch !== "AUCUN") reversalWarnings.push(structure.choch);
+  if (slowing) reversalWarnings.push("Histogramme MACD en ralentissement");
+  if (Number.isFinite(indicator.rsi) && indicator.rsi >= 70) reversalWarnings.push("RSI en zone haute");
+  if (Number.isFinite(indicator.rsi) && indicator.rsi <= 30) reversalWarnings.push("RSI en zone basse");
+  return {
+    timeframe,
+    candleCount: bars.length,
+    lastCandleAt: new Date(last.time + TIMEFRAMES[timeframe].ms).toISOString(),
+    dataQuality: quality,
+    trend: describeTrendStrength(indicator, trend),
+    regime,
+    indicators: {
+      price: indicator.price,
+      ema20: indicator.ema20,
+      ema50: indicator.ema50,
+      ema200: indicator.ema200,
+      rsi14: indicator.rsi,
+      macd: {
+        line: macd.macd, signal: macd.signal,
+        histogram: macd.histogram, previousHistogram: macd.previousHistogram
+      },
+      adx14: adx.adx, plusDI: adx.plusDI, minusDI: adx.minusDI,
+      bollinger: bb,
+      atr14: indicator.atr,
+      stochastic: indicator.stochastic
+    },
+    structure,
+    levels: findSupportResistance(bars, Math.min(80, bars.length)),
+    reversalWarnings,
+    candles: bars.slice(-90).map(b => ({
+      time: b.time, open: b.open, high: b.high, low: b.low, close: b.close
+    }))
+  };
+}
+
+async function handleDashboardData(env) {
+  const timeframes = Object.keys(TIMEFRAMES);
+  const results = await Promise.all(timeframes.map(async timeframe => {
+    try {
+      const bars = await fetchCandles(timeframe, 250);
+      return { timeframe, ok: true, analysis: buildDashboardFrame(timeframe, bars) };
+    } catch (error) {
+      return { timeframe, ok: false, error: error.message };
+    }
+  }));
+  let quote = null, quoteError = null;
+  try {
+    quote = await fetchLiveQuote();
+  } catch (error) {
+    quoteError = error.message;
+  }
+  let calendar;
+  try {
+    calendar = await getEconomicContext(env);
+  } catch (error) {
+    calendar = { configured: false, status: "UNAVAILABLE", message: error.message, events: [] };
+  }
+  const available = results.filter(x => x.ok);
+  const m1 = available.find(x => x.timeframe === "M1")?.analysis;
+  const marketOpen = quote ? true :
+    (quoteError && /marché XAUUSD fermé/i.test(quoteError) ? false : null);
+  return json({
+    ok: available.length > 0,
+    instrument: CONFIG.SYMBOL,
+    generatedAt: new Date().toISOString(),
+    market: {
+      open: marketOpen,
+      status: marketOpen === true ? "OUVERT" :
+        marketOpen === false ? "FERME" : "INDETERMINE",
+      price: quote?.mid ?? m1?.indicators?.price ?? null,
+      bid: quote?.bid ?? null,
+      ask: quote?.ask ?? null,
+      quoteTimestamp: quote?.timestamp ?? null,
+      quoteAgeSeconds: quote?.quoteAgeSeconds ?? null,
+      source: quote?.source ?? (m1 ? "BiQuote OHLC — dernière clôture" : null),
+      quoteError
+    },
+    source: CONFIG.SOURCE_URL,
+    timeframes: results,
+    economicCalendar: calendar,
+    execution: "AUCUN ORDRE REEL",
+    note: "Analyse technique descriptive. Un score technique n'est pas une probabilité."
+  });
+}
+
 // --------------------------------------------------
 // ROUTES
 // --------------------------------------------------
@@ -1254,16 +1886,49 @@ async function handleStatus(env) {
   });
 }
 
+async function handleSniperStats(env) {
+  const raw = await readKV(env, SNIPER_STATS.KEY);
+  let state;
+  try { state = raw ? JSON.parse(raw) : null; } catch { state = null; }
+  const samples = Array.isArray(state?.samples) ? state.samples : [];
+  const buckets = [];
+  for (const direction of ["BUY", "SELL"]) {
+    for (const regime of ["TENDANCE", "RANGE", "TRANSITION", "INDETERMINE"]) {
+      const stats = getSniperBucketStats(samples, direction, regime);
+      if (stats.samples > 0) buckets.push(stats);
+    }
+  }
+  return json({
+    ok: true,
+    instrument: CONFIG.SYMBOL,
+    strategy: { target: CONFIG.TARGET, stop: CONFIG.STOP },
+    validation: {
+      targetHistoricalWinRate: SNIPER_STATS.TARGET_WIN_RATE * 100,
+      minimumResolvedPerDirectionAndRegime: SNIPER_STATS.MIN_RESOLVED,
+      maxHoldingMinutes: SNIPER_STATS.MAX_HOLD_MS / 60000,
+      sampleRetentionDays: SNIPER_STATS.SAMPLE_TTL_SECONDS / 86400
+    },
+    storageConfigured: Boolean(env.TP_STATE),
+    totalSamples: samples.length,
+    pending: samples.filter(sample => sample.outcome === "PENDING").length,
+    resolved: samples.filter(sample => ["WIN", "LOSS"].includes(sample.outcome)).length,
+    timeouts: samples.filter(sample => sample.outcome === "TIMEOUT").length,
+    buckets,
+    updatedAt: state?.updatedAt ? new Date(state.updatedAt).toISOString() : null,
+    note: "Résultats simulés sur OHLC M1, spread d'entrée pris en compte de façon prudente; commissions, slippage et prix bid/ask historiques ne sont pas disponibles. Aucun taux n'est garanti."
+  });
+}
+
 async function handleAnalyze(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings, env);
+  const signal = await getSignal(settings, env, false);
 
   return json(signal, signal.ok ? 200 : 503);
 }
 
 async function handleScalp(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings, env);
+  const signal = await getSignal(settings, env, true);
 
   // Telegram ne reçoit que les décisions pleinement confirmées.
   // Les signaux EARLY restent visibles dans l'analyse, mais ne déclenchent
@@ -1517,6 +2182,10 @@ export default {
         return await handleStatus(env);
       }
 
+      if (path === "/dashboard-data") {
+        return await handleDashboardData(env);
+      }
+
       if (path === "/gold") {
         return await handleGold(request);
       }
@@ -1533,6 +2202,10 @@ export default {
         return await handleAnalyze(request, env);
       }
 
+      if (path === "/sniper-stats") {
+        return await handleSniperStats(env);
+      }
+
       if (path === "/scalp") {
         return await handleScalp(request, env);
       }
@@ -1547,10 +2220,12 @@ export default {
         available: [
           "/health",
           "/status",
+          "/dashboard-data",
           "/gold?timeframe=M1",
           "/gold?timeframe=M5",
           "/gold?timeframe=M15",
           "/analyze",
+          "/sniper-stats",
           "/calendar",
           "/scalp",
           "/telegram-test?key=VOTRE_CLE"
