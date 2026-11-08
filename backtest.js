@@ -125,6 +125,15 @@ function backtest(candles, strategy, options = {}) {
   if (!Array.isArray(candles) || candles.length < 50) {
     throw new Error("Il faut au moins 50 bougies historiques.");
   }
+  if (!["trend", "breakout", "reversal"].includes(strategy)) {
+    throw new Error("Stratégie non prise en charge.");
+  }
+  const startIndex = Math.max(21, Math.floor(Number(options.startIndex ?? 21)));
+  const endIndex = Math.min(candles.length, Math.floor(Number(options.endIndex ?? candles.length)));
+  if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex) ||
+      startIndex < 21 || endIndex <= startIndex || endIndex > candles.length) {
+    throw new Error("Fenêtre de backtest invalide.");
+  }
   if (!(startingCapital > 0) || !(riskPercent > 0 && riskPercent <= 2)) {
     throw new Error("Capital invalide ou risque supérieur à 2 %.");
   }
@@ -202,7 +211,7 @@ function backtest(candles, strategy, options = {}) {
     position = null;
   }
 
-  for (let i = 21; i < candles.length; i++) {
+  for (let i = startIndex; i < endIndex; i++) {
     const candle = candles[i];
     const priorSignal = getSignal(i - 1, candles, fast, slow, momentum, strategy);
 
@@ -243,7 +252,7 @@ function backtest(candles, strategy, options = {}) {
   }
 
   if (position) {
-    closePosition(candles[candles.length - 1].close, candles.length - 1, "end_of_data");
+    closePosition(candles[endIndex - 1].close, endIndex - 1, "end_of_data");
   }
 
   const trades = history.length;
@@ -310,6 +319,99 @@ function compareStrategies(candles, options = {}) {
     .sort((a, b) => b.returnPercent - a.returnPercent);
 }
 
+function walkForwardCompare(candles, options = {}) {
+  const trainingBars = Math.floor(Number(options.trainingBars ?? 500));
+  const testBars = Math.floor(Number(options.testBars ?? 200));
+  const stepBars = Math.floor(Number(options.stepBars ?? testBars));
+  const capital = Number(options.capital ?? 10000);
+
+  if (!Array.isArray(candles) || trainingBars < 50 || testBars < 20 ||
+      stepBars < 1 || !Number.isFinite(trainingBars) ||
+      !Number.isFinite(testBars) || !Number.isFinite(stepBars)) {
+    throw new Error("Paramètres walk-forward invalides.");
+  }
+  if (candles.length < trainingBars + testBars) {
+    throw new Error("Historique insuffisant pour une première fenêtre hors échantillon.");
+  }
+
+  const strategies = ["trend", "breakout", "reversal"];
+  const folds = [];
+  for (let testStart = trainingBars; testStart + testBars <= candles.length; testStart += stepBars) {
+    const testEnd = testStart + testBars;
+    const results = strategies.map(strategy => {
+      const result = backtest(candles, strategy, {
+        ...options,
+        capital,
+        startIndex: testStart,
+        endIndex: testEnd
+      });
+      return {
+        strategy,
+        trades: result.trades,
+        wins: result.wins,
+        losses: result.losses,
+        winRate: result.winRate,
+        netProfit: result.netProfit,
+        returnPercent: result.returnPercent,
+        profitFactor: result.profitFactor,
+        maxDrawdownPercent: result.maxDrawdownPercent,
+        regimeStats: result.regimeStats
+      };
+    });
+    folds.push({
+      trainingStartIndex: Math.max(0, testStart - trainingBars),
+      trainingEndIndex: testStart - 1,
+      testStartIndex: testStart,
+      testEndIndex: testEnd - 1,
+      results
+    });
+  }
+
+  const summary = strategies.map(strategy => {
+    const results = folds.flatMap(fold => fold.results.filter(item => item.strategy === strategy));
+    const trades = results.reduce((sum, item) => sum + item.trades, 0);
+    const wins = results.reduce((sum, item) => sum + item.wins, 0);
+    const netProfit = results.reduce((sum, item) => sum + item.netProfit, 0);
+    const totalCapital = capital * results.length;
+    const profitableFolds = results.filter(item => item.netProfit > 0).length;
+    const activeFolds = results.filter(item => item.trades > 0).length;
+    return {
+      strategy,
+      folds: results.length,
+      activeFolds,
+      profitableFolds,
+      foldProfitabilityPercent: results.length
+        ? Number((profitableFolds / results.length * 100).toFixed(2))
+        : 0,
+      trades,
+      wins,
+      losses: trades - wins,
+      winRate: trades ? Number((wins / trades * 100).toFixed(2)) : 0,
+      netProfit: Number(netProfit.toFixed(2)),
+      averageFoldReturnPercent: results.length
+        ? Number((results.reduce((sum, item) => sum + item.returnPercent, 0) / results.length).toFixed(2))
+        : 0,
+      normalizedReturnPercent: totalCapital
+        ? Number((netProfit / totalCapital * 100).toFixed(2))
+        : 0,
+      worstFoldDrawdownPercent: results.length
+        ? Number(Math.max(...results.map(item => item.maxDrawdownPercent)).toFixed(2))
+        : 0
+    };
+  }).sort((a, b) => b.normalizedReturnPercent - a.normalizedReturnPercent);
+
+  return {
+    method: "Rolling chronological out-of-sample evaluation",
+    trainingBars,
+    testBars,
+    stepBars,
+    folds: folds.length,
+    summary,
+    foldResults: folds,
+    warning: "Les stratégies ne sont pas optimisées sur la fenêtre de test. Les performances passées ne garantissent pas les résultats futurs. Chaque fenêtre repart du capital initial."
+  };
+}
+
 function validateTimeframe(timeframe) {
   if (!TIMEFRAMES.includes(timeframe)) {
     throw new Error("Timeframe non supporté.");
@@ -324,5 +426,6 @@ export {
   classifyRegime,
   backtest,
   compareStrategies,
+  walkForwardCompare,
   validateTimeframe
 };
