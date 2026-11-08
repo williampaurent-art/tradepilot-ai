@@ -1148,6 +1148,10 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   if (tradePlan.confirmed) {
     targetPrice = tradePlan.targetPrice;
     stopPrice = tradePlan.stopPrice;
+  } else {
+    // Never expose fixed fallback levels as if they were validated structure.
+    targetPrice = null;
+    stopPrice = null;
   }
   const effectiveTarget = tradePlan.confirmed ? tradePlan.targetMove : settings.target;
   const effectiveStop = tradePlan.confirmed ? tradePlan.stopMove : settings.stop;
