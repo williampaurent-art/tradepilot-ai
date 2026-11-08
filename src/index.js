@@ -876,7 +876,7 @@ function buildAlertMessage(signal) {
     `📦 Taille indicative : ${signal.lotSize} lot`,
     `💵 Capital de référence : ${signal.capital} USD`,
     `⚙️ Levier indicatif : x${signal.leverage}`,
-    `⚖️ Ratio gain/risque : 1:${signal.riskReward}`,
+    `⚖️ Ratio gain/risque : ${signal.riskReward}`,
     `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
     "",
     "📈 Tendances :",
@@ -1036,8 +1036,11 @@ async function getEconomicContext(env) {
     // On réintroduira les filtres de dates/fuseau après validation.
     const url = new URL(ECONOMIC_CALENDAR.URL);
     // Gold is primarily USD-sensitive; include Euro-area releases as well.
+    url.searchParams.set("from", from);
+    url.searchParams.set("to", to);
     url.searchParams.set("country", "US,EU");
     url.searchParams.set("impact", "high");
+    url.searchParams.set("tz", "Europe/Paris");
     url.searchParams.set("limit", "5");
 
     const response = await fetch(url.toString(), {
