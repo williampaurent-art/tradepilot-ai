@@ -2276,7 +2276,7 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     bullishScore, bearishScore,
     bullishEvidence, bearishEvidence,
     candleConfirmation, structureConfirmation, momentumConfirmation,
-    trendExhaustion, trendContext: trend,
+    trendExhaustion, trendContext: trend, againstTrend: oppositeTrend,
     emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
     macdSlowing, adxFalling,
     explanation,
@@ -2374,6 +2374,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
   let higherBullish = 0, higherBearish = 0;
   let higherBullishConfirmed = 0, higherBearishConfirmed = 0;
   let confirmedCount = 0, formationCount = 0, earlyCount = 0;
+  let againstTrendCount = 0, withTrendCount = 0;
   const higherFrames = ["H1", "H4", "D1"];
   const stageWeights = {
     PRECURSEUR: 0.25,
@@ -2389,6 +2390,10 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     const direction = ["HAUSSIER", "BAISSIER"].includes(r.direction) ? r.direction : "NEUTRE";
     const active = Object.prototype.hasOwnProperty.call(stageWeights, stage);
     const trend = a.trend?.direction || "NEUTRE";
+    const againstTrend = active && trend !== "NEUTRE" && direction !== "NEUTRE" && trend !== direction;
+    const withTrend = active && trend !== "NEUTRE" && direction === trend;
+    if (againstTrend) againstTrendCount++;
+    if (withTrend) withTrendCount++;
     const higher = higherFrames.includes(tf);
     const stageWeight = active ? stageWeights[stage] : 0;
     if (active && direction === "HAUSSIER") {
@@ -2408,7 +2413,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     else if (stage === "RETOURNEMENT_EN_FORMATION") formationCount++;
     else if (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER") earlyCount++;
     details.push({
-      timeframe: tf, stage, direction, trend, active, weight: weights[tf],
+      timeframe: tf, stage, direction, trend, active, againstTrend, withTrend, weight: weights[tf],
       stageWeight, weightedContribution: Number((weights[tf] * stageWeight).toFixed(2))
     });
   }
@@ -2440,7 +2445,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
   return {
     status, bias, bullishCount, bearishCount, higherBullish, higherBearish,
     higherBullishConfirmed, higherBearishConfirmed,
-    confirmedCount, formationCount, earlyCount,
+    confirmedCount, formationCount, earlyCount, againstTrendCount, withTrendCount,
     validTimeframes: details.length,
     bullishWeight: Number(bullishWeight.toFixed(2)),
     bearishWeight: Number(bearishWeight.toFixed(2)),
