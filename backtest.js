@@ -10,21 +10,35 @@ function sma(values, period) {
 }
 
 function rsi(values, period = 14) {
-  return values.map((_, i) => {
-    if (i < period) return null;
-    let gains = 0;
-    let losses = 0;
+  const result = Array(values.length).fill(null);
+  if (!Array.isArray(values) || values.length < period + 1) return result;
 
-    for (let j = i - period + 1; j <= i; j++) {
-      const change = values[j] - values[j - 1];
-      if (change > 0) gains += change;
-      else losses -= change;
-    }
+  // Même méthode de Wilder que le moteur live TradePilot.
+  let gains = 0;
+  let losses = 0;
 
-    if (losses === 0) return 100;
-    const rs = gains / losses;
-    return 100 - 100 / (1 + rs);
-  });
+  for (let i = 1; i <= period; i++) {
+    const change = values[i] - values[i - 1];
+    if (change > 0) gains += change;
+    else losses -= change;
+  }
+
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+  result[period] = avgLoss === 0
+    ? (avgGain === 0 ? 50 : 100)
+    : 100 - 100 / (1 + avgGain / avgLoss);
+
+  for (let i = period + 1; i < values.length; i++) {
+    const change = values[i] - values[i - 1];
+    avgGain = ((avgGain * (period - 1)) + Math.max(change, 0)) / period;
+    avgLoss = ((avgLoss * (period - 1)) + Math.max(-change, 0)) / period;
+    result[i] = avgLoss === 0
+      ? (avgGain === 0 ? 50 : 100)
+      : 100 - 100 / (1 + avgGain / avgLoss);
+  }
+
+  return result;
 }
 
 function backtest(candles, strategy, options = {}) {
