@@ -3719,6 +3719,21 @@ async function handleSniperStats(env) {
 }
 
 
+function summarizeBacktestGroup(trades) {
+ const wins=trades.filter(t=>t.netPoints>0), losses=trades.filter(t=>t.netPoints<=0);
+ const grossProfit=wins.reduce((n,t)=>n+t.netPoints,0), grossLoss=Math.abs(losses.reduce((n,t)=>n+t.netPoints,0));
+ let equity=0,peak=0,maxDrawdown=0; for(const t of trades){equity+=t.netPoints;peak=Math.max(peak,equity);maxDrawdown=Math.max(maxDrawdown,peak-equity);}
+ return {trades:trades.length,wins:wins.length,losses:losses.length,winRate:trades.length?Number((wins.length/trades.length*100).toFixed(2)):0,grossProfitPoints:Number(grossProfit.toFixed(3)),grossLossPoints:Number(grossLoss.toFixed(3)),netPoints:Number((grossProfit-grossLoss).toFixed(3)),profitFactor:grossLoss>0?Number((grossProfit/grossLoss).toFixed(3)):(grossProfit>0?null:0),maxDrawdownPoints:Number(maxDrawdown.toFixed(3))};
+}
+function groupBacktestTrades(trades,field,values=null){
+ const keys=values||[...new Set(trades.map(t=>String(t[field]||'INDETERMINE')))].sort();
+ return Object.fromEntries(keys.map(key=>[key,summarizeBacktestGroup(trades.filter(t=>String(t[field]||'INDETERMINE')===key))]).filter(([,stats])=>stats.trades>0));
+}
+async function handleStrategyBacktestHistory(env){
+ const raw=await readKV(env,'strategy_backtest_history_v1');let state;try{state=raw?JSON.parse(raw):null;}catch{state=null;}
+ const sessions=Array.isArray(state?.sessions)?state.sessions:[];
+ return json({ok:true,storageConfigured:Boolean(env.TP_STATE),sessions,count:sessions.length,note:'Historique des replays manuels, 20 sessions maximum.'});
+}
 async function handleStrategyBacktest(request) {
   const url = new URL(request.url);
   const settings = getSettings(url);
@@ -3955,17 +3970,13 @@ async function handleStrategyBacktest(request) {
     i = Math.max(i, exitIndex - 1);
   }
 
-  const wins = trades.filter(trade => trade.netPoints > 0);
-  const losses = trades.filter(trade => trade.netPoints <= 0);
-  const grossProfit = wins.reduce((sum, trade) => sum + trade.netPoints, 0);
-  const grossLoss = Math.abs(losses.reduce((sum, trade) => sum + trade.netPoints, 0));
-  let equity = 0, peak = 0, maxDrawdown = 0;
-  for (const trade of trades) {
-    equity += trade.netPoints;
-    peak = Math.max(peak, equity);
-    maxDrawdown = Math.max(maxDrawdown, peak - equity);
-  }
-
+  const statistics = summarizeBacktestGroup(trades);
+  const byDirection = groupBacktestTrades(trades, 'direction', ['BUY', 'SELL']);
+  const byRegime = groupBacktestTrades(trades, 'regime');
+  const session = { id: 'BT_' + Date.now(), createdAt: new Date().toISOString(), instrument: CONFIG.SYMBOL, period: { from: new Date(m1[0].time).toISOString(), to: new Date(m1[m1.length-1].time + TIMEFRAMES.M1.ms).toISOString() }, statistics, byDirection, byRegime, assumptions: { spread, slippagePerSide: slippage, maxHoldMinutes, minScore: settings.minScore }, sampleTrades: trades.slice(-10) };
+  let previous; try { const raw=await readKV(env,'strategy_backtest_history_v1'); previous=raw?JSON.parse(raw):null; } catch { previous=null; }
+  const sessions=Array.isArray(previous?.sessions)?previous.sessions:[]; sessions.push(session); sessions.sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
+  const historySaved=await writeKV(env,'strategy_backtest_history_v1',{version:1,updatedAt:Date.now(),sessions:sessions.slice(-20)},90*86400);
   return json({
     ok: true,
     instrument: CONFIG.SYMBOL,
@@ -3993,17 +4004,9 @@ async function handleStrategyBacktest(request) {
       economicCalendar: "Non rejoué : historique des événements économiques non archivé.",
       note: "Replay du moteur technique central avec confirmations multi-timeframe. Le contexte macro, le calendrier historique et les conditions exactes du broker ne sont pas reconstruits."
     },
-    statistics: {
-      trades: trades.length,
-      wins: wins.length,
-      losses: losses.length,
-      winRate: trades.length ? Number((wins.length / trades.length * 100).toFixed(2)) : 0,
-      grossProfitPoints: Number(grossProfit.toFixed(3)),
-      grossLossPoints: Number(grossLoss.toFixed(3)),
-      netPoints: Number((grossProfit - grossLoss).toFixed(3)),
-      profitFactor: grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(3)) : (grossProfit > 0 ? null : 0),
-      maxDrawdownPoints: Number(maxDrawdown.toFixed(3))
-    },
+    statistics,
+    comparisons: { byDirection, byRegime },
+    history: { saved: historySaved, retainedSessions: Math.min(20, sessions.length), sessionId: session.id },
     dataQuality,
     trades,
     execution: "AUCUN ORDRE REEL",
@@ -4297,7 +4300,10 @@ export default {
       }
 
       if (path === "/strategy-backtest") {
-        return await handleStrategyBacktest(request);
+        return await handleStrategyBacktest(request, env);
+      }
+      if (path === "/strategy-backtest-history") {
+        return await handleStrategyBacktestHistory(env);
       }
 
       if (path === "/analyze") {
@@ -4329,6 +4335,7 @@ export default {
           "/gold?timeframe=M15",
           "/analyze",
           "/sniper-stats",
+          "/strategy-backtest-history",
           "/calendar",
           "/scalp",
           "/telegram-test?key=VOTRE_CLE"
