@@ -1381,13 +1381,28 @@ async function getSignal(settings, env, recordStatistics = false) {
   ];
   const marketOpen = Boolean(liveQuote && liveQuote.mid > 0);
   const economicContext = await getEconomicContext(env);
+  let macroCrossAsset = null;
+  try {
+    const macroCachedRaw = await readKV(env,"gold_macro_context_cache");
+    const macroCached = macroCachedRaw ? JSON.parse(macroCachedRaw) : null;
+    if (macroCached && Date.now()-Number(macroCached.cachedAt||0)<10*60*1000) {
+      macroCrossAsset = macroCached.value;
+    } else {
+      macroCrossAsset = await fetchGoldMacroContext();
+      await writeKV(env,"gold_macro_context_cache",{
+        cachedAt:Date.now(),value:macroCrossAsset
+      },3600);
+    }
+  } catch(error) {
+    macroCrossAsset = {status:"INDISPONIBLE",bias:"NON_EVALUE",errors:[error.message]};
+  }
   const anticipation = analyzeMarketAnticipation(frameResults,marketOpen,economicContext);
   const reversal = analyzeReversalMultiTimeframe(frameResults,marketOpen);
   const confluence = analyzeSetupConfluence(frameResults,marketOpen);
   const alignment = analyzeMultiTimeframeConfluence(frameResults,marketOpen);
 
   result.advancedIntelligence = {
-    anticipation, reversal, confluence, alignment,
+    anticipation, reversal, confluence, alignment, macroCrossAsset,
     availableTimeframes:frameResults.filter(x=>x.ok).map(x=>x.timeframe),
     missingTimeframes:frameResults.filter(x=>!x.ok).map(x=>x.timeframe)
   };
@@ -1410,8 +1425,9 @@ async function getSignal(settings, env, recordStatistics = false) {
       reasons.push("Confluence supérieure : au moins deux unités H1/H4/D1 soutiennent le scénario.");
     }
 
-    const reversalOpposed = reversal.bias===opposite &&
-      (reversal.higherBearish+reversal.higherBullish)>=2;
+    const oppositeHigherReversals = opposite==="BAISSIER"
+      ? reversal.higherBearish : reversal.higherBullish;
+    const reversalOpposed = reversal.bias===opposite && oppositeHigherReversals>=2;
     if (reversalOpposed) {
       result.score=Math.max(0,result.score-10);
       reasons.push("Alerte retournement : les unités supérieures montrent un scénario opposé.");
@@ -1432,9 +1448,23 @@ async function getSignal(settings, env, recordStatistics = false) {
       result.score=Math.max(0,result.score-6);
       reasons.push("Confluence avancée faible : configuration technique incomplète.");
     }
+    const macroBias=macroCrossAsset?.bias;
+    if ((side==="HAUSSIER" && macroBias==="SOUTIEN_HAUSSIER_OR") ||
+        (side==="BAISSIER" && macroBias==="PRESSION_BAISSIERE_OR")) {
+      result.score=Math.min(100,result.score+3);
+      reasons.push("Contexte inter-marchés DXY/taux cohérent avec le scénario (pondération légère).");
+    } else if ((side==="HAUSSIER" && macroBias==="PRESSION_BAISSIERE_OR") ||
+               (side==="BAISSIER" && macroBias==="SOUTIEN_HAUSSIER_OR")) {
+      result.score=Math.max(0,result.score-3);
+      reasons.push("Contexte inter-marchés DXY/taux opposé au scénario (pondération légère).");
+    }
   }
   result.reasons=[...(result.reasons||[]),...reasons];
   result.score=Math.round(result.score);
+  // Recalculer le niveau après les modulations avancées, sans contourner
+  // le seuil technique ni le contrôle de spread.
+  result.alertLevel = result.signal==="ATTENDRE" ? "NONE" :
+    result.score>=settings.minScore && result.riskChecks?.spreadOK ? "CONFIRMED" : "EARLY";
   result.advancedIntelligence.eventMonitoring = {
     active:economicContext.blackout===true,
     riskLevel:economicContext.riskLevel||"INCONNU",
