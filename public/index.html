@@ -218,7 +218,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
-<nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d'ensemble</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a></nav>
+<nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d'ensemble</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#backtest-view">Backtest moteur</a><a href="#macro-view">Macro & actualités</a></nav>
 <section class="executive" aria-label="Synthèse exécutive">
  <div class="exec-head"><div><div class="exec-kicker">XAUUSD · Gold market intelligence</div><div class="exec-title" id="execHeadline">Lecture du marché en cours</div><div class="exec-copy" id="execNarrative">TradePilot rassemble les données de marché, la structure technique et le contexte macro pour présenter une lecture claire. Chargement des dernières informations…</div></div><div id="execState" class="exec-state">ANALYSE EN ATTENTE</div></div>
  <div class="exec-grid">
@@ -250,6 +250,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 <article class="card"><div class="eyebrow">Qualité des données</div><div id="dataState" class="bigstate neutral">EN ATTENTE</div><div id="dataInfo" class="muted">Horodatages et continuité en cours de vérification.</div><div class="metrics"><div class="metric"><label>Unités disponibles</label><strong id="available">—</strong></div><div class="metric"><label>Source</label><strong id="source">—</strong></div><div class="metric"><label>Analyse</label><strong id="updated">—</strong></div></div></article>
 </section>
 <section id="timeframe-view" class="section"><div class="sectionhead"><h2>Lecture multi-timeframe</h2><span class="hint">M1 · M5 · M15 · H1 · H4 · D1</span></div><div id="timeframes" class="grid tfgrid"><div class="card muted">Chargement…</div></div></section>
+<section id="backtest-view" class="section card"><div class="sectionhead"><div><h2>Validation historique du moteur TradePilot</h2><div class="hint">Rejoue les signaux techniques M1/M5/M15 sur les dernières bougies disponibles.</div></div><button type="button" class="btn primary" id="runStrategyBacktest">Lancer le backtest</button></div><div class="metrics"><div class="metric"><label>Trades simulés</label><strong id="btTrades">—</strong></div><div class="metric"><label>Taux de réussite</label><strong id="btWinRate">—</strong></div><div class="metric"><label>Profit factor</label><strong id="btProfitFactor">—</strong></div><div class="metric"><label>Résultat net</label><strong id="btNetPoints">—</strong></div><div class="metric"><label>Drawdown max.</label><strong id="btDrawdown">—</strong></div><div class="metric"><label>Historique M1</label><strong id="btPeriod">—</strong></div></div><div id="btStatus" class="muted" style="margin-top:12px">Le backtest n'a pas encore été lancé. Il utilise la logique de décision technique centrale de TradePilot, sans exécuter d'ordre.</div><div id="btTradesList" style="margin-top:12px"></div><div class="hint" style="margin-top:10px">Simulation indicative : spread supposé 0,30 $, slippage 0,05 $ par côté. Les filtres macro, calendrier et confirmations H1/H4/D1 ne sont pas rejoués faute d'historique synchronisé.</div></section>
 <section id="deep-analysis" class="section card"><div class="sectionhead"><h2>Cartographie des régimes · 6 unités</h2><span id="regimeMatrixStatus" class="hint">En attente</span></div><div id="regimeGrid" class="grid tfgrid"><div class="muted">Analyse des régimes en attente.</div></div><div id="regimeMatrixExplanation" class="muted" style="margin-top:12px">Comparaison des tendances, ranges et cassures entre M1, M5, M15, H1, H4 et D1.</div><div class="hint" style="margin-top:8px">Les états historiques restent identifiés comme tels lorsque le marché ou les données live ne sont pas confirmés.</div></section>
 <section class="section card"><div class="sectionhead"><h2>Confluence multi-timeframe</h2><span id="confluenceStatus" class="hint">En attente</span></div><div class="metrics"><div class="metric"><label>Biais dominant</label><strong id="confluenceBias">—</strong></div><div class="metric"><label>Concordance pondérée</label><strong id="confluenceScore">—</strong></div><div class="metric"><label>Tendance H1 / H4 / D1</label><strong id="higherBias">—</strong></div></div><div id="confluenceDirections" class="hint" style="margin-top:12px">M1 · M5 · M15 · H1 · H4 · D1 : en attente des données.</div><div id="confluenceExplanation" class="muted" style="margin-top:8px">La confluence sera calculée lorsque les données live seront confirmées.</div><div id="confluenceConflicts" class="warning" style="margin-top:12px">Aucun diagnostic pour le moment.</div><div class="hint" style="margin-top:9px">Indice descriptif pondéré, pas une probabilité de réussite ni un ordre de trading.</div></section>
 <section class="section card"><div class="sectionhead"><h2>Volatilité & conditions de scalping</h2><span id="volatilityStatus" class="hint">En attente</span></div><div class="metrics"><div class="metric"><label>Régime M15</label><strong id="volatilityM15">—</strong></div><div class="metric"><label>Variation récente / référence</label><strong id="volatilityRatio">—</strong></div><div class="metric"><label>Amplitude dernière bougie</label><strong id="volatilityCandle">—</strong></div></div><div id="volatilityGrid" class="grid tfgrid" style="margin-top:14px"><div class="muted">Analyse de la volatilité en attente.</div></div><div id="volatilityExplanation" class="muted" style="margin-top:12px">La volatilité sera comparée à son niveau récent pour chaque unité de temps.</div><div class="hint" style="margin-top:9px">Une volatilité forte ne donne pas le sens du marché. Les mesures sont relatives à chaque unité de temps.</div></section>
@@ -263,7 +264,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.18";
+const UI_VERSION="2026.11.08.19";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -643,6 +644,41 @@ async function assistantSubmit(question){
   if(submit){submit.disabled=false;submit.textContent="Envoyer";}
  }
 }
+async function runStrategyBacktest(){
+ const button=$("runStrategyBacktest"),status=$("btStatus"),list=$("btTradesList");
+ if(!button||!status||!list)return;
+ button.disabled=true;button.textContent="Simulation…";status.textContent="Récupération des bougies et rejeu du moteur technique…";list.innerHTML="";
+ try{
+  const response=await fetch(API+"/strategy-backtest?spread=0.30&slippage=0.05&maxHoldMinutes=30",{cache:"no-store",headers:{"accept":"application/json"}});
+  const payload=await response.json();
+  if(!response.ok||payload?.ok!==true)throw new Error(payload?.error||"Backtest indisponible.");
+  const stats=payload.statistics||{},sample=payload.sample||{};
+  put("btTrades",stats.trades??0);
+  put("btWinRate",fmt(stats.winRate,2)+" %");
+  put("btProfitFactor",stats.profitFactor===null?"∞":fmt(stats.profitFactor,2));
+  put("btNetPoints",(stats.netPoints>0?"+":"")+fmt(stats.netPoints,2)+" $");
+  put("btDrawdown",fmt(stats.maxDrawdownPoints,2)+" $");
+  put("btPeriod",(sample.candles?.M1||0)+" bougies");
+  status.textContent="Moteur rejoué sur "+(sample.trades||0)+" transaction(s), du "+dateFmt(sample.from)+" au "+dateFmt(sample.to)+". "+(stats.trades<10?"Échantillon trop réduit pour conclure statistiquement.":"Résultats à confirmer sur un historique beaucoup plus long.");
+  const rows=Array.isArray(payload.trades)?payload.trades.slice(-12).reverse():[];
+  if(!rows.length){list.innerHTML='<div class="muted">Aucun signal confirmé n’a été détecté sur la fenêtre historique disponible.</div>';}
+  else{
+   const table=document.createElement("table");table.className="table";
+   table.innerHTML="<thead><tr><th>Sens</th><th>Score</th><th>Entrée</th><th>Sortie</th><th>Résultat</th><th>Clôture</th></tr></thead><tbody></tbody>";
+   const body=table.querySelector("tbody");
+   rows.forEach(trade=>{
+    const row=document.createElement("tr");
+    [trade.direction,trade.score,fmt(trade.entry,2),fmt(trade.exit,2),(trade.netPoints>0?"+":"")+fmt(trade.netPoints,2)+" $",trade.exitReason].forEach(value=>{
+     const cell=document.createElement("td");cell.textContent=value??"—";row.append(cell);
+    });
+    body.append(row);
+   });
+   list.append(table);
+  }
+ }catch(error){
+  status.textContent="Backtest impossible : "+(error?.message||"erreur inconnue")+". Vérifie que la nouvelle version du Worker est déployée.";
+ }finally{button.disabled=false;button.textContent="Lancer le backtest";}
+}
 async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;const assistantMeta=$("assistantMeta");if(assistantMeta)assistantMeta.textContent="Analyse synchronisée · "+dateFmt(d.generatedAt)+" · "+(d.market?.open===true?"flux live confirmé":"flux live non confirmé")+".";renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 const assistantForm=$("assistantForm");
 if(assistantForm){
@@ -654,5 +690,5 @@ if(assistantForm){
 document.querySelectorAll("[data-question]").forEach(button=>{
  button.addEventListener("click",()=>assistantSubmit(button.getAttribute("data-question")||""));
 });
-$("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
+$("runStrategyBacktest")?.addEventListener("click",runStrategyBacktest);$("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
 </script></body></html>
