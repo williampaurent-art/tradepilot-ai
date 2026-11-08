@@ -3927,6 +3927,18 @@ async function handleStrategyBacktest(request, env) {
   let gapSkippedSignals = 0;
   let gapSkippedHoldingWindows = 0;
   let higherTimeframesExcludedForGaps = 0;
+  const diagnostics = {
+    evaluatedBars: 0,
+    directionalSetups: 0,
+    rejected: {
+      entryTrigger: 0,
+      structuralPlan: 0,
+      score: 0,
+      spread: 0,
+      rewardRisk: 0
+    },
+    confirmedCandidates: 0
+  };
   let nextAllowedTime = 0;
   const firstIndex = 54;
 
@@ -3964,8 +3976,9 @@ async function handleStrategyBacktest(request, env) {
       settings,
       historicalQuote
     );
-
+    diagnostics.evaluatedBars++;
     if (setup.signal === "ATTENDRE") continue;
+    diagnostics.directionalSetups++;
 
     // Rejoue les confirmations supérieures sur les dernières bougies
     // H1/H4/D1 effectivement clôturées à l'instant historique du signal.
@@ -4042,10 +4055,18 @@ async function handleStrategyBacktest(request, env) {
       advancedReasons.push("Confluence avancée faible.");
     }
     setup.score = Math.round(setup.score);
-    setup.alertLevel = setup.score >= settings.minScore && setup.riskChecks?.spreadOK &&
-      setup.entryQuality?.confirmed === true && setup.tradePlan?.confirmed === true
+    const scoreOK = setup.score >= settings.minScore;
+    const spreadOK = setup.riskChecks?.spreadOK === true;
+    const triggerOK = setup.entryQuality?.confirmed === true;
+    const planOK = setup.tradePlan?.confirmed === true;
+    if (!triggerOK) diagnostics.rejected.entryTrigger++;
+    if (!planOK) diagnostics.rejected.structuralPlan++;
+    if (!scoreOK) diagnostics.rejected.score++;
+    if (!spreadOK) diagnostics.rejected.spread++;
+    setup.alertLevel = scoreOK && spreadOK && triggerOK && planOK
       ? "CONFIRMED" : "EARLY";
     if (setup.alertLevel !== "CONFIRMED") continue;
+    diagnostics.confirmedCandidates++;
 
     const direction = setup.signal === "ACHAT" ? 1 : -1;
     const entryBarIndex = i + 1;
@@ -4054,7 +4075,10 @@ async function handleStrategyBacktest(request, env) {
     const stopDistance = Number(setup.stopMove);
     const targetDistance = Number(setup.targetMove);
     if (!Number.isFinite(stopDistance) || !Number.isFinite(targetDistance) ||
-        stopDistance <= 0 || targetDistance / stopDistance < 1.5) continue;
+        stopDistance <= 0 || targetDistance / stopDistance < 1.5) {
+      diagnostics.rejected.rewardRisk++;
+      continue;
+    }
     const stop = entry - direction * stopDistance;
     const target = entry + direction * targetDistance;
     const lastExitIndex = Math.min(m1.length - 1, i + maxHoldBars);
@@ -4136,6 +4160,13 @@ async function handleStrategyBacktest(request, env) {
       from: new Date(m1[0].time).toISOString(),
       to: new Date(m1[m1.length - 1].time + TIMEFRAMES.M1.ms).toISOString(),
       trades: trades.length
+    },
+    diagnostics: {
+      ...diagnostics,
+      gapSkippedSignals,
+      gapSkippedHoldingWindows,
+      higherTimeframesExcludedForGaps,
+      confirmedCandidatesWithoutExecutedTrade: Math.max(0, diagnostics.confirmedCandidates - trades.length)
     },
     assumptions: {
       spread,
