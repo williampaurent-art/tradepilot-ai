@@ -54,6 +54,65 @@ function getSignal(index, candles, fast, slow, momentum, strategy) {
   return 0;
 }
 
+function trueRange(candle, previous) {
+  return Math.max(
+    candle.high - candle.low,
+    Math.abs(candle.high - previous.close),
+    Math.abs(candle.low - previous.close)
+  );
+}
+
+function classifyRegime(candles, index, options = {}) {
+  const trendLookback = Number(options.regimeTrendLookback ?? 5);
+  const volatilityLookback = Number(options.regimeVolatilityLookback ?? 50);
+  const slopeThreshold = Number(options.regimeSlopeThreshold ?? 0.5);
+  const highVolatilityMultiplier = Number(options.highVolatilityMultiplier ?? 1.5);
+
+  if (index < Math.max(21, volatilityLookback + 15)) return "insufficient_history";
+
+  const closes = candles.slice(0, index + 1).map(item => item.close);
+  const ranges = [];
+  for (let i = 1; i <= index; i++) {
+    ranges.push(trueRange(candles[i], candles[i - 1]));
+  }
+
+  // ATR courant calculé uniquement avec les chandeliers clôturés jusqu'à index.
+  const recentRanges = ranges.slice(-14);
+  const atr = recentRanges.reduce((sum, value) => sum + value, 0) / recentRanges.length;
+
+  // Référence de volatilité constituée uniquement des ATR antérieurs.
+  const historicalAtr = [];
+  const first = Math.max(14, index - volatilityLookback);
+  for (let end = first; end < index; end++) {
+    const sample = ranges.slice(Math.max(0, end - 13), end + 1);
+    if (sample.length === 14) {
+      historicalAtr.push(sample.reduce((sum, value) => sum + value, 0) / 14);
+    }
+  }
+  const sortedAtr = historicalAtr.slice().sort((a, b) => a - b);
+  const medianAtr = sortedAtr.length
+    ? sortedAtr[Math.floor(sortedAtr.length / 2)]
+    : atr;
+
+  const currentClose = closes[index];
+  const priorClose = closes[index - trendLookback];
+  const normalizedSlope = atr > 0
+    ? (currentClose - priorClose) / atr
+    : 0;
+
+  const volatility = medianAtr > 0 && atr >= medianAtr * highVolatilityMultiplier
+    ? "high_volatility"
+    : "normal_volatility";
+
+  let direction = "range";
+  if (normalizedSlope >= slopeThreshold) direction = "uptrend";
+  else if (normalizedSlope <= -slopeThreshold) direction = "downtrend";
+
+  return direction === "range"
+    ? volatility === "high_volatility" ? "volatile_range" : "range"
+    : volatility === "high_volatility" ? direction + "_high_volatility" : direction;
+}
+
 function backtest(candles, strategy, options = {}) {
   const startingCapital = Number(options.capital ?? 10000);
   const riskPercent = Number(options.riskPercent ?? 1);
@@ -116,7 +175,8 @@ function backtest(candles, strategy, options = {}) {
       direction, entry, units,
       stop: entry - direction * stopDistance,
       target: entry + direction * targetDistance,
-      entryIndex: index
+      entryIndex: index,
+      regime: classifyRegime(candles, index - 1, options)
     };
   }
 
@@ -131,6 +191,7 @@ function backtest(candles, strategy, options = {}) {
       direction: position.direction === 1 ? "BUY" : "SELL",
       entryIndex: position.entryIndex,
       exitIndex: index,
+      regime: position.regime,
       entry: Number(position.entry.toFixed(5)),
       exit: Number(exit.toFixed(5)),
       units: Number(position.units.toFixed(5)),
@@ -190,6 +251,24 @@ function backtest(candles, strategy, options = {}) {
   const losses = history.filter(trade => trade.pnl <= 0);
   const grossProfit = wins.reduce((sum, trade) => sum + trade.pnl, 0);
   const grossLoss = Math.abs(losses.reduce((sum, trade) => sum + trade.pnl, 0));
+  const regimeStats = {};
+
+  for (const trade of history) {
+    const regime = trade.regime || "unknown";
+    if (!regimeStats[regime]) regimeStats[regime] = { trades: 0, wins: 0, losses: 0, netProfit: 0 };
+    const bucket = regimeStats[regime];
+    bucket.trades++;
+    bucket.netProfit += trade.pnl;
+    if (trade.pnl > 0) bucket.wins++;
+    else bucket.losses++;
+  }
+
+  for (const bucket of Object.values(regimeStats)) {
+    bucket.netProfit = Number(bucket.netProfit.toFixed(2));
+    bucket.winRate = bucket.trades
+      ? Number((bucket.wins / bucket.trades * 100).toFixed(2))
+      : 0;
+  }
 
   return {
     strategy,
@@ -205,7 +284,13 @@ function backtest(candles, strategy, options = {}) {
     averageWin: wins.length ? Number((grossProfit / wins.length).toFixed(2)) : 0,
     averageLoss: losses.length ? Number((-grossLoss / losses.length).toFixed(2)) : 0,
     maxDrawdownPercent: Number(Math.max(0, maxDrawdown).toFixed(2)),
+    regimeStats,
     assumptions: {
+      regimeClassification: "Pente du prix normalisée par ATR, volatilité comparée à la médiane historique passée; aucun chandelier futur utilisé.",
+      regimeTrendLookback: Number(options.regimeTrendLookback ?? 5),
+      regimeVolatilityLookback: Number(options.regimeVolatilityLookback ?? 50),
+      regimeSlopeThreshold: Number(options.regimeSlopeThreshold ?? 0.5),
+      highVolatilityMultiplier: Number(options.highVolatilityMultiplier ?? 1.5),
       entry: "Signal calculé à la clôture, entrée à l'ouverture de la bougie suivante",
       stopDistance,
       targetDistance,
@@ -236,6 +321,7 @@ export {
   TIMEFRAMES,
   sma,
   rsi,
+  classifyRegime,
   backtest,
   compareStrategies,
   validateTimeframe
