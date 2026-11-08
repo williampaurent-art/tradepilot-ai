@@ -1339,47 +1339,114 @@ async function getSignal(settings, env, recordStatistics = false) {
 
   try {
     [m1, m5, m15, liveQuote] = await Promise.all([
-      fetchCandles("M1"),
-      fetchCandles("M5"),
-      fetchCandles("M15"),
-      fetchLiveQuote()
+      fetchCandles("M1"), fetchCandles("M5"),
+      fetchCandles("M15"), fetchLiveQuote()
     ]);
   } catch (error) {
-    return {
-      ok: false,
-      instrument: CONFIG.SYMBOL,
-      signal: "ATTENDRE",
-      score: 0,
-      error: error.message,
-      execution: "AUCUN ORDRE REEL"
-    };
+    return { ok:false, instrument:CONFIG.SYMBOL, signal:"ATTENDRE", score:0,
+      error:error.message, execution:"AUCUN ORDRE REEL" };
   }
 
   const quality = {
-    M1: inspectDataQuality(m1, "M1"),
-    M5: inspectDataQuality(m5, "M5"),
-    M15: inspectDataQuality(m15, "M15")
+    M1:inspectDataQuality(m1,"M1"),
+    M5:inspectDataQuality(m5,"M5"),
+    M15:inspectDataQuality(m15,"M15")
   };
-
-  if (!Object.values(quality).every(item => item.ok)) {
-    return {
-      ok: false,
-      instrument: CONFIG.SYMBOL,
-      signal: "ATTENDRE",
-      score: 0,
-      error: "Qualite des donnees insuffisante.",
-      dataQuality: quality,
-      execution: "AUCUN ORDRE REEL"
-    };
+  if (!Object.values(quality).every(item=>item.ok)) {
+    return {ok:false,instrument:CONFIG.SYMBOL,signal:"ATTENDRE",score:0,
+      error:"Qualite des donnees insuffisante.",dataQuality:quality,
+      execution:"AUCUN ORDRE REEL"};
   }
 
-  const result = analyzeSetup(m1, m5, m15, settings, liveQuote);
+  const result = analyzeSetup(m1,m5,m15,settings,liveQuote);
   result.dataQuality = quality;
 
+  // Le moteur Telegram réutilise désormais les mêmes diagnostics avancés
+  // que le tableau de bord : H1/H4/D1, structure, retournements, ranges,
+  // liquidité et anticipation multi-unités.
+  const higherFrames = ["H1","H4","D1"];
+  const higherResults = await Promise.all(higherFrames.map(async timeframe=>{
+    try {
+      const bars=await fetchCandles(timeframe,250);
+      return {timeframe,ok:true,analysis:buildDashboardFrame(timeframe,bars)};
+    } catch(error) {
+      return {timeframe,ok:false,error:error.message};
+    }
+  }));
+  const frameResults = [
+    {timeframe:"M1",ok:true,analysis:buildDashboardFrame("M1",m1)},
+    {timeframe:"M5",ok:true,analysis:buildDashboardFrame("M5",m5)},
+    {timeframe:"M15",ok:true,analysis:buildDashboardFrame("M15",m15)},
+    ...higherResults
+  ];
+  const marketOpen = Boolean(liveQuote && liveQuote.mid > 0);
   const economicContext = await getEconomicContext(env);
-  const filtered = applyEconomicFilter(result, economicContext);
+  const anticipation = analyzeMarketAnticipation(frameResults,marketOpen,economicContext);
+  const reversal = analyzeReversalMultiTimeframe(frameResults,marketOpen);
+  const confluence = analyzeSetupConfluence(frameResults,marketOpen);
+  const alignment = analyzeMultiTimeframeConfluence(frameResults,marketOpen);
+
+  result.advancedIntelligence = {
+    anticipation, reversal, confluence, alignment,
+    availableTimeframes:frameResults.filter(x=>x.ok).map(x=>x.timeframe),
+    missingTimeframes:frameResults.filter(x=>!x.ok).map(x=>x.timeframe)
+  };
+
+  const reasons = [];
+  const side = result.signal==="ACHAT"?"HAUSSIER":result.signal==="VENTE"?"BAISSIER":null;
+  if (side) {
+    const opposite = side==="HAUSSIER"?"BAISSIER":"HAUSSIER";
+    const higherOpposed = ["H1","H4","D1"].filter(tf=>
+      frameResults.find(x=>x.timeframe===tf)?.analysis?.trend?.direction===opposite
+    ).length;
+    const higherAligned = ["H1","H4","D1"].filter(tf=>
+      frameResults.find(x=>x.timeframe===tf)?.analysis?.trend?.direction===side
+    ).length;
+    if (higherOpposed>=2 && higherAligned===0) {
+      result.score=Math.max(0,result.score-12);
+      reasons.push("Pénalité multi-unités : H1/H4/D1 s'opposent au signal court terme.");
+    } else if (higherAligned>=2) {
+      result.score=Math.min(100,result.score+5);
+      reasons.push("Confluence supérieure : au moins deux unités H1/H4/D1 soutiennent le scénario.");
+    }
+
+    const reversalOpposed = reversal.bias===opposite &&
+      (reversal.higherBearish+reversal.higherBullish)>=2;
+    if (reversalOpposed) {
+      result.score=Math.max(0,result.score-10);
+      reasons.push("Alerte retournement : les unités supérieures montrent un scénario opposé.");
+    }
+    if (anticipation.direction===side && anticipation.confluenceIndex>=68) {
+      result.score=Math.min(100,result.score+5);
+      reasons.push("Anticipation multi-timeframe forte dans le sens du signal.");
+    } else if (anticipation.direction===opposite && anticipation.confluenceIndex>=68) {
+      result.score=Math.max(0,result.score-8);
+      reasons.push("Anticipation multi-timeframe opposée : risque de retournement.");
+    }
+    const setupSide=side==="HAUSSIER"?confluence.bullish:confluence.bearish;
+    if (setupSide && setupSide.score>=75) {
+      result.score=Math.min(100,result.score+4);
+      reasons.push("Confluence structure/liquidité/FVG/OB favorable.");
+    }
+    if (setupSide && setupSide.score<40) {
+      result.score=Math.max(0,result.score-6);
+      reasons.push("Confluence avancée faible : configuration technique incomplète.");
+    }
+  }
+  result.reasons=[...(result.reasons||[]),...reasons];
+  result.score=Math.round(result.score);
+  result.advancedIntelligence.eventMonitoring = {
+    active:economicContext.blackout===true,
+    riskLevel:economicContext.riskLevel||"INCONNU",
+    activeEvent:economicContext.activeEvent?.name||null,
+    nextEvent:economicContext.nextEvent||null,
+    recentSurprises:economicContext.recentSurprises||[],
+    policy:"Analyse maintenue pendant les annonces ; les nouvelles entrées restent suspendues dans la fenêtre de sécurité."
+  };
+
+  const filtered=applyEconomicFilter(result,economicContext);
   return recordStatistics
-    ? await updateSniperStatistics(env, filtered, m1)
+    ? await updateSniperStatistics(env,filtered,m1)
     : filtered;
 }
 
