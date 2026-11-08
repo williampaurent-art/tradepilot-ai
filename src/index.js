@@ -1752,14 +1752,26 @@ function analyzeStructure(bars, indicator) {
   const lastLow = swings.lows[swings.lows.length - 1] || null;
   const priorHigh = swings.highs[swings.highs.length - 2] || null;
   const priorLow = swings.lows[swings.lows.length - 2] || null;
-  const bullishStructure = Boolean(lastHigh && priorHigh && lastLow && priorLow &&
+
+  // Une structure n'est qualifiée que si deux sommets ET deux creux
+  // confirmés sont disponibles. Les pivots utilisent 2 bougies à droite.
+  const enoughSwings = Boolean(lastHigh && priorHigh && lastLow && priorLow);
+  const bullishStructure = Boolean(enoughSwings &&
     lastHigh.price > priorHigh.price && lastLow.price > priorLow.price);
-  const bearishStructure = Boolean(lastHigh && priorHigh && lastLow && priorLow &&
+  const bearishStructure = Boolean(enoughSwings &&
     lastHigh.price < priorHigh.price && lastLow.price < priorLow.price);
-  const bosUp = Boolean(lastHigh && previous.close <= lastHigh.price && last.close > lastHigh.price);
-  const bosDown = Boolean(lastLow && previous.close >= lastLow.price && last.close < lastLow.price);
-  const chochDown = bearishStructure === false && bullishStructure && Boolean(lastLow && last.close < lastLow.price);
-  const chochUp = bearishStructure && Boolean(lastHigh && last.close > lastHigh.price);
+
+  // Un événement est validé par une clôture qui franchit un pivot confirmé.
+  // Un CHOCH est une rupture contre la structure précédente; un BOS la prolonge.
+  const crossAboveSwing = Boolean(lastHigh && previous.close <= lastHigh.price &&
+    last.close > lastHigh.price);
+  const crossBelowSwing = Boolean(lastLow && previous.close >= lastLow.price &&
+    last.close < lastLow.price);
+  const chochDown = Boolean(bullishStructure && crossBelowSwing);
+  const chochUp = Boolean(bearishStructure && crossAboveSwing);
+  const bosUp = Boolean(crossAboveSwing && !bearishStructure);
+  const bosDown = Boolean(crossBelowSwing && !bullishStructure);
+
   const closes = recent.map(b => b.close);
   const rsiAt = index => calculateRSI(closes.slice(0, index + 1), 14);
   let bullishDivergence = false, bearishDivergence = false;
@@ -1768,19 +1780,33 @@ function analyzeStructure(bars, indicator) {
     const [a,b] = pivotLows;
     const ra = rsiAt(a.index), rb = rsiAt(b.index);
     bullishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
-      b.price < a.price && rb > ra;
+      b.index > a.index && b.price < a.price && rb > ra;
   }
   if (pivotHighs.length === 2) {
     const [a,b] = pivotHighs;
     const ra = rsiAt(a.index), rb = rsiAt(b.index);
     bearishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
-      b.price > a.price && rb < ra;
+      b.index > a.index && b.price > a.price && rb < ra;
   }
+
+  const breakEvent = chochUp ? "CHOCH_HAUSSIER" :
+    chochDown ? "CHOCH_BAISSIER" :
+    bosUp ? "BOS_HAUSSIER" :
+    bosDown ? "BOS_BAISSIER" : "AUCUN";
+  const breakLevel = chochUp || bosUp ? lastHigh?.price :
+    chochDown || bosDown ? lastLow?.price : null;
+
   return {
     structure: bullishStructure ? "SOMMETS ET CREUX ASCENDANTS" :
-      bearishStructure ? "SOMMETS ET CREUX DESCENDANTS" : "STRUCTURE MIXTE",
+      bearishStructure ? "SOMMETS ET CREUX DESCENDANTS" :
+      enoughSwings ? "STRUCTURE MIXTE" : "PIVOTS INSUFFISANTS",
+    structureBias: bullishStructure ? "HAUSSIER" :
+      bearishStructure ? "BAISSIER" : "NEUTRE",
+    confirmedSwingCount: swings.highs.length + swings.lows.length,
     bos: bosUp ? "BOS_HAUSSIER" : bosDown ? "BOS_BAISSIER" : "AUCUN",
     choch: chochUp ? "CHOCH_HAUSSIER" : chochDown ? "CHOCH_BAISSIER" : "AUCUN",
+    breakEvent,
+    breakLevel,
     bullishDivergence, bearishDivergence,
     lastSwingHigh: lastHigh ? lastHigh.price : null,
     lastSwingLow: lastLow ? lastLow.price : null,
