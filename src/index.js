@@ -3456,6 +3456,7 @@ async function handleStatus(env) {
     service: CONFIG.SERVICE,
     kvConfigured: Boolean(env.TP_STATE),
     telegramConfigured: telegramConfigured(env),
+    aiConfigured: Boolean(env.AI && typeof env.AI.run === "function"),
     cron,
     lastSignal,
     lastAlert,
@@ -3685,6 +3686,7 @@ async function handleHealth(env) {
     instrument: CONFIG.SYMBOL,
     kvConfigured: Boolean(env.TP_STATE),
     telegramConfigured: telegramConfigured(env),
+    aiConfigured: Boolean(env.AI && typeof env.AI.run === "function"),
     cronExpected: "*/3 * * * *",
     liveTrading: false,
     execution: "AUCUN ORDRE REEL"
@@ -3742,7 +3744,8 @@ export default {
 
     if (
       request.method !== "GET" &&
-      !(request.method === "POST" && path === "/telegram-test")
+      !(request.method === "POST" &&
+        (path === "/telegram-test" || path === "/assistant-chat"))
     ) {
       return json({
         ok: false,
