@@ -1472,26 +1472,24 @@ async function updateSniperStatistics(env, signal, m1) {
       warning: "Statistique historique, non prédictive et sans garantie de résultat."
     };
 
-    // Phase d'apprentissage : les alertes techniquement confirmées restent
-    // autorisées pendant la constitution des 20 premiers résultats.
-    // Ensuite, le filtre statistique intervient avec un seuil de 60 %.
-    if (
-      signal.alertLevel === "CONFIRMED" &&
-      (!saved || (
-        stats.resolved >= SNIPER_STATS.MIN_RESOLVED &&
-        !stats.qualified
-      ))
-    ) {
-      signal.alertLevel = "EARLY";
-      signal.statisticalValidation.blockReason = !saved
-        ? "Stockage statistique indisponible."
-        : "Taux de réussite historique inférieur à 60 % après 20 résultats résolus.";
-    }
+    // Le filtre statistique est consultatif : il mesure les performances
+    // mais ne rétrograde jamais un signal techniquement confirmé.
+    signal.statisticalValidation.role = "ADVISORY_ONLY";
+    signal.statisticalValidation.canBlockSignal = false;
+    signal.statisticalValidation.advice = !saved
+      ? "Statistiques indisponibles : moteur technique inchangé."
+      : stats.resolved < SNIPER_STATS.MIN_RESOLVED
+        ? "Phase d'apprentissage : échantillon encore insuffisant."
+        : stats.qualified
+          ? "Historique au-dessus du seuil indicatif de 60 %."
+          : "Historique sous le seuil indicatif de 60 % : prudence, sans blocage du signal.";
   } else {
     signal.statisticalValidation = {
       status: "NO_DIRECTIONAL_SETUP",
-      targetWinRate: 90,
-      minimumResolved: SNIPER_STATS.MIN_RESOLVED
+      targetWinRate: SNIPER_STATS.TARGET_WIN_RATE * 100,
+      minimumResolved: SNIPER_STATS.MIN_RESOLVED,
+      role: "ADVISORY_ONLY",
+      canBlockSignal: false
     };
   }
 
