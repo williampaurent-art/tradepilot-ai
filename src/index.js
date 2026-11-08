@@ -2312,6 +2312,25 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const momentumConfirmation = direction === "HAUSSIER" ? bullishMomentum && bullishEmaCross :
     direction === "BAISSIER" ? bearishMomentum && bearishEmaCross : false;
   const oppositeTrend = direction !== "MIXTE" && trend !== "NEUTRE" && trend !== direction;
+  // Confluence explicite : balayage aligné, CHOCH confirmé et retest défendu.
+  // Ces éléments restent des diagnostics OHLC, pas une preuve d'ordres institutionnels.
+  const alignedSweep = direction === "HAUSSIER"
+    ? liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE" &&
+      ["FORTE", "MODEREE"].includes(liquidity?.sweepQuality)
+    : direction === "BAISSIER"
+      ? liquidity?.sweep === "BALAYAGE LIQUIDITE HAUSSIERE REJETE" &&
+        ["FORTE", "MODEREE"].includes(liquidity?.sweepQuality)
+      : false;
+  const alignedRetest = direction === "HAUSSIER" ? regime?.retestUp === true
+    : direction === "BAISSIER" ? regime?.retestDown === true : false;
+  const reversalConfluenceCount = [alignedSweep, structureConfirmation, alignedRetest]
+    .filter(Boolean).length;
+  const reversalConfluenceStatus = reversalConfluenceCount === 3 ? "TRIPLE_CONFLUENCE"
+    : structureConfirmation && (alignedSweep || alignedRetest) ? "CHOCH_ET_CONFIRMATION"
+      : alignedSweep && alignedRetest ? "BALAYAGE_ET_RETEST"
+        : structureConfirmation ? "CHOCH_SEUL"
+          : alignedSweep ? "BALAYAGE_SEUL"
+            : alignedRetest ? "RETEST_SEUL" : "AUCUNE_CONFLUENCE";
   let stage = "AUCUN_RETOURNEMENT";
   let status = "PAS_DE_RETOURNEMENT";
   if (direction === "MIXTE" || dominant - opposing < 2) {
@@ -2363,6 +2382,7 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     candleConfirmation, structureConfirmation, structureBreakConfirmed,
     breakQuality, breakDistanceAtr: breakDistanceAtr === null ? null : Number(breakDistanceAtr.toFixed(2)),
     breakCandleAligned, directionalConflict, momentumConfirmation,
+    alignedSweep, alignedRetest, reversalConfluenceCount, reversalConfluenceStatus,
     trendExhaustion, trendContext: trend, againstTrend: oppositeTrend,
     emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
     macdSlowing, macdDecelerationConfirmed, adxFalling, adxFallingConfirmed,
@@ -2472,6 +2492,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
   let higherBullishConfirmed = 0, higherBearishConfirmed = 0;
   let confirmedCount = 0, formationCount = 0, earlyCount = 0, invalidatedCount = 0;
   let againstTrendCount = 0, withTrendCount = 0;
+  let higherTripleBullish = 0, higherTripleBearish = 0;
   const higherFrames = ["H1", "H4", "D1"];
   const stageWeights = {
     PRECURSEUR: 0.25,
@@ -2494,6 +2515,10 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     if (againstTrend) againstTrendCount++;
     if (withTrend) withTrendCount++;
     const higher = higherFrames.includes(tf);
+    if (higher && active && r.reversalConfluenceStatus === "TRIPLE_CONFLUENCE") {
+      if (direction === "HAUSSIER") higherTripleBullish++;
+      if (direction === "BAISSIER") higherTripleBearish++;
+    }
     const stageWeight = active ? stageWeights[stage] : 0;
     if (active && direction === "HAUSSIER") {
       bullishCount++; bullishWeight += weights[tf] * stageWeight;
@@ -2513,7 +2538,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     else if (active && (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER")) earlyCount++;
     details.push({
       timeframe: tf, stage: invalidated ? "SCENARIO_INVALIDE" : stage, direction, trend, active, invalidated, againstTrend, withTrend, weight: weights[tf],
-      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), breakQuality: r.breakQuality || null, breakDistanceAtr: r.breakDistanceAtr ?? null, structureBreakConfirmed: r.structureBreakConfirmed === true, directionalConflict: r.directionalConflict === true, invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
+      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), breakQuality: r.breakQuality || null, breakDistanceAtr: r.breakDistanceAtr ?? null, structureBreakConfirmed: r.structureBreakConfirmed === true, directionalConflict: r.directionalConflict === true, alignedSweep: r.alignedSweep === true, alignedRetest: r.alignedRetest === true, reversalConfluenceCount: r.reversalConfluenceCount ?? 0, reversalConfluenceStatus: r.reversalConfluenceStatus || "AUCUNE_CONFLUENCE", invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
     });
   }
   const bias = Math.abs(bullishWeight - bearishWeight) < 0.001
@@ -2545,6 +2570,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     status, bias, bullishCount, bearishCount, higherBullish, higherBearish,
     higherBullishConfirmed, higherBearishConfirmed,
     confirmedCount, formationCount, earlyCount, invalidatedCount, againstTrendCount, withTrendCount,
+    higherTripleBullish, higherTripleBearish,
     validTimeframes: details.length,
     missingTimeframes: order.filter(tf => !byTf.has(tf)),
     bullishWeight: Number(bullishWeight.toFixed(2)),
