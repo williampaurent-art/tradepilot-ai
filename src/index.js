@@ -24,7 +24,10 @@ const CONFIG = {
 const TIMEFRAMES = {
   M1: { interval: "1m", ms: 60_000 },
   M5: { interval: "5m", ms: 300_000 },
-  M15: { interval: "15m", ms: 900_000 }
+  M15: { interval: "15m", ms: 900_000 },
+  H1: { interval: "1h", ms: 3_600_000 },
+  H4: { interval: "4h", ms: 14_400_000 },
+  D1: { interval: "1d", ms: 86_400_000 }
 };
 
 // --------------------------------------------------
@@ -288,19 +291,19 @@ async function fetchLiveQuote() {
     ? reportedAge
     : (Date.now() - timestamp) / 1000;
 
-  if (
-    quote.marketState !== "open" ||
-    quote.stale === true ||
-    !Number.isFinite(bid) ||
-    !Number.isFinite(ask) ||
-    !Number.isFinite(mid) ||
-    bid <= 0 ||
-    ask < bid ||
-    !Number.isFinite(ageSeconds) ||
-    ageSeconds < 0 ||
-    ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS
-  ) {
-    throw new Error("Cours XAUUSD fermé, périmé ou incomplet. Aucun signal immédiat autorisé.");
+  if (quote.marketState === "closed") {
+    throw new Error("Marché XAUUSD fermé selon la source BiQuote.");
+  }
+  if (quote.marketState !== "open") {
+    throw new Error("État du marché XAUUSD non confirmé par la source.");
+  }
+  if (quote.stale === true || !Number.isFinite(ageSeconds) ||
+      ageSeconds < 0 || ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS) {
+    throw new Error("Cours XAUUSD périmé. Aucun signal immédiat autorisé.");
+  }
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) ||
+      !Number.isFinite(mid) || bid <= 0 || ask < bid) {
+    throw new Error("Cours XAUUSD incomplet ou incohérent.");
   }
 
   return {
@@ -525,8 +528,10 @@ function getIndicators(bars) {
   return {
     price: closes[closes.length - 1],
     ema9: ema(closes, 9),
+    ema20: ema(closes, 20),
     ema21: ema(closes, 21),
     ema50: ema(closes, 50),
+    ema200: ema(closes, 200),
     rsi: calculateRSI(closes, 14),
     atr: calculateATR(bars, 14),
     macd: calculateMACD(closes),
@@ -1656,6 +1661,194 @@ async function scheduledCheck(env) {
   }
 }
 
+
+function findSwingPoints(bars, left = 2, right = 2) {
+  const highs = [], lows = [];
+  for (let i = left; i < bars.length - right; i++) {
+    const h = bars[i].high, l = bars[i].low;
+    let isHigh = true, isLow = true;
+    for (let j = i - left; j <= i + right; j++) {
+      if (j === i) continue;
+      if (bars[j].high >= h) isHigh = false;
+      if (bars[j].low <= l) isLow = false;
+    }
+    if (isHigh) highs.push({ index: i, price: h, time: bars[i].time });
+    if (isLow) lows.push({ index: i, price: l, time: bars[i].time });
+  }
+  return { highs, lows };
+}
+
+function analyzeStructure(bars, indicator) {
+  const recent = bars.slice(-100);
+  const swings = findSwingPoints(recent);
+  const highs = swings.highs.slice(-3), lows = swings.lows.slice(-3);
+  const last = recent[recent.length - 1];
+  const previous = recent[recent.length - 2];
+  const lastHigh = swings.highs[swings.highs.length - 1] || null;
+  const lastLow = swings.lows[swings.lows.length - 1] || null;
+  const priorHigh = swings.highs[swings.highs.length - 2] || null;
+  const priorLow = swings.lows[swings.lows.length - 2] || null;
+  const bullishStructure = Boolean(lastHigh && priorHigh && lastLow && priorLow &&
+    lastHigh.price > priorHigh.price && lastLow.price > priorLow.price);
+  const bearishStructure = Boolean(lastHigh && priorHigh && lastLow && priorLow &&
+    lastHigh.price < priorHigh.price && lastLow.price < priorLow.price);
+  const bosUp = Boolean(lastHigh && previous.close <= lastHigh.price && last.close > lastHigh.price);
+  const bosDown = Boolean(lastLow && previous.close >= lastLow.price && last.close < lastLow.price);
+  const chochDown = bearishStructure === false && bullishStructure && Boolean(lastLow && last.close < lastLow.price);
+  const chochUp = bearishStructure && Boolean(lastHigh && last.close > lastHigh.price);
+  const closes = recent.map(b => b.close);
+  const rsiAt = index => calculateRSI(closes.slice(0, index + 1), 14);
+  let bullishDivergence = false, bearishDivergence = false;
+  const pivotLows = swings.lows.slice(-2), pivotHighs = swings.highs.slice(-2);
+  if (pivotLows.length === 2) {
+    const [a,b] = pivotLows;
+    const ra = rsiAt(a.index), rb = rsiAt(b.index);
+    bullishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
+      b.price < a.price && rb > ra;
+  }
+  if (pivotHighs.length === 2) {
+    const [a,b] = pivotHighs;
+    const ra = rsiAt(a.index), rb = rsiAt(b.index);
+    bearishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
+      b.price > a.price && rb < ra;
+  }
+  return {
+    structure: bullishStructure ? "SOMMETS ET CREUX ASCENDANTS" :
+      bearishStructure ? "SOMMETS ET CREUX DESCENDANTS" : "STRUCTURE MIXTE",
+    bos: bosUp ? "BOS_HAUSSIER" : bosDown ? "BOS_BAISSIER" : "AUCUN",
+    choch: chochUp ? "CHOCH_HAUSSIER" : chochDown ? "CHOCH_BAISSIER" : "AUCUN",
+    bullishDivergence, bearishDivergence,
+    lastSwingHigh: lastHigh ? lastHigh.price : null,
+    lastSwingLow: lastLow ? lastLow.price : null,
+    recentHighs: highs.map(x => x.price),
+    recentLows: lows.map(x => x.price)
+  };
+}
+
+function describeTrendStrength(indicator, trend) {
+  const adx = indicator.adx?.adx;
+  let strength = "INDISPONIBLE";
+  if (Number.isFinite(adx)) {
+    strength = adx < 15 ? "FAIBLE" : adx < 25 ? "MODEREE" : adx < 40 ? "FORTE" : "TRES FORTE";
+  }
+  return {
+    direction: trend,
+    strength,
+    adx: Number.isFinite(adx) ? Number(adx.toFixed(2)) : null,
+    technicalScore: Number.isFinite(adx)
+      ? Math.max(0, Math.min(100, Math.round(adx * 2)))
+      : null,
+    scoreMeaning: "Indice technique descriptif, pas une probabilité de réussite."
+  };
+}
+
+function buildDashboardFrame(timeframe, bars) {
+  const indicator = getIndicators(bars);
+  const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
+    ? (indicator.ema20 > indicator.ema50 && indicator.ema50 > indicator.ema200 ? "HAUSSIER" :
+       indicator.ema20 < indicator.ema50 && indicator.ema50 < indicator.ema200 ? "BAISSIER" : "NEUTRE")
+    : "NEUTRE";
+  const regime = analyzeMarketRegime(bars, indicator);
+  const structure = analyzeStructure(bars, indicator);
+  const quality = inspectDataQuality(bars, timeframe);
+  const macd = indicator.macd || {};
+  const bb = indicator.bollinger || {};
+  const adx = indicator.adx || {};
+  const last = bars[bars.length - 1];
+  const previous = bars[bars.length - 2];
+  const slowing = Boolean(
+    Number.isFinite(macd.histogram) &&
+    Number.isFinite(macd.previousHistogram) &&
+    Math.abs(macd.histogram) < Math.abs(macd.previousHistogram)
+  );
+  const reversalWarnings = [];
+  if (structure.bullishDivergence) reversalWarnings.push("Divergence RSI haussiere");
+  if (structure.bearishDivergence) reversalWarnings.push("Divergence RSI baissiere");
+  if (structure.choch !== "AUCUN") reversalWarnings.push(structure.choch);
+  if (slowing) reversalWarnings.push("Histogramme MACD en ralentissement");
+  if (Number.isFinite(indicator.rsi) && indicator.rsi >= 70) reversalWarnings.push("RSI en zone haute");
+  if (Number.isFinite(indicator.rsi) && indicator.rsi <= 30) reversalWarnings.push("RSI en zone basse");
+  return {
+    timeframe,
+    candleCount: bars.length,
+    lastCandleAt: new Date(last.time + TIMEFRAMES[timeframe].ms).toISOString(),
+    dataQuality: quality,
+    trend: describeTrendStrength(indicator, trend),
+    regime,
+    indicators: {
+      price: indicator.price,
+      ema20: indicator.ema20,
+      ema50: indicator.ema50,
+      ema200: indicator.ema200,
+      rsi14: indicator.rsi,
+      macd: {
+        line: macd.macd, signal: macd.signal,
+        histogram: macd.histogram, previousHistogram: macd.previousHistogram
+      },
+      adx14: adx.adx, plusDI: adx.plusDI, minusDI: adx.minusDI,
+      bollinger: bb,
+      atr14: indicator.atr,
+      stochastic: indicator.stochastic
+    },
+    structure,
+    levels: findSupportResistance(bars, Math.min(80, bars.length)),
+    reversalWarnings,
+    candles: bars.slice(-90).map(b => ({
+      time: b.time, open: b.open, high: b.high, low: b.low, close: b.close
+    }))
+  };
+}
+
+async function handleDashboardData(env) {
+  const timeframes = Object.keys(TIMEFRAMES);
+  const results = await Promise.all(timeframes.map(async timeframe => {
+    try {
+      const bars = await fetchCandles(timeframe, 250);
+      return { timeframe, ok: true, analysis: buildDashboardFrame(timeframe, bars) };
+    } catch (error) {
+      return { timeframe, ok: false, error: error.message };
+    }
+  }));
+  let quote = null, quoteError = null;
+  try {
+    quote = await fetchLiveQuote();
+  } catch (error) {
+    quoteError = error.message;
+  }
+  let calendar;
+  try {
+    calendar = await getEconomicContext(env);
+  } catch (error) {
+    calendar = { configured: false, status: "UNAVAILABLE", message: error.message, events: [] };
+  }
+  const available = results.filter(x => x.ok);
+  const m1 = available.find(x => x.timeframe === "M1")?.analysis;
+  const marketOpen = quote ? true :
+    (quoteError && /marché XAUUSD fermé/i.test(quoteError) ? false : null);
+  return json({
+    ok: available.length > 0,
+    instrument: CONFIG.SYMBOL,
+    generatedAt: new Date().toISOString(),
+    market: {
+      open: marketOpen,
+      status: marketOpen === true ? "OUVERT" :
+        marketOpen === false ? "FERME" : "INDETERMINE",
+      price: quote?.mid ?? m1?.indicators?.price ?? null,
+      bid: quote?.bid ?? null,
+      ask: quote?.ask ?? null,
+      quoteTimestamp: quote?.timestamp ?? null,
+      quoteAgeSeconds: quote?.quoteAgeSeconds ?? null,
+      source: quote?.source ?? (m1 ? "BiQuote OHLC — dernière clôture" : null),
+      quoteError
+    },
+    source: CONFIG.SOURCE_URL,
+    timeframes: results,
+    economicCalendar: calendar,
+    execution: "AUCUN ORDRE REEL",
+    note: "Analyse technique descriptive. Un score technique n'est pas une probabilité."
+  });
+}
+
 // --------------------------------------------------
 // ROUTES
 // --------------------------------------------------
@@ -1989,6 +2182,10 @@ export default {
         return await handleStatus(env);
       }
 
+      if (path === "/dashboard-data") {
+        return await handleDashboardData(env);
+      }
+
       if (path === "/gold") {
         return await handleGold(request);
       }
@@ -2023,6 +2220,7 @@ export default {
         available: [
           "/health",
           "/status",
+          "/dashboard-data",
           "/gold?timeframe=M1",
           "/gold?timeframe=M5",
           "/gold?timeframe=M15",
