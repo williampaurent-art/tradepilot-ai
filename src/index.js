@@ -2357,6 +2357,64 @@ function buildDashboardFrame(timeframe, bars) {
   };
 }
 
+function analyzeReversalMultiTimeframe(results, marketOpen) {
+  const order = ["M1", "M5", "M15", "H1", "H4", "D1"];
+  const weights = { M1: 1, M5: 1.5, M15: 2, H1: 3, H4: 4, D1: 5 };
+  if (marketOpen !== true) return {
+    status: marketOpen === false ? "MARCHE_FERME" : "ETAT_NON_CONFIRME",
+    validTimeframes: 0, bullishCount: 0, bearishCount: 0,
+    higherBullish: 0, higherBearish: 0, details: [],
+    explanation: "Lecture multi-timeframe indisponible : cours live non confirmé."
+  };
+  const byTf = new Map(results.filter(x => x.ok && x.analysis?.dataQuality?.ok)
+    .map(x => [x.timeframe, x.analysis]));
+  const details = [];
+  let bullishWeight = 0, bearishWeight = 0;
+  let bullishCount = 0, bearishCount = 0, higherBullish = 0, higherBearish = 0;
+  for (const tf of order) {
+    const a = byTf.get(tf);
+    if (!a) continue;
+    const r = a.reversalSignals || {};
+    const direction = ["HAUSSIER", "BAISSIER"].includes(r.direction) ? r.direction : "NEUTRE";
+    const active = ["PRECURSEUR", "REJET_A_SURVEILLER", "RETOURNEMENT_EN_FORMATION", "RETOURNEMENT_CONFIRME"].includes(r.stage);
+    const trend = a.trend?.direction || "NEUTRE";
+    if (active && direction === "HAUSSIER") {
+      bullishCount++; bullishWeight += weights[tf];
+      if (["H1", "H4", "D1"].includes(tf)) higherBullish++;
+    } else if (active && direction === "BAISSIER") {
+      bearishCount++; bearishWeight += weights[tf];
+      if (["H1", "H4", "D1"].includes(tf)) higherBearish++;
+    }
+    details.push({ timeframe: tf, stage: r.stage || "AUCUN_RETOURNEMENT", direction, trend, active, weight: weights[tf] });
+  }
+  const bias = bullishWeight === bearishWeight ? "MIXTE" : bullishWeight > bearishWeight ? "HAUSSIER" : "BAISSIER";
+  const opposingHigher = bias === "HAUSSIER" ? higherBearish : bias === "BAISSIER" ? higherBullish : 0;
+  const supportingHigher = bias === "HAUSSIER" ? higherBullish : bias === "BAISSIER" ? higherBearish : 0;
+  let status = "AUCUN_SIGNAL";
+  if (!details.length) status = "COUVERTURE_INSUFFISANTE";
+  else if (bias === "MIXTE" && (bullishCount || bearishCount)) status = "SIGNAUX_CONTRADICTOIRES";
+  else if (opposingHigher > supportingHigher) status = "CONFLIT_UNITES_SUPERIEURES";
+  else if (supportingHigher >= 2) status = "SOUTIEN_UNITES_SUPERIEURES";
+  else if (supportingHigher === 1) status = "SOUTIEN_PARTIEL";
+  else if (bullishCount + bearishCount > 0) status = "SIGNAL_LOCAL_SEULEMENT";
+  const explanation = status === "SOUTIEN_UNITES_SUPERIEURES"
+    ? "Le même sens de retournement apparaît sur au moins deux unités supérieures. Cela renforce la cohérence, sans garantir le mouvement."
+    : status === "SOUTIEN_PARTIEL"
+      ? "Une unité supérieure présente un indice de même sens. La confirmation multi-timeframe reste partielle."
+      : status === "CONFLIT_UNITES_SUPERIEURES"
+        ? "Les unités supérieures présentent davantage d'indices de retournement opposés. Risque de faux signal local."
+        : status === "SIGNAUX_CONTRADICTOIRES"
+          ? "Des indices haussiers et baissiers coexistent sur les unités disponibles."
+          : status === "SIGNAL_LOCAL_SEULEMENT"
+            ? "Le retournement est détecté sur des unités courtes, sans soutien supérieur suffisant."
+            : status === "COUVERTURE_INSUFFISANTE"
+              ? "Aucune unité ne dispose de données live validées."
+              : "Aucun faisceau de retournement actif détecté sur les unités disponibles.";
+  return { status, bias, bullishCount, bearishCount, higherBullish, higherBearish,
+    validTimeframes: details.length, bullishWeight, bearishWeight, details, explanation,
+    note: "Diagnostics locaux sur bougies clôturées ; aucune confirmation automatique d'ordre." };
+}
+
 function analyzeMultiTimeframeConfluence(results, marketOpen) {
   const weights = { M1: 1, M5: 1.5, M15: 2, H1: 3, H4: 4, D1: 5 };
   const directions = {};
@@ -2583,6 +2641,7 @@ async function handleDashboardData(env) {
     (quoteError && /marché XAUUSD fermé/i.test(quoteError) ? false : null);
   const multiTimeframeConfluence = analyzeMultiTimeframeConfluence(results, marketOpen);
   const setupConfluence = analyzeSetupConfluence(results, marketOpen);
+  const reversalMultiTimeframe = analyzeReversalMultiTimeframe(results, marketOpen);
   return json({
     ok: available.length > 0,
     instrument: CONFIG.SYMBOL,
@@ -2603,6 +2662,7 @@ async function handleDashboardData(env) {
     timeframes: results,
     multiTimeframeConfluence,
     setupConfluence,
+    reversalMultiTimeframe,
     economicCalendar: calendar,
     execution: "AUCUN ORDRE REEL",
     note: "Analyse technique descriptive. Un score technique n'est pas une probabilité."
