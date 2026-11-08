@@ -2418,6 +2418,8 @@ function analyzeLiquidity(bars, indicator) {
   const recent = bars.slice(-100);
   const swings = findSwingPoints(recent);
   const last = recent[recent.length - 1];
+  const upperWick = last.high - Math.max(last.open, last.close);
+  const lowerWick = Math.min(last.open, last.close) - last.low;
   const tolerance = Math.max(indicator.atr * 0.18, indicator.price * 0.00015);
   const buffer = Math.max(indicator.atr * 0.08, indicator.price * 0.00005);
 
