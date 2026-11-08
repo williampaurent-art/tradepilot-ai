@@ -1513,8 +1513,8 @@ async function updateSniperStatistics(env, signal, m1, settings = {}) {
           trendM1: signal.market?.trendM1 || null,
           trendM5: signal.market?.trendM5 || null,
           trendM15: signal.market?.trendM15 || null,
-          rsiM1: Number.isFinite(Number(signal.market?.rsiM1)) ? Number(signal.market.rsiM1) : null,
-          rsiM5: Number.isFinite(Number(signal.market?.rsiM5)) ? Number(signal.market.rsiM5) : null,
+          rsiM1: signal.market?.rsiM1 !== null && signal.market?.rsiM1 !== undefined && Number.isFinite(Number(signal.market.rsiM1)) ? Number(signal.market.rsiM1) : null,
+          rsiM5: signal.market?.rsiM5 !== null && signal.market?.rsiM5 !== undefined && Number.isFinite(Number(signal.market.rsiM5)) ? Number(signal.market.rsiM5) : null,
           adxM1: Number.isFinite(Number(signal.market?.adxM1?.adx)) ? Number(signal.market.adxM1.adx) : null,
           atrM1: Number.isFinite(Number(signal.market?.atrM1)) ? Number(signal.market.atrM1) : null,
           volatility: signal.market?.volatility || null,
@@ -1609,10 +1609,11 @@ async function updateSniperStatistics(env, signal, m1, settings = {}) {
       warning: "Statistique historique, non prédictive et sans garantie de résultat."
     };
 
-    // Le filtre statistique est consultatif : il mesure les performances
-    // mais ne rétrograde jamais un signal techniquement confirmé.
+    // La validation historique reste informative; seule la calibration
+    // bornée ci-dessus peut ajuster le score si les preuves sont suffisantes.
     signal.statisticalValidation.role = "ADVISORY_ONLY";
     signal.statisticalValidation.canBlockSignal = false;
+    signal.statisticalValidation.learningAdjustment = signal.learningAdjustment || null;
     signal.statisticalValidation.advice = !saved
       ? "Statistiques indisponibles : moteur technique inchangé."
       : stats.resolved < SNIPER_STATS.MIN_RESOLVED
