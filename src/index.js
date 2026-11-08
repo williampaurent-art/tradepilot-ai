@@ -2308,7 +2308,7 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
       ? "Aucun retournement actif : aucun niveau d'invalidation n'est présenté."
       : invalidationLevel === null
         ? "Aucun pivot structurel confirmé disponible."
-        : "Distance calculée depuis la dernière clôture ; le niveau est invalidé uniquement par une clôture au-delà du pivot, pas par une simple mèche.";
+        : "Distance calculée depuis la dernière clôture ; le niveau est invalidé uniquement par une clôture au-delà du pivot, pas par une simple mèche.",
     explanation,
     note: "Score heuristique d'indices, pas une probabilité de réussite. Le niveau d'invalidation est un repère structurel, pas un stop-loss calculé ni un ordre. Confirmation locale à cette unité de temps, non garantie multi-timeframe."
   };
@@ -2444,7 +2444,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     else if (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER") earlyCount++;
     details.push({
       timeframe: tf, stage, direction, trend, active, againstTrend, withTrend, weight: weights[tf],
-      stageWeight, weightedContribution: Number((weights[tf] * stageWeight).toFixed(2))
+      stageWeight, weightedContribution: Number((weights[tf] * stageWeight).toFixed(2)), invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
     });
   }
   const bias = Math.abs(bullishWeight - bearishWeight) < 0.001
@@ -2477,6 +2477,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     higherBullishConfirmed, higherBearishConfirmed,
     confirmedCount, formationCount, earlyCount, againstTrendCount, withTrendCount,
     validTimeframes: details.length,
+    missingTimeframes: order.filter(tf => !byTf.has(tf)),
     bullishWeight: Number(bullishWeight.toFixed(2)),
     bearishWeight: Number(bearishWeight.toFixed(2)),
     details, explanation,
