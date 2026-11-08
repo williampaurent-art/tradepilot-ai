@@ -1530,6 +1530,27 @@ function classifyGoldEvent(event) {
   };
 }
 
+function numericMacroValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const match = String(value).trim().replace(/\\s/g, "").replace(/,/g, ".").match(/[-+]?\\d+(?:\\.\\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+function evaluateGoldMacroSurprise(event) {
+  const actual = numericMacroValue(event.actual);
+  const consensus = numericMacroValue(event.consensus);
+  if (actual === null || consensus === null) return null;
+  const diff = actual - consensus;
+  const tolerance = Math.max(0.0000001, Math.abs(consensus) * 0.000001);
+  const comparison = Math.abs(diff) <= tolerance ? "CONFORME_AUX_ATTENTES" : diff > 0 ? "SUPERIEUR_AU_CONSENSUS" : "INFERIEUR_AU_CONSENSUS";
+  const label = String(event.name || event.title || event.series_name || "").toLowerCase();
+  const inverse = /(unemployment rate|jobless claims|initial claims|continuing claims)/i.test(label);
+  const usdSensitive = /(cpi|consumer price|inflation|pce|nonfarm|non-farm|payroll|employment|gdp|gross domestic|ism|pmi|retail sales|federal funds|interest rate|fed rate)/i.test(label);
+  let goldBias = "NON_CLASSE", reason = "Indicateur non classé : pas de biais automatique pour l'or.";
+  if (comparison === "CONFORME_AUX_ATTENTES") { goldBias = "IMPACT_DIRECTIONNEL_LIMITÉ"; reason = "Résultat proche du consensus : surprise statistique limitée."; }
+  else if (inverse) { goldBias = diff > 0 ? "SOUTIEN_POTENTIEL_OR" : "PRESSION_POTENTIELLE_OR"; reason = "Pour cet indicateur, une valeur supérieure peut signaler un marché du travail moins tendu."; }
+  else if (usdSensitive) { goldBias = diff > 0 ? "PRESSION_POTENTIELLE_OR" : "SOUTIEN_POTENTIEL_OR"; reason = "Surprise généralement associée à des anticipations de taux plus restrictives si le chiffre dépasse le consensus."; }
+  return { actual:event.actual, consensus:event.consensus, prior:event.prior ?? null, unit:event.unit || null, difference:Number(diff.toFixed(6)), comparison, goldBias, reason, sourceUrl:event.source_url || event.url || null, sourceName:event.source_name || null, verifiedAt:event.last_verified_at || null, dataQuality:event.data_quality?.fields || null };
+}
 function evaluateEconomicEvents(events, fetchedAt, stale = false) {
   const now = Date.now();
   const relevant = events.filter(event =>
