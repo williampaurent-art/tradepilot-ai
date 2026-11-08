@@ -30,7 +30,7 @@ const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,se
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
 const dateFmt=v=>{if(!v)return"Indisponible";const d=new Date(v);return Number.isNaN(d.getTime())?"Horodatage invalide":d.toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"medium"});};
 const cls=x=>x==="HAUSSIER"?"up":x==="BAISSIER"?"down":"neutral";
-const put=(id,v)=>$(id).textContent=v===null||v===undefined?"Indisponible":v;
+const put=(id,v)=>{const el=$(id);if(!el)return;el.textContent=v===null||v===undefined?"Indisponible":v;};
 const esc=v=>String(v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function renderRegimeMatrix(d){
  const m=d.market||{},frames=d.timeframes||[],root=$("regimeGrid"),order=["M1","M5","M15","H1","H4","D1"];
