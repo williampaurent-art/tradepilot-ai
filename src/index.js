@@ -2997,8 +2997,8 @@ function analyzeMarketAnticipation(results, marketOpen, calendar) {
       if(vol.status==="EXTREME")impulse=true;
       if(reg.breakoutCandidateUp||reg.breakoutUp||reg.fakeoutDown)add("HAUSSIER",1.5*w,tf+" : pression vers le haut / rejet du bas");
       if(reg.breakoutCandidateDown||reg.breakoutDown||reg.fakeoutUp)add("BAISSIER",1.5*w,tf+" : pression vers le bas / rejet du haut");
-      if(["SELL_SIDE","LIQUIDITY_SWEEP_LOW"].includes(liq.sweep))add("HAUSSIER",w,tf+" : balayage de liquidite basse");
-      if(["BUY_SIDE","LIQUIDITY_SWEEP_HIGH"].includes(liq.sweep))add("BAISSIER",w,tf+" : balayage de liquidite haute");
+      if(liq.sweepDirection==="HAUSSIER")add("HAUSSIER",w,tf+" : balayage de liquidite basse rejete");
+      if(liq.sweepDirection==="BAISSIER")add("BAISSIER",w,tf+" : balayage de liquidite haute rejete");
     }
     if(tf==="M1"&&Number.isFinite(st.lastSwingLow))invalidation=st.lastSwingLow;
     if(tf==="M1"&&Number.isFinite(st.lastSwingHigh)&&scores.BAISSIER>scores.HAUSSIER)invalidation=st.lastSwingHigh;
