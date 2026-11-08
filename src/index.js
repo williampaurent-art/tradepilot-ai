@@ -1600,6 +1600,25 @@ function evaluateEconomicEvents(events, fetchedAt, stale = false) {
     }));
 
   const nextEvent = upcomingEvents[0] || null;
+  const recentSurprises = stale ? [] : timed
+    .filter(event => Number.isFinite(event.releaseMs) &&
+      event.releaseMs <= now &&
+      event.releaseMs >= now - 72 * 60 * 60 * 1000 &&
+      event.status === "released" &&
+      event.data_stale !== true)
+    .map(event => {
+      const surprise = evaluateGoldMacroSurprise(event);
+      return surprise ? {
+        id: event.id || null,
+        name: event.name || event.title || event.series_name || "Publication économique",
+        country: event.country || null,
+        releaseAt: event.release_at_utc || event.time_utc || null,
+        ...surprise
+      } : null;
+    })
+    .filter(Boolean)
+    .sort((a,b) => Date.parse(b.releaseAt) - Date.parse(a.releaseAt))
+    .slice(0, 6);
   const riskLevel = stale ? "DONNEES_PERIMEES"
     : activeEvent ? "FENETRE_ANNONCE"
       : nextEvent && nextEvent.minutesUntil <= 60 ? "ELEVE"
@@ -1617,6 +1636,7 @@ function evaluateEconomicEvents(events, fetchedAt, stale = false) {
     riskLevel,
     nextEvent,
     upcomingEvents,
+    recentSurprises,
     activeEvent: activeEvent ? {
       id: activeEvent.id || null,
       name: activeEvent.name || activeEvent.title || activeEvent.series_name || "Annonce économique",
