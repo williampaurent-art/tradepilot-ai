@@ -3728,12 +3728,15 @@ async function handleStrategyBacktest(request) {
   const maxHoldBars = Math.floor(maxHoldMinutes);
   const cooldownMs = CONFIG.COOLDOWN_MS;
 
-  let m1, m5, m15;
+  let m1, m5, m15, h1, h4, d1;
   try {
-    [m1, m5, m15] = await Promise.all([
+    [m1, m5, m15, h1, h4, d1] = await Promise.all([
       fetchCandles("M1", 250),
       fetchCandles("M5", 250),
-      fetchCandles("M15", 250)
+      fetchCandles("M15", 250),
+      fetchCandles("H1", 250).catch(() => []),
+      fetchCandles("H4", 250).catch(() => []),
+      fetchCandles("D1", 250).catch(() => [])
     ]);
   } catch (error) {
     return json({
@@ -3767,6 +3770,13 @@ async function handleStrategyBacktest(request) {
       execution: "AUCUN ORDRE REEL"
     }, 503);
   }
+  const higherSeries = { H1: h1, H4: h4, D1: d1 };
+  const higherCoverage = Object.fromEntries(
+    Object.entries(higherSeries).map(([tf, bars]) => [
+      tf,
+      validHistoricalSeries(bars) ? bars.length : 0
+    ])
+  );
 
   const trades = [];
   let nextAllowedTime = 0;
@@ -3805,7 +3815,85 @@ async function handleStrategyBacktest(request) {
       historicalQuote
     );
 
-    if (setup.signal === "ATTENDRE" || setup.alertLevel !== "CONFIRMED") continue;
+    if (setup.signal === "ATTENDRE") continue;
+
+    // Rejoue les confirmations supérieures sur les dernières bougies
+    // H1/H4/D1 effectivement clôturées à l'instant historique du signal.
+    const frameResults = [
+      { timeframe: "M1", ok: true, analysis: buildDashboardFrame("M1", m1.slice(0, i + 1)) },
+      { timeframe: "M5", ok: true, analysis: buildDashboardFrame("M5", closedM5) },
+      { timeframe: "M15", ok: true, analysis: buildDashboardFrame("M15", closedM15) }
+    ];
+    for (const [tf, bars] of Object.entries(higherSeries)) {
+      const closed = validHistoricalSeries(bars)
+        ? bars.filter(bar => bar.time + TIMEFRAMES[tf].ms <= signalTime).slice(-250)
+        : [];
+      if (closed.length >= 55) {
+        frameResults.push({
+          timeframe: tf,
+          ok: true,
+          analysis: buildDashboardFrame(tf, closed)
+        });
+      }
+    }
+    // En historique, une bougie ancienne n'est pas "stale" : la fraîcheur
+    // live n'est pas un critère pertinent pour la qualité d'un replay.
+    for (const frame of frameResults) {
+      frame.analysis.dataQuality = {
+        ...(frame.analysis.dataQuality || {}),
+        ok: true,
+        historical: true
+      };
+    }
+
+    const higher = ["H1", "H4", "D1"];
+    const side = setup.signal === "ACHAT" ? "HAUSSIER" : "BAISSIER";
+    const opposite = side === "HAUSSIER" ? "BAISSIER" : "HAUSSIER";
+    const higherOpposed = higher.filter(tf =>
+      frameResults.find(x => x.timeframe === tf)?.analysis?.trend?.direction === opposite
+    ).length;
+    const higherAligned = higher.filter(tf =>
+      frameResults.find(x => x.timeframe === tf)?.analysis?.trend?.direction === side
+    ).length;
+    const reversal = analyzeReversalMultiTimeframe(frameResults, true);
+    const anticipation = analyzeMarketAnticipation(frameResults, true, null);
+    const confluence = analyzeSetupConfluence(frameResults, true);
+    const alignment = analyzeMultiTimeframeConfluence(frameResults, true);
+    const advancedReasons = [];
+
+    if (higherOpposed >= 2 && higherAligned === 0) {
+      setup.score = Math.max(0, setup.score - 12);
+      advancedReasons.push("Pénalité H1/H4/D1 : au moins deux unités supérieures opposées.");
+    } else if (higherAligned >= 2) {
+      setup.score = Math.min(100, setup.score + 5);
+      advancedReasons.push("Confluence H1/H4/D1 : au moins deux unités supérieures alignées.");
+    }
+
+    const oppositeHigherReversals = opposite === "BAISSIER"
+      ? reversal.higherBearish : reversal.higherBullish;
+    if (reversal.bias === opposite && oppositeHigherReversals >= 2) {
+      setup.score = Math.max(0, setup.score - 10);
+      advancedReasons.push("Retournement multi-timeframe supérieur opposé.");
+    }
+    if (anticipation.direction === side && anticipation.confluenceIndex >= 68) {
+      setup.score = Math.min(100, setup.score + 5);
+      advancedReasons.push("Anticipation multi-timeframe favorable.");
+    } else if (anticipation.direction === opposite && anticipation.confluenceIndex >= 68) {
+      setup.score = Math.max(0, setup.score - 8);
+      advancedReasons.push("Anticipation multi-timeframe opposée.");
+    }
+    const setupSide = side === "HAUSSIER" ? confluence.bullish : confluence.bearish;
+    if (setupSide && setupSide.score >= 75) {
+      setup.score = Math.min(100, setup.score + 4);
+      advancedReasons.push("Confluence structure/liquidité/FVG/OB favorable.");
+    } else if (setupSide && setupSide.score < 40) {
+      setup.score = Math.max(0, setup.score - 6);
+      advancedReasons.push("Confluence avancée faible.");
+    }
+    setup.score = Math.round(setup.score);
+    setup.alertLevel = setup.score >= settings.minScore && setup.riskChecks?.spreadOK
+      ? "CONFIRMED" : "EARLY";
+    if (setup.alertLevel !== "CONFIRMED") continue;
 
     const direction = setup.signal === "ACHAT" ? 1 : -1;
     const entryBarIndex = i + 1;
@@ -3851,6 +3939,8 @@ async function handleStrategyBacktest(request) {
       direction: direction === 1 ? "BUY" : "SELL",
       score: setup.score,
       regime: setup.riskChecks?.marketRegime || "INDETERMINE",
+      higherTimeframeAlignment: { aligned: higherAligned, opposed: higherOpposed, available: higherCoverage },
+      advancedReasons,
       signalTime: new Date(signalTime).toISOString(),
       entryTime: new Date(entryBar.time).toISOString(),
       exitTime: new Date(m1[exitIndex].time + TIMEFRAMES.M1.ms).toISOString(),
@@ -3883,7 +3973,7 @@ async function handleStrategyBacktest(request) {
     signalRules: "Même fonction analyzeSetup que le signal live, évaluée uniquement sur des bougies clôturées.",
     executionModel: "Signal à la clôture M1, entrée à l'ouverture M1 suivante.",
     sample: {
-      candles: { M1: m1.length, M5: m5.length, M15: m15.length },
+      candles: { M1: m1.length, M5: m5.length, M15: m15.length, ...higherCoverage },
       from: new Date(m1[0].time).toISOString(),
       to: new Date(m1[m1.length - 1].time + TIMEFRAMES.M1.ms).toISOString(),
       trades: trades.length
@@ -3898,9 +3988,10 @@ async function handleStrategyBacktest(request) {
       minScore: settings.minScore,
       sameBarStopAndTarget: "Stop prioritaire",
       commissions: "Non incluses",
-      higherTimeframeConfirmation: "H1/H4/D1 non rejoués historiquement",
-      economicCalendar: "Filtre historique non rejoué",
-      note: "Backtest du moteur technique central uniquement. Les filtres macro, calendrier, anticipation H1/H4/D1 et conditions broker ne sont pas reconstruits historiquement."
+      higherTimeframeConfirmation: "Tendances, retournements, anticipation et confluence structure/liquidité H1/H4/D1 rejoués sur bougies clôturées lorsqu'elles sont disponibles.",
+      macroContext: "Non rejoué : les séries historiques DXY/taux ne sont pas stockées.",
+      economicCalendar: "Non rejoué : historique des événements économiques non archivé.",
+      note: "Replay du moteur technique central avec confirmations multi-timeframe. Le contexte macro, le calendrier historique et les conditions exactes du broker ne sont pas reconstruits."
     },
     statistics: {
       trades: trades.length,
@@ -3916,7 +4007,7 @@ async function handleStrategyBacktest(request) {
     dataQuality,
     trades,
     execution: "AUCUN ORDRE REEL",
-    warning: "Fenêtre limitée aux 250 dernières bougies M1 disponibles. La fraîcheur live n'est pas exigée pour ce replay historique. Résultat indicatif, non représentatif d'une validation statistique robuste ni d'une garantie future."
+    warning: "Fenêtre limitée aux 250 dernières bougies M1 disponibles. Les confirmations H1/H4/D1 ne sont prises en compte que si leur historique est disponible. Le contexte macro et le calendrier historique restent exclus. Résultat indicatif, non représentatif d'une validation statistique robuste ni d'une garantie future."
   });
 }
 
