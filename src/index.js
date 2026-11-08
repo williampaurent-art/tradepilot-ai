@@ -1744,12 +1744,17 @@ async function getEconomicContext(env) {
     cached = null;
   }
 
-  if (
-    cached &&
-    Array.isArray(cached.events) &&
-    Date.now() - Number(cached.fetchedAt || 0) < ECONOMIC_CALENDAR.REFRESH_MS
-  ) {
-    return evaluateEconomicEvents(cached.events, cached.fetchedAt, false);
+  if (cached && Array.isArray(cached.events)) {
+    const cachedEvaluation = evaluateEconomicEvents(cached.events, cached.fetchedAt, false);
+    // Actual/consensus are refreshed every minute around an important release,
+    // while the normal cache interval remains unchanged outside event windows.
+    const eventIsNear = cachedEvaluation.blackout === true ||
+      (Number.isFinite(cachedEvaluation.nextEvent?.minutesUntil) &&
+       cachedEvaluation.nextEvent.minutesUntil <= 60);
+    const refreshWindow = eventIsNear ? 60_000 : ECONOMIC_CALENDAR.REFRESH_MS;
+    if (Date.now() - Number(cached.fetchedAt || 0) < refreshWindow) {
+      return cachedEvaluation;
+    }
   }
 
   try {
