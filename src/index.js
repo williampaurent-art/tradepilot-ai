@@ -2143,79 +2143,146 @@ function analyzeSmartMoney(bars, structure, indicator) {
 }
 
 function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
-  if (!Array.isArray(bars) || bars.length < 3) {
-    return { status: "DONNEES_INSUFFISANTES", direction: "INDETERMINE",
-      bullishEvidence: [], bearishEvidence: [], explanation: "Bougies insuffisantes." };
-  }
+  const unavailable = {
+    status: "DONNEES_INSUFFISANTES", stage: "NON_EVALUE",
+    direction: "INDETERMINE", bullishScore: 0, bearishScore: 0,
+    bullishEvidence: [], bearishEvidence: [],
+    candleConfirmation: false, structureConfirmation: false,
+    momentumConfirmation: false, trendExhaustion: false,
+    explanation: "Historique insuffisant pour évaluer un retournement.",
+    note: "Score heuristique d'indices, jamais une probabilité ni un signal d'ordre."
+  };
+  if (!Array.isArray(bars) || bars.length < 35 ||
+      !Number.isFinite(indicator.atr) || indicator.atr <= 0) return unavailable;
+
   const last = bars[bars.length - 1], previous = bars[bars.length - 2];
-  const range = last.high - last.low;
+  const candleRange = Math.max(last.high - last.low, 1e-9);
   const body = Math.abs(last.close - last.open);
   const upperWick = last.high - Math.max(last.open, last.close);
   const lowerWick = Math.min(last.open, last.close) - last.low;
+  const closes = bars.map(b => b.close);
+  const priorMacd = calculateMACD(closes.slice(0, -1));
+  const currentMacd = indicator.macd || calculateMACD(closes);
+  const priorAdx = calculateADX(bars.slice(0, -1), 14);
   const bullishEvidence = [], bearishEvidence = [];
-  if (range > 0) {
-    if (last.close > last.open && previous.close < previous.open &&
-        last.open <= previous.close && last.close >= previous.open) {
-      bullishEvidence.push("Englobante haussière sur bougie clôturée");
-    }
-    if (last.close < last.open && previous.close > previous.open &&
-        last.open >= previous.close && last.close <= previous.open) {
-      bearishEvidence.push("Englobante baissière sur bougie clôturée");
-    }
-    if (lowerWick >= Math.max(body * 2, indicator.atr * 0.15) &&
-        last.close >= last.low + range * 0.70) {
-      bullishEvidence.push("Mèche basse de rejet avec clôture dans le quart supérieur");
-    }
-    if (upperWick >= Math.max(body * 2, indicator.atr * 0.15) &&
-        last.close <= last.low + range * 0.30) {
-      bearishEvidence.push("Mèche haute de rejet avec clôture dans le quart inférieur");
-    }
-  }
+  let bullishScore = 0, bearishScore = 0;
+  const addBull = (points, label) => { bullishScore += points; bullishEvidence.push(label); };
+  const addBear = (points, label) => { bearishScore += points; bearishEvidence.push(label); };
+
+  // Chandeliers : les motifs ne comptent que sur la dernière bougie clôturée.
+  const bullishEngulfing = last.close > last.open && previous.close < previous.open &&
+    last.open <= previous.close && last.close >= previous.open;
+  const bearishEngulfing = last.close < last.open && previous.close > previous.open &&
+    last.open >= previous.close && last.close <= previous.open;
+  const bullishReject = lowerWick >= Math.max(body * 1.8, indicator.atr * 0.18) &&
+    last.close >= last.low + candleRange * 0.70;
+  const bearishReject = upperWick >= Math.max(body * 1.8, indicator.atr * 0.18) &&
+    last.close <= last.low + candleRange * 0.30;
+  if (bullishEngulfing) addBull(3, "Englobante haussière clôturée");
+  if (bearishEngulfing) addBear(3, "Englobante baissière clôturée");
+  if (bullishReject) addBull(2, "Rejet net de la mèche basse");
+  if (bearishReject) addBear(2, "Rejet net de la mèche haute");
 
   const st = structure || {};
-  if (st.bullishDivergence) bullishEvidence.push("Divergence RSI haussière récente");
-  if (st.bullishMacdDivergence) bullishEvidence.push("Divergence MACD haussière récente");
-  if (st.bearishDivergence) bearishEvidence.push("Divergence RSI baissière récente");
-  if (st.bearishMacdDivergence) bearishEvidence.push("Divergence MACD baissière récente");
-  if (st.breakEvent === "CHOCH_HAUSSIER" || st.breakEvent === "BOS_HAUSSIER") {
-    bullishEvidence.push(st.breakEvent + " sur clôture");
-  }
-  if (st.breakEvent === "CHOCH_BAISSIER" || st.breakEvent === "BOS_BAISSIER") {
-    bearishEvidence.push(st.breakEvent + " sur clôture");
-  }
-  if (liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE") {
-    bullishEvidence.push("Balayage des creux puis clôture au-dessus");
-  }
-  if (liquidity?.sweep === "BALAYAGE LIQUIDITE HAUSSIERE REJETE") {
-    bearishEvidence.push("Balayage des sommets puis clôture en dessous");
-  }
-  if (regime?.fakeoutDown) bullishEvidence.push("Fausse cassure baissière détectée");
-  if (regime?.fakeoutUp) bearishEvidence.push("Fausse cassure haussière détectée");
+  if (st.bullishDivergence) addBull(2, "Divergence RSI haussière récente");
+  if (st.bullishMacdDivergence) addBull(2, "Divergence MACD haussière récente");
+  if (st.bearishDivergence) addBear(2, "Divergence RSI baissière récente");
+  if (st.bearishMacdDivergence) addBear(2, "Divergence MACD baissière récente");
 
-  const bullishScore = bullishEvidence.length, bearishScore = bearishEvidence.length;
+  const bullishChoch = st.breakEvent === "CHOCH_HAUSSIER";
+  const bearishChoch = st.breakEvent === "CHOCH_BAISSIER";
+  const bullishBos = st.breakEvent === "BOS_HAUSSIER";
+  const bearishBos = st.breakEvent === "BOS_BAISSIER";
+  if (bullishChoch) addBull(5, "CHOCH haussier : rupture contre la structure précédente");
+  else if (bullishBos) addBull(1, "BOS haussier : continuation, pas preuve isolée de retournement");
+  if (bearishChoch) addBear(5, "CHOCH baissier : rupture contre la structure précédente");
+  else if (bearishBos) addBear(1, "BOS baissier : continuation, pas preuve isolée de retournement");
+
+  if (liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE") addBull(3, "Balayage des creux puis réintégration");
+  if (liquidity?.sweep === "BALAYAGE LIQUIDITE HAUSSIERE REJETE") addBear(3, "Balayage des sommets puis réintégration");
+  if (regime?.fakeoutDown) addBull(2, "Fausse cassure baissière détectée");
+  if (regime?.fakeoutUp) addBear(2, "Fausse cassure haussière détectée");
+
+  const ema9 = indicator.ema9, ema21 = indicator.ema21, ema50 = indicator.ema50;
+  const bullishEmaCross = Number.isFinite(ema9) && Number.isFinite(ema21) &&
+    ema9 > ema21 && previous.close <= ema21 && last.close > ema21;
+  const bearishEmaCross = Number.isFinite(ema9) && Number.isFinite(ema21) &&
+    ema9 < ema21 && previous.close >= ema21 && last.close < ema21;
+  if (bullishEmaCross) addBull(2, "Clôture repassée au-dessus de l'EMA21 avec EMA9 ascendante");
+  if (bearishEmaCross) addBear(2, "Clôture repassée sous l'EMA21 avec EMA9 descendante");
+
+  const macdSlowing = Number.isFinite(currentMacd.histogram) &&
+    Number.isFinite(priorMacd.histogram) &&
+    Math.abs(currentMacd.histogram) < Math.abs(priorMacd.histogram);
+  const bullishMomentum = Number.isFinite(indicator.rsi) && indicator.rsi > 50 &&
+    Number.isFinite(currentMacd.histogram) && currentMacd.histogram > 0;
+  const bearishMomentum = Number.isFinite(indicator.rsi) && indicator.rsi < 50 &&
+    Number.isFinite(currentMacd.histogram) && currentMacd.histogram < 0;
+  if (bullishMomentum) addBull(1, "Momentum RSI/MACD repassé positif");
+  if (bearishMomentum) addBear(1, "Momentum RSI/MACD repassé négatif");
+
+  const trend = Number.isFinite(ema9) && Number.isFinite(ema21) && Number.isFinite(ema50)
+    ? ema9 > ema21 && ema21 > ema50 ? "HAUSSIER"
+      : ema9 < ema21 && ema21 < ema50 ? "BAISSIER" : "NEUTRE"
+    : "NEUTRE";
+  const adxFalling = Number.isFinite(indicator.adx?.adx) &&
+    Number.isFinite(priorAdx.adx) && indicator.adx.adx < priorAdx.adx;
+  const trendExhaustion = adxFalling || macdSlowing ||
+    (Number.isFinite(indicator.rsi) && ((trend === "HAUSSIER" && indicator.rsi < 50) ||
+      (trend === "BAISSIER" && indicator.rsi > 50)));
+  if (trendExhaustion) {
+    if (trend === "HAUSSIER") addBear(1, "Essoufflement possible de la dynamique haussière");
+    if (trend === "BAISSIER") addBull(1, "Essoufflement possible de la dynamique baissière");
+  }
+
   const direction = bullishScore === bearishScore ? "MIXTE" :
     bullishScore > bearishScore ? "HAUSSIER" : "BAISSIER";
-  const candleConfirmation = bullishEvidence.some(x => x.startsWith("Englobante") || x.startsWith("Mèche")) ||
-    bearishEvidence.some(x => x.startsWith("Englobante") || x.startsWith("Mèche"));
-  const structureConfirmation = bullishEvidence.some(x => x.includes("CHOCH") || x.includes("BOS")) ||
-    bearishEvidence.some(x => x.includes("CHOCH") || x.includes("BOS"));
-  const status = direction === "MIXTE" ? "SIGNAUX_MIXTES" :
-    candleConfirmation && structureConfirmation ? "REJET_ET_STRUCTURE_ALIGNES" :
-    candleConfirmation ? "REJET_CANDLE_A_SURVEILLER" :
-    structureConfirmation ? "RUPTURE_STRUCTURELLE_A_SURVEILLER" :
-    "INDICES_DE_RETournEMENT";
+  const dominant = Math.max(bullishScore, bearishScore);
+  const opposing = Math.min(bullishScore, bearishScore);
+  const candleConfirmation = direction === "HAUSSIER"
+    ? bullishEngulfing || bullishReject : direction === "BAISSIER"
+      ? bearishEngulfing || bearishReject : false;
+  const structureConfirmation = direction === "HAUSSIER" ? bullishChoch :
+    direction === "BAISSIER" ? bearishChoch : false;
+  const momentumConfirmation = direction === "HAUSSIER" ? bullishMomentum && bullishEmaCross :
+    direction === "BAISSIER" ? bearishMomentum && bearishEmaCross : false;
+  const oppositeTrend = direction !== "MIXTE" && trend !== "NEUTRE" && trend !== direction;
+  let stage = "AUCUN_RETournEMENT";
+  let status = "PAS_DE_RETOURNEMENT";
+  if (direction === "MIXTE" || dominant - opposing < 2) {
+    stage = "SIGNAUX_CONTRADICTOIRES"; status = "SIGNAUX_MIXTES";
+  } else if (structureConfirmation && candleConfirmation && momentumConfirmation) {
+    stage = "RETOURNEMENT_CONFIRME"; status = "RETOURNEMENT_STRUCTUREL_ET_MOMENTUM";
+  } else if (structureConfirmation && (candleConfirmation || momentumConfirmation)) {
+    stage = "RETOURNEMENT_EN_FORMATION"; status = "CHOCH_AVEC_CONFIRMATION_PARTIELLE";
+  } else if (candleConfirmation && dominant >= 4) {
+    stage = "REJET_A_SURVEILLER"; status = "REJET_CANDLE_A_SURVEILLER";
+  } else if (dominant >= 4 || (trendExhaustion && dominant >= 2)) {
+    stage = "PRECURSEUR"; status = "INDICES_PRECURSEURS";
+  }
+  const explanation = stage === "RETOURNEMENT_CONFIRME"
+    ? "CHOCH, réaction de bougie et reprise du momentum sont alignés. Le changement de structure est détecté sur cette unité ; vérifier les unités supérieures avant toute décision."
+    : stage === "RETOURNEMENT_EN_FORMATION"
+      ? "Un CHOCH est détecté et au moins une confirmation supplémentaire apparaît. Le momentum ou le rejet reste incomplet."
+      : stage === "REJET_A_SURVEILLER"
+        ? "Une bougie de rejet est visible, mais sans CHOCH confirmé : cela peut rester un simple rebond."
+        : stage === "PRECURSEUR"
+          ? "Des signes d'essoufflement ou de divergence apparaissent. La tendance n'est pas encore retournée."
+          : stage === "SIGNAUX_CONTRADICTOIRES"
+            ? "Les éléments haussiers et baissiers se contredisent : aucun sens de retournement ne domine."
+            : "Aucun faisceau suffisant d'indices de retournement n'est identifié sur la dernière bougie clôturée.";
   return {
-    status, direction, bullishScore, bearishScore,
-    bullishEvidence, bearishEvidence, candleConfirmation, structureConfirmation,
-    explanation: status === "REJET_ET_STRUCTURE_ALIGNES"
-      ? "Un rejet de bougie et un événement de structure vont dans le même sens. Attendre la tenue du niveau et vérifier les unités supérieures."
-      : status === "SIGNAUX_MIXTES"
-        ? "Les indices de retournement sont contradictoires ou équilibrés."
-        : "Indices précurseurs seulement : sans rejet et rupture de structure alignés, le retournement n'est pas confirmé.",
-    note: "Motifs OHLC heuristiques sur bougie clôturée, pas une prédiction ni un signal automatique."
+    status, stage, direction,
+    bullishScore, bearishScore,
+    bullishEvidence, bearishEvidence,
+    candleConfirmation, structureConfirmation, momentumConfirmation,
+    trendExhaustion, trendContext: trend,
+    emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
+    macdSlowing, adxFalling,
+    explanation,
+    note: "Score heuristique d'indices, pas une probabilité de réussite. Confirmation locale à cette unité de temps, non garantie multi-timeframe."
   };
 }
-
 function buildDashboardFrame(timeframe, bars) {
   const indicator = getIndicators(bars);
   const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
