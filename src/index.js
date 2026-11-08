@@ -1832,6 +1832,69 @@ function describeTrendStrength(indicator, trend) {
   };
 }
 
+function analyzeVolatility(bars, indicator) {
+  if (!Array.isArray(bars) || bars.length < 40 ||
+      !Number.isFinite(indicator.atr) || !Number.isFinite(indicator.price) ||
+      indicator.price <= 0) {
+    return {
+      status: "INDETERMINE", atr: indicator.atr ?? null,
+      atrPercent: null, recentVsBaseline: null, lastCandleAtr: null,
+      recentAverageAtr: null, scalpCondition: "NON EVALUEE",
+      explanation: "Historique insuffisant pour mesurer correctement la volatilité."
+    };
+  }
+
+  const trueRanges = bars.map((bar, index) => {
+    if (index === 0) return bar.high - bar.low;
+    const previousClose = bars[index - 1].close;
+    return Math.max(
+      bar.high - bar.low,
+      Math.abs(bar.high - previousClose),
+      Math.abs(bar.low - previousClose)
+    );
+  });
+  const recent = trueRanges.slice(-5);
+  const baseline = trueRanges.slice(-25, -5);
+  const recentAverage = recent.reduce((sum, value) => sum + value, 0) / recent.length;
+  const baselineAverage = baseline.reduce((sum, value) => sum + value, 0) / baseline.length;
+  const recentVsBaseline = baselineAverage > 0 ? recentAverage / baselineAverage : null;
+  const last = bars[bars.length - 1];
+  const lastCandleAtr = indicator.atr > 0 ? (last.high - last.low) / indicator.atr : null;
+  const atrPercent = indicator.atr / indicator.price * 100;
+
+  let status = "NORMALE";
+  let explanation = "Volatilité proche de sa référence récente.";
+  let scalpCondition = "A EVALUER AVEC LES AUTRES INDICATEURS";
+
+  if ((lastCandleAtr !== null && lastCandleAtr >= 2.5) ||
+      (recentVsBaseline !== null && recentVsBaseline >= 2)) {
+    status = "EXTREME";
+    explanation = "Mouvement anormalement ample : risque de spread élargi, glissement et faux départs.";
+    scalpCondition = "PRUDENCE ELEVEE — EVITER DE POURSUIVRE UNE BOUGIE ETIREE";
+  } else if (recentVsBaseline !== null && recentVsBaseline >= 1.35) {
+    status = "ACCELERATION";
+    explanation = "La volatilité augmente nettement : rechercher une clôture et un retest plutôt que poursuivre l'impulsion.";
+    scalpCondition = "ATTENDRE CONFIRMATION ET RETEST";
+  } else if (recentVsBaseline !== null && recentVsBaseline <= 0.70) {
+    status = "CONTRACTION";
+    explanation = "La volatilité se contracte : risque de marché endormi avant une éventuelle expansion.";
+    scalpCondition = "MOUVEMENT INSUFFISANT — ATTENDRE UNE SORTIE CONFIRMEE";
+  }
+
+  return {
+    status,
+    atr: Number(indicator.atr.toFixed(5)),
+    atrPercent: Number(atrPercent.toFixed(4)),
+    recentVsBaseline: recentVsBaseline === null ? null : Number(recentVsBaseline.toFixed(2)),
+    lastCandleAtr: lastCandleAtr === null ? null : Number(lastCandleAtr.toFixed(2)),
+    recentAverageAtr: Number(recentAverage.toFixed(5)),
+    baselineAverageAtr: Number(baselineAverage.toFixed(5)),
+    scalpCondition,
+    explanation,
+    note: "Mesure relative aux bougies récentes de cette unité de temps ; ne prédit pas le sens du prochain mouvement."
+  };
+}
+
 function buildDashboardFrame(timeframe, bars) {
   const indicator = getIndicators(bars);
   const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
@@ -1840,6 +1903,7 @@ function buildDashboardFrame(timeframe, bars) {
     : "NEUTRE";
   const regime = analyzeMarketRegime(bars, indicator);
   const structure = analyzeStructure(bars, indicator);
+  const volatility = analyzeVolatility(bars, indicator);
   const quality = inspectDataQuality(bars, timeframe);
   const macd = indicator.macd || {};
   const bb = indicator.bollinger || {};
@@ -1862,6 +1926,8 @@ function buildDashboardFrame(timeframe, bars) {
   if (slowing) reversalWarnings.push("Histogramme MACD en ralentissement : impulsion potentiellement moins forte.");
   if (Number.isFinite(indicator.rsi) && indicator.rsi >= 70) reversalWarnings.push("RSI en zone haute");
   if (Number.isFinite(indicator.rsi) && indicator.rsi <= 30) reversalWarnings.push("RSI en zone basse");
+  if (volatility.status === "EXTREME") reversalWarnings.push("VOLATILITE EXTREME : risque de mouvement brutal et d'exécution dégradée.");
+  if (volatility.status === "CONTRACTION") reversalWarnings.push("CONTRACTION DE VOLATILITE : attendre une cassure confirmée.");
   return {
     timeframe,
     candleCount: bars.length,
@@ -1869,6 +1935,7 @@ function buildDashboardFrame(timeframe, bars) {
     dataQuality: quality,
     trend: describeTrendStrength(indicator, trend),
     regime,
+    volatility,
     indicators: {
       price: indicator.price,
       ema20: indicator.ema20,
