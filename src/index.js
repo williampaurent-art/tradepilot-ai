@@ -544,6 +544,59 @@ function getTrend(indicator) {
   return "NEUTRE";
 }
 
+function analyzeMarketRegime(bars, indicator) {
+  const recent = bars.slice(-40);
+  if (recent.length < 25 || indicator.adx.adx === null ||
+      indicator.bollinger.bandwidth === null || indicator.atr === null) {
+    return { regime: "INDETERMINE", phase: "DONNEES_INSUFFISANTES",
+      rangeHigh: null, rangeLow: null, rangePosition: null,
+      touchesHigh: 0, touchesLow: 0, emaSlopeAtr: null,
+      breakoutUp: false, breakoutDown: false, explanation: "Historique insuffisant pour classifier le régime." };
+  }
+  const closed = recent.slice(0, -1);
+  const rangeHigh = Math.max(...closed.map(b => b.high));
+  const rangeLow = Math.min(...closed.map(b => b.low));
+  const width = rangeHigh - rangeLow;
+  const price = indicator.price;
+  const rangePosition = width > 0 ? (price - rangeLow) / width : 0.5;
+  const tolerance = Math.max(indicator.atr * 0.25, width * 0.06);
+  const touchesHigh = closed.filter(b => Math.abs(b.high - rangeHigh) <= tolerance).length;
+  const touchesLow = closed.filter(b => Math.abs(b.low - rangeLow) <= tolerance).length;
+  const closes = bars.map(b => b.close);
+  const priorEma21 = ema(closes.slice(0, -5), 21);
+  const emaSlopeAtr = priorEma21 === null ? null : (indicator.ema21 - priorEma21) / (indicator.atr * 5);
+  const breakoutUp = price > rangeHigh + indicator.atr * 0.10;
+  const breakoutDown = price < rangeLow - indicator.atr * 0.10;
+  const adx = indicator.adx.adx;
+  const compressed = indicator.bollinger.bandwidth < 0.0035;
+  const flat = emaSlopeAtr !== null && Math.abs(emaSlopeAtr) < 0.18;
+  const rangeStructure = touchesHigh >= 2 && touchesLow >= 2 && rangePosition >= 0 && rangePosition <= 1;
+  let regime = "TRANSITION";
+  let phase = "MARCHE_MIXTE";
+  let explanation = "Signaux de régime contradictoires : prudence.";
+  if (breakoutUp && adx >= 18) {
+    regime = "TENDANCE"; phase = "CASSURE_HAUSSIERE";
+    explanation = "Cassure haussière de la zone récente avec force directionnelle.";
+  } else if (breakoutDown && adx >= 18) {
+    regime = "TENDANCE"; phase = "CASSURE_BAISSIERE";
+    explanation = "Cassure baissière de la zone récente avec force directionnelle.";
+  } else if (adx <= 18 && flat && (rangeStructure || compressed)) {
+    regime = "RANGE"; phase = rangePosition <= 0.25 ? "PROCHE_SUPPORT" :
+      rangePosition >= 0.75 ? "PROCHE_RESISTANCE" : "MILIEU_RANGE";
+    explanation = "ADX faible, pente EMA réduite et marché contenu dans une zone horizontale.";
+  } else if (adx >= 25 && emaSlopeAtr !== null && Math.abs(emaSlopeAtr) >= 0.18) {
+    regime = "TENDANCE"; phase = getTrend(indicator) === "HAUSSIER" ? "TENDANCE_HAUSSIERE" :
+      getTrend(indicator) === "BAISSIER" ? "TENDANCE_BAISSIERE" : "TENDANCE_EN_CONSTRUCTION";
+    explanation = "ADX et pente EMA indiquent une dynamique directionnelle.";
+  }
+  return { regime, phase, rangeHigh, rangeLow,
+    rangePosition: Number(rangePosition.toFixed(3)), touchesHigh, touchesLow,
+    emaSlopeAtr: emaSlopeAtr === null ? null : Number(emaSlopeAtr.toFixed(3)),
+    breakoutUp, breakoutDown, adx: Number(adx.toFixed(2)),
+    bollingerBandwidth: Number(indicator.bollinger.bandwidth.toFixed(5)),
+    compressed, flat, explanation };
+}
+
 // --------------------------------------------------
 // ANALYSE DU MARCHE : INDICATEURS + CASSURE/RETEST
 // --------------------------------------------------
@@ -653,9 +706,79 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     buyScore -= 5;
     sellScore -= 5;
   } else if (t5 !== t15) {
-    // Divergence M5/M15 : penalite, pas veto absolu.
     if (t5 === "HAUSSIER") sellScore -= 8;
     else if (t5 === "BAISSIER") buyScore -= 8;
+  }
+
+  // Classification multi-critères du régime M15, puis adaptation du setup.
+  const regimeAnalysis = analyzeMarketRegime(m15, i15);
+  const regime = regimeAnalysis.regime;
+  let rangeLocation = "HORS_RANGE";
+  if (regime === "RANGE" && regimeAnalysis.rangePosition !== null) {
+    const p = regimeAnalysis.rangePosition;
+    rangeLocation = p <= 0.25 ? "BORNE_BASSE" : p >= 0.75 ? "BORNE_HAUTE" : "CENTRE";
+    if (rangeLocation === "BORNE_BASSE") {
+      buyScore += 9;
+      sellScore -= 7;
+      buyReasons.push("Range M15 : proximité de la borne basse, rebond acheteur à confirmer");
+      sellReasons.push("Range M15 : vente pénalisée près du support");
+    } else if (rangeLocation === "BORNE_HAUTE") {
+      sellScore += 9;
+      buyScore -= 7;
+      sellReasons.push("Range M15 : proximité de la borne haute, rejet vendeur à confirmer");
+      buyReasons.push("Range M15 : achat pénalisé près de la résistance");
+    } else {
+      buyScore -= 12;
+      sellScore -= 12;
+      buyReasons.push("Range M15 : prix au milieu de la zone, entrée sans avantage");
+      sellReasons.push("Range M15 : prix au milieu de la zone, entrée sans avantage");
+    }
+  } else if (regime === "TENDANCE") {
+    const direction = regimeAnalysis.phase.includes("BAISSIERE") ? "SELL" :
+      regimeAnalysis.phase.includes("HAUSSIERE") ? "BUY" : null;
+    if (direction === "BUY") {
+      buyScore += 5; sellScore -= 8;
+      buyReasons.push("Régime M15 directionnel haussier confirmé");
+    } else if (direction === "SELL") {
+      sellScore += 5; buyScore -= 8;
+      sellReasons.push("Régime M15 directionnel baissier confirmé");
+    }
+  } else if (regime === "TRANSITION") {
+    buyScore -= 6; sellScore -= 6;
+    buyReasons.push("Marché en transition : confirmations supplémentaires nécessaires");
+    sellReasons.push("Marché en transition : confirmations supplémentaires nécessaires");
+  }
+
+  // Dans un range, un rebond doit montrer un rejet réel de la borne.
+  const lastRangeBar = m15[m15.length - 1];
+  const bullishRejection = lastRangeBar.close > lastRangeBar.open &&
+    (lastRangeBar.close - lastRangeBar.low) > (lastRangeBar.high - lastRangeBar.low) * 0.60;
+  const bearishRejection = lastRangeBar.close < lastRangeBar.open &&
+    (lastRangeBar.high - lastRangeBar.close) > (lastRangeBar.high - lastRangeBar.low) * 0.60;
+  if (regime === "RANGE" && rangeLocation === "BORNE_BASSE" && bullishRejection) {
+    buyScore += 6;
+    buyReasons.push("Bougie M15 de rejet haussier sur la borne basse");
+  }
+  if (regime === "RANGE" && rangeLocation === "BORNE_HAUTE" && bearishRejection) {
+    sellScore += 6;
+    sellReasons.push("Bougie M15 de rejet baissier sur la borne haute");
+  }
+
+  // Vérifie qu'un obstacle opposé ne se trouve pas avant l'objectif de +2 points.
+  const obstacleBuffer = Math.max((i1.atr || 0) * 0.15, 0.10);
+  const buyObstacleDistance = regimeAnalysis.rangeHigh !== null
+    ? regimeAnalysis.rangeHigh - liveQuote.ask : Infinity;
+  const sellObstacleDistance = regimeAnalysis.rangeLow !== null
+    ? liveQuote.bid - regimeAnalysis.rangeLow : Infinity;
+  const buyRoomOK = regime !== "RANGE" || buyObstacleDistance >= settings.target + obstacleBuffer;
+  const sellRoomOK = regime !== "RANGE" || sellObstacleDistance >= settings.target + obstacleBuffer;
+  if (regime === "RANGE" && !buyRoomOK) {
+    buyScore -= 15;
+    buyReasons.push("Espace insuffisant avant la borne haute pour viser l'objectif");
+  }
+  if (regime === "RANGE" && !sellRoomOK) {
+    sellScore -= 15;
+    sellReasons.push("Espace insuffisant avant la borne basse pour viser l'objectif");
   }
 
   buyScore = Math.max(0, Math.min(100, buyScore));
@@ -683,13 +806,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     : 1;
   const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
   const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
-  const marketRegime = i15.adx.adx === null
-    ? "INDETERMINE"
-    : i15.adx.adx >= 25
-      ? "TENDANCE"
-      : i15.adx.adx <= 18
-        ? "RANGE"
-        : "TRANSITION";
+  const marketRegime = regimeAnalysis.regime;
 
   // A signal can only be labelled CONFIRMED when the technical score
   // and the deterministic risk checks both pass. No broker order is sent.
@@ -700,7 +817,11 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     spreadToATR: spreadToATR === null ? null : Number(spreadToATR.toFixed(3)),
     maxSpreadToATR: 0.20,
     spreadOK,
-    marketRegime
+    marketRegime,
+    marketPhase: regimeAnalysis.phase,
+    rangeLocation,
+    buyRoomOK,
+    sellRoomOK
   };
 
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
@@ -754,7 +875,30 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
       resistance: levels.resistance === null ? null : round(levels.resistance),
       breakoutRetest: { brokeUp, brokeDown, retestUp, retestDown },
       volatility,
-      marketRegime
+      marketRegime,
+      marketPhase: regimeAnalysis.phase,
+      regimeExplanation: regimeAnalysis.explanation,
+      range: {
+        high: regimeAnalysis.rangeHigh === null ? null : round(regimeAnalysis.rangeHigh),
+        low: regimeAnalysis.rangeLow === null ? null : round(regimeAnalysis.rangeLow),
+        position: regimeAnalysis.rangePosition,
+        location: rangeLocation,
+        upperTouches: regimeAnalysis.touchesHigh,
+        lowerTouches: regimeAnalysis.touchesLow,
+        buyRoomOK,
+        sellRoomOK,
+        bullishRejection,
+        bearishRejection
+      },
+      regimeDiagnostics: {
+        adxM15: regimeAnalysis.adx ?? null,
+        emaSlopeAtr: regimeAnalysis.emaSlopeAtr,
+        bollingerBandwidthM15: regimeAnalysis.bollingerBandwidth ?? null,
+        compressed: regimeAnalysis.compressed ?? null,
+        flat: regimeAnalysis.flat ?? null,
+        breakoutUp: regimeAnalysis.breakoutUp,
+        breakoutDown: regimeAnalysis.breakoutDown
+      }
     },
     reasons,
     generatedAt: new Date().toISOString(),
