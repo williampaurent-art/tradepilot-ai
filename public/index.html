@@ -26,7 +26,7 @@
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.4";
+const UI_VERSION="2026.11.08.5";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -72,7 +72,7 @@ function renderReversalMultiTimeframe(d){
   const breakInfo=active&&x.breakQuality&&x.breakQuality!=="NON_EVALUE"
     ?" · CHOCH "+x.breakQuality+(x.breakDistanceAtr!=null?" ("+fmt(x.breakDistanceAtr,2)+" ATR)":"")+(x.directionalConflict?" · CONFLIT ADX/DI":""):"";
   const context=active?(x.againstTrend?" · CONTRE tendance":x.withTrend?" · avec tendance":" · tendance neutre"):"";
-  const confluenceLabels={TRIPLE_CONFLUENCE:"BALAYAGE + CHOCH + RETEST",CHOCH_ET_CONFIRMATION:"CHOCH + confirmation",BALAYAGE_ET_RETEST:"BALAYAGE + RETEST",CHOCH_SEUL:"CHOCH seul",BALAYAGE_SEUL:"Balayage seul",RETEST_SEUL:"Retest seul",AUCUNE_CONFLUENCE:"Sans confluence"};
+  const confluenceLabels={TRIPLE_CONFLUENCE:"CONFLUENCE MULTIPLE",RANGE_REENTRY_ET_CONFIRMATION:"RÉINTÉGRATION RANGE + confirmation",REINTEGRATION_RANGE:"RÉINTÉGRATION RANGE",CHOCH_ET_CONFIRMATION:"CHOCH + confirmation",BALAYAGE_ET_RETEST:"BALAYAGE + RETEST",CHOCH_SEUL:"CHOCH seul",BALAYAGE_SEUL:"Balayage seul",RETEST_SEUL:"Retest seul",AUCUNE_CONFLUENCE:"Sans confluence"};
   const confluenceInfo=active?" · "+(confluenceLabels[x.reversalConfluenceStatus]||"Confluence non évaluée"):"";
   const invalidation=(active||invalidated)&&x.invalidationLevel!=null?" · niveau "+fmt(x.invalidationLevel)+(invalidated?" · FRANCHI EN CLÔTURE":x.invalidationDistance!=null?" · distance "+fmt(x.invalidationDistance,2)+" $":""):"";
   return '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><strong>'+esc(x.timeframe)+'</strong><span>'+esc(invalidated?x.direction+" · SCENARIO INVALIDE"+invalidation:active?x.direction+" · "+x.stage+breakInfo+confluenceInfo+contribution+context+invalidation:"Aucun indice actif")+'</span><span class="'+(x.trend==="HAUSSIER"?"up":x.trend==="BAISSIER"?"down":"neutral")+'">Tendance '+esc(x.trend)+'</span></div>';
@@ -200,7 +200,7 @@ put("reversalStructure",liveRev?(rev.structureConfirmation?"OUI":"NON"):"—");
 const evidenceList=items=>items?.length?items.map(v=>'<div>• '+esc(v)+'</div>').join(""):'<div class="muted">Aucun indice détecté.</div>';
 $("reversalBullEvidence").innerHTML=liveRev?evidenceList(rev.bullishEvidence):'<div class="muted">Données live non validées.</div>';
 $("reversalBearEvidence").innerHTML=liveRev?evidenceList(rev.bearishEvidence):'<div class="muted">Données live non validées.</div>';
-put("reversalExplanation",liveRev?(rev.explanation||"Diagnostic indisponible."):"Les indices historiques ne sont pas présentés comme des signaux actuels.");
+put("reversalExplanation",liveRev?(rev.explanation||"Diagnostic indisponible.")+(rev.alignedRangeReentry?" Réintégration de range "+(rev.rangeReentryDirection==="HAUSSIER"?"haussière":"baissière")+" détectée · qualité "+(rev.rangeReentryQuality||"NON ÉVALUÉE")+(rev.rangeReentryDepthAtr!=null?" · excursion "+fmt(rev.rangeReentryDepthAtr,2)+" ATR":"")+". Cette mèche rejetée est un indice OHLC, pas une confirmation d'entrée.":""):"Les indices historiques ne sont pas présentés comme des signaux actuels.");
 drawChart(a.candles||[]);
 const warns=a.reversalWarnings||[];$("warnings").innerHTML=warns.length?warns.map(v=>"<li>"+esc(v)+"</li>").join(""):"<li>Aucun signe de retournement détecté dans les données disponibles. Cela ne garantit pas l'absence de retournement.</li>";
 const contextLabel=snapshot?.market?.open===false?"Analyse historique (marché fermé). ":snapshot?.market?.open!==true?"Analyse non actualisée (état du marché inconnu). ":"";put("explanation",contextLabel+(a.trend.direction==="NEUTRE"?"Direction neutre ou non confirmée":"Biais "+a.trend.direction.toLowerCase())+" sur "+selected+". Régime "+r.regime.toLowerCase()+" : "+r.explanation+" ADX "+fmt(i.adx14,1)+", force "+a.trend.strength.toLowerCase()+". Score technique "+(a.trend.technicalScore??"indisponible")+", sans valeur probabiliste.");
