@@ -1,4 +1,3 @@
-
 const TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"];
 
 function sma(values, period) {
@@ -13,10 +12,8 @@ function rsi(values, period = 14) {
   const result = Array(values.length).fill(null);
   if (!Array.isArray(values) || values.length < period + 1) return result;
 
-  // Même méthode de Wilder que le moteur live TradePilot.
   let gains = 0;
   let losses = 0;
-
   for (let i = 1; i <= period; i++) {
     const change = values[i] - values[i - 1];
     if (change > 0) gains += change;
@@ -25,129 +22,192 @@ function rsi(values, period = 14) {
 
   let avgGain = gains / period;
   let avgLoss = losses / period;
-  result[period] = avgLoss === 0
+  const value = () => avgLoss === 0
     ? (avgGain === 0 ? 50 : 100)
     : 100 - 100 / (1 + avgGain / avgLoss);
+  result[period] = value();
 
   for (let i = period + 1; i < values.length; i++) {
     const change = values[i] - values[i - 1];
     avgGain = ((avgGain * (period - 1)) + Math.max(change, 0)) / period;
     avgLoss = ((avgLoss * (period - 1)) + Math.max(-change, 0)) / period;
-    result[i] = avgLoss === 0
-      ? (avgGain === 0 ? 50 : 100)
-      : 100 - 100 / (1 + avgGain / avgLoss);
+    result[i] = value();
   }
-
   return result;
 }
 
+function getSignal(index, candles, fast, slow, momentum, strategy) {
+  const candle = candles[index];
+  if (strategy === "trend") {
+    if (fast[index] > slow[index] && fast[index - 1] <= slow[index - 1]) return 1;
+    if (fast[index] < slow[index] && fast[index - 1] >= slow[index - 1]) return -1;
+  } else if (strategy === "breakout") {
+    const previous = candles.slice(index - 20, index);
+    const high = Math.max(...previous.map(item => item.high));
+    const low = Math.min(...previous.map(item => item.low));
+    if (candle.close > high) return 1;
+    if (candle.close < low) return -1;
+  } else if (strategy === "reversal") {
+    if (momentum[index] !== null && momentum[index] < 30) return 1;
+    if (momentum[index] !== null && momentum[index] > 70) return -1;
+  }
+  return 0;
+}
+
 function backtest(candles, strategy, options = {}) {
-  const capitalInitial = Number(options.capital ?? 10000);
+  const startingCapital = Number(options.capital ?? 10000);
   const riskPercent = Number(options.riskPercent ?? 1);
+  const stopDistance = Number(options.stopDistance ?? options.stopLossDistance ?? 7);
+  const targetDistance = Number(options.targetDistance ?? options.takeProfitDistance ?? 2);
+  const spread = Number(options.spread ?? 0);
+  const slippage = Number(options.slippage ?? 0);
   const feePercent = Number(options.feePercent ?? 0.02);
 
   if (!Array.isArray(candles) || candles.length < 50) {
     throw new Error("Il faut au moins 50 bougies historiques.");
   }
-
-  if (!(capitalInitial > 0) || !(riskPercent > 0 && riskPercent <= 2)) {
+  if (!(startingCapital > 0) || !(riskPercent > 0 && riskPercent <= 2)) {
     throw new Error("Capital invalide ou risque supérieur à 2 %.");
   }
+  if (!(stopDistance > 0) || !(targetDistance > 0) ||
+      spread < 0 || slippage < 0 || feePercent < 0) {
+    throw new Error("Paramètres de risque ou de coûts invalides.");
+  }
 
-  for (const c of candles) {
-    if (![c.open, c.high, c.low, c.close].every(Number.isFinite) ||
-        c.high < c.low || c.high < c.open || c.high < c.close ||
-        c.low > c.open || c.low > c.close) {
+  for (const candle of candles) {
+    if (![candle.open, candle.high, candle.low, candle.close].every(Number.isFinite) ||
+        candle.high < candle.low || candle.high < candle.open ||
+        candle.high < candle.close || candle.low > candle.open ||
+        candle.low > candle.close) {
       throw new Error("Format OHLC invalide.");
     }
   }
 
-  const closes = candles.map(c => c.close);
+  const closes = candles.map(candle => candle.close);
   const fast = sma(closes, 10);
   const slow = sma(closes, 20);
   const momentum = rsi(closes, 14);
 
-  let capital = capitalInitial;
-  let position = null;
-  let trades = 0;
-  let wins = 0;
-  let equityPeak = capital;
+  let capital = startingCapital;
+  let equityPeak = startingCapital;
   let maxDrawdown = 0;
+  let position = null;
+  const history = [];
 
-  for (let i = 21; i < candles.length; i++) {
-    const c = candles[i];
-    let signal = 0;
-
-    if (strategy === "trend") {
-      if (fast[i] > slow[i] && fast[i - 1] <= slow[i - 1]) signal = 1;
-      if (fast[i] < slow[i] && fast[i - 1] >= slow[i - 1]) signal = -1;
-    } else if (strategy === "breakout") {
-      const previous = candles.slice(i - 20, i);
-      const high = Math.max(...previous.map(x => x.high));
-      const low = Math.min(...previous.map(x => x.low));
-      if (c.close > high) signal = 1;
-      if (c.close < low) signal = -1;
-    } else if (strategy === "reversal") {
-      if (momentum[i] !== null && momentum[i] < 30) signal = 1;
-      if (momentum[i] !== null && momentum[i] > 70) signal = -1;
+  function updateDrawdown(markPrice, candle) {
+    if (!position) {
+      equityPeak = Math.max(equityPeak, capital);
+      maxDrawdown = Math.max(maxDrawdown, (equityPeak - capital) / equityPeak * 100);
+      return;
     }
-
-    if (position && signal === -position.direction) {
-      const gross = (c.close - position.entry) *
-        position.direction * position.units;
-      const fees = (position.entry + c.close) *
-        position.units * feePercent / 100;
-      const pnl = gross - fees;
-
-      capital += pnl;
-      trades++;
-      if (pnl > 0) wins++;
-      position = null;
-    }
-
-    if (!position && signal !== 0) {
-      const riskMoney = capital * riskPercent / 100;
-      const stopDistance = c.close * 0.005;
-      const units = riskMoney / stopDistance;
-
-      position = {
-        entry: c.close,
-        direction: signal,
-        units
-      };
-    }
-
+    const adversePrice = position.direction === 1 ? candle.low : candle.high;
+    const unrealized = (adversePrice - position.entry) *
+      position.direction * position.units;
+    const markedEquity = capital + unrealized;
     equityPeak = Math.max(equityPeak, capital);
-    maxDrawdown = Math.max(
-      maxDrawdown,
-      (equityPeak - capital) / equityPeak * 100
-    );
+    maxDrawdown = Math.max(maxDrawdown, (equityPeak - markedEquity) / equityPeak * 100);
   }
 
-  if (position) {
-    const last = closes[closes.length - 1];
-    const gross = (last - position.entry) *
-      position.direction * position.units;
-    const fees = (position.entry + last) *
+  function openPosition(direction, rawOpen, index) {
+    const entry = rawOpen + direction * (spread / 2 + slippage);
+    const riskMoney = capital * riskPercent / 100;
+    const units = riskMoney / stopDistance;
+    position = {
+      direction, entry, units,
+      stop: entry - direction * stopDistance,
+      target: entry + direction * targetDistance,
+      entryIndex: index
+    };
+  }
+
+  function closePosition(rawExit, index, reason) {
+    const exit = rawExit - position.direction * (spread / 2 + slippage);
+    const gross = (exit - position.entry) * position.direction * position.units;
+    const fees = (Math.abs(position.entry) + Math.abs(exit)) *
       position.units * feePercent / 100;
     const pnl = gross - fees;
     capital += pnl;
-    trades++;
-    if (pnl > 0) wins++;
+    history.push({
+      direction: position.direction === 1 ? "BUY" : "SELL",
+      entryIndex: position.entryIndex,
+      exitIndex: index,
+      entry: Number(position.entry.toFixed(5)),
+      exit: Number(exit.toFixed(5)),
+      units: Number(position.units.toFixed(5)),
+      pnl: Number(pnl.toFixed(2)),
+      result: pnl > 0 ? "WIN" : "LOSS",
+      exitReason: reason
+    });
+    position = null;
   }
+
+  for (let i = 21; i < candles.length; i++) {
+    const candle = candles[i];
+    const priorSignal = getSignal(i - 1, candles, fast, slow, momentum, strategy);
+
+    // Signal connu à la clôture précédente : exécution au prochain open.
+    if (position && priorSignal === -position.direction) {
+      closePosition(candle.open, i, "opposite_signal");
+    }
+    if (!position && priorSignal !== 0) {
+      openPosition(priorSignal, candle.open, i);
+    }
+
+    if (position) {
+      const stopTouched = position.direction === 1
+        ? candle.low <= position.stop
+        : candle.high >= position.stop;
+      const targetTouched = position.direction === 1
+        ? candle.high >= position.target
+        : candle.low <= position.target;
+
+      // Si SL et TP sont touchés dans la même bougie, retenir le SL :
+      // hypothèse conservatrice, car l'ordre intrabougie est inconnu en OHLC.
+      if (stopTouched) {
+        closePosition(position.stop, i, targetTouched ? "stop_and_target_same_bar" : "stop_loss");
+      } else if (targetTouched) {
+        closePosition(position.target, i, "take_profit");
+      }
+    }
+
+    updateDrawdown(candle.close, candle);
+  }
+
+  if (position) {
+    closePosition(candles[candles.length - 1].close, candles.length - 1, "end_of_data");
+  }
+
+  const trades = history.length;
+  const wins = history.filter(trade => trade.pnl > 0);
+  const losses = history.filter(trade => trade.pnl <= 0);
+  const grossProfit = wins.reduce((sum, trade) => sum + trade.pnl, 0);
+  const grossLoss = Math.abs(losses.reduce((sum, trade) => sum + trade.pnl, 0));
 
   return {
     strategy,
-    startingCapital: capitalInitial,
+    startingCapital,
     endingCapital: Number(capital.toFixed(2)),
-    netProfit: Number((capital - capitalInitial).toFixed(2)),
-    returnPercent: Number(
-      ((capital / capitalInitial - 1) * 100).toFixed(2)
-    ),
+    netProfit: Number((capital - startingCapital).toFixed(2)),
+    returnPercent: Number(((capital / startingCapital - 1) * 100).toFixed(2)),
     trades,
-    winRate: trades ? Number((wins / trades * 100).toFixed(2)) : 0,
-    maxDrawdownPercent: Number(maxDrawdown.toFixed(2)),
-    note: "Prototype: spread, slippage et spécifications du courtier non intégrés."
+    wins: wins.length,
+    losses: losses.length,
+    winRate: trades ? Number((wins.length / trades * 100).toFixed(2)) : 0,
+    profitFactor: grossLoss ? Number((grossProfit / grossLoss).toFixed(3)) : (grossProfit ? null : 0),
+    averageWin: wins.length ? Number((grossProfit / wins.length).toFixed(2)) : 0,
+    averageLoss: losses.length ? Number((-grossLoss / losses.length).toFixed(2)) : 0,
+    maxDrawdownPercent: Number(Math.max(0, maxDrawdown).toFixed(2)),
+    assumptions: {
+      entry: "Signal calculé à la clôture, entrée à l'ouverture de la bougie suivante",
+      stopDistance,
+      targetDistance,
+      spread,
+      slippage,
+      feePercent,
+      sameBarStopAndTarget: "Stop prioritaire (hypothèse conservatrice)"
+    },
+    history,
+    note: "Simulation OHLC indicative : spread, slippage et commission sont paramétrables; le chemin intrabougie exact et les conditions du courtier ne sont pas connus."
   };
 }
 
@@ -172,4 +232,3 @@ export {
   compareStrategies,
   validateTimeframe
 };
-
