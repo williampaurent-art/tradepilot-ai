@@ -2195,9 +2195,9 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const bearishChoch = st.breakEvent === "CHOCH_BAISSIER";
   const bullishBos = st.breakEvent === "BOS_HAUSSIER";
   const bearishBos = st.breakEvent === "BOS_BAISSIER";
-  const candleRange = Math.max(last.high - last.low, 1e-9);
-  const candleBodyRatio = Math.abs(last.close - last.open) / candleRange;
-  const closePosition = (last.close - last.low) / candleRange;
+  const breakCandleRange = Math.max(last.high - last.low, 1e-9);
+  const candleBodyRatio = Math.abs(last.close - last.open) / breakCandleRange;
+  const closePosition = (last.close - last.low) / breakCandleRange;
   const breakDistance = bullishChoch || bullishBos
     ? last.close - st.breakLevel
     : bearishChoch || bearishBos ? st.breakLevel - last.close : null;
