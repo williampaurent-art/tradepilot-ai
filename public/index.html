@@ -59,12 +59,14 @@ function renderReversalMultiTimeframe(d){
  put("reversalMtfBearWeight",live&&c.bearishWeight!=null?c.bearishWeight+" pts":"—");
  put("reversalMtfConfirmed",live&&c.confirmedCount!=null?String(c.confirmedCount):"—");
  put("reversalMtfStages",live?(String(c.formationCount||0)+" / "+String(c.earlyCount||0)):"—");
+ put("reversalMtfCoverage",live?(c.validTimeframes||0)+"/6 unités validées"+(c.missingTimeframes?.length?" · manquantes : "+c.missingTimeframes.join(", "):" · couverture complète"):"—");
  const details=Array.isArray(c.details)?c.details:[];
  $("reversalMtfDetails").innerHTML=live&&details.length?details.map(x=>{
   const active=x.active&&x.direction!=="NEUTRE";
   const contribution=active?" · poids "+x.weightedContribution+" pts":"";
   const context=active?(x.againstTrend?" · CONTRE tendance":x.withTrend?" · avec tendance":" · tendance neutre"):"";
-  return '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><strong>'+esc(x.timeframe)+'</strong><span>'+esc(active?x.direction+" · "+x.stage+contribution+context:"Aucun indice actif")+'</span><span class="'+(x.trend==="HAUSSIER"?"up":x.trend==="BAISSIER"?"down":"neutral")+'">Tendance '+esc(x.trend)+'</span></div>';
+  const invalidation=active&&x.invalidationLevel!=null?" · invalidation "+fmt(x.invalidationLevel)+(x.invalidationBreached?" (franchie en clôture)":x.invalidationDistance!=null?" · distance "+fmt(x.invalidationDistance,2)+" $":""):"";
+  return '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><strong>'+esc(x.timeframe)+'</strong><span>'+esc(active?x.direction+" · "+x.stage+contribution+context+invalidation:"Aucun indice actif")+'</span><span class="'+(x.trend==="HAUSSIER"?"up":x.trend==="BAISSIER"?"down":"neutral")+'">Tendance '+esc(x.trend)+'</span></div>';
  }).join(""):'<div class="muted">Données live non validées ou couverture indisponible.</div>';
  put("reversalMtfExplanation",live?(c.explanation||"Diagnostic multi-timeframe indisponible.")+(c.againstTrendCount?(" "+c.againstTrendCount+" retournement(s) vont contre la tendance de leur unité."):(" "+(c.withTrendCount||0)+" signal(aux) suivent la tendance de leur unité.")):"Les diagnostics historiques ne sont pas présentés comme une concordance actuelle.");
 }
