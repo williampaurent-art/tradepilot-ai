@@ -2331,16 +2331,6 @@ async function scheduledCheck(env) {
 
   try {
     const dailyState = await getDailyAlertState(env);
-    if (dailyState.count >= 15) {
-      await saveCronStatus(env, "COMPLETED", {
-        alertSent: false,
-        dailyAlertCount: dailyState.count,
-        dailyAlertTarget: "10-15",
-        message: "Plafond quotidien de 15 alertes atteint (heure de Paris)."
-      });
-      return { ok: true, alertSent: false, dailyAlertCount: dailyState.count, reason: "DAILY_ALERT_CAP_REACHED" };
-    }
-
     const adaptiveMinScore = getAdaptiveAlertMinScore(dailyState.count);
     const settings = {
       capital: CONFIG.CAPITAL,
@@ -2356,7 +2346,6 @@ async function scheduledCheck(env) {
       targetMin: 10,
       targetMax: 15,
       adaptiveMinScore,
-      absoluteDailyCap: 15,
       timezone: "Europe/Paris"
     };
 
@@ -2420,7 +2409,7 @@ async function scheduledCheck(env) {
       score: signal.score,
       alertSent: true,
       dailyAlertCount: updatedDailyState.count,
-      dailyAlertTarget: "10-15",
+      dailyAlertTarget: "10-15 (objectif indicatif, sans plafond)",
       adaptiveMinScore,
       message: "Alerte Telegram envoyee automatiquement."
     });
