@@ -3718,6 +3718,199 @@ async function handleSniperStats(env) {
   });
 }
 
+
+async function handleStrategyBacktest(request) {
+  const url = new URL(request.url);
+  const settings = getSettings(url);
+  const spread = numberParam(url, "spread", 0.30, 0, 10);
+  const slippage = numberParam(url, "slippage", 0.05, 0, 10);
+  const maxHoldMinutes = numberParam(url, "maxHoldMinutes", 30, 5, 120);
+  const maxHoldBars = Math.floor(maxHoldMinutes);
+  const cooldownMs = CONFIG.COOLDOWN_MS;
+
+  let m1, m5, m15;
+  try {
+    [m1, m5, m15] = await Promise.all([
+      fetchCandles("M1", 250),
+      fetchCandles("M5", 250),
+      fetchCandles("M15", 250)
+    ]);
+  } catch (error) {
+    return json({
+      ok: false,
+      code: "HISTORICAL_DATA_UNAVAILABLE",
+      error: error.message,
+      execution: "AUCUN ORDRE REEL"
+    }, 503);
+  }
+
+  const dataQuality = {
+    M1: inspectDataQuality(m1, "M1"),
+    M5: inspectDataQuality(m5, "M5"),
+    M15: inspectDataQuality(m15, "M15")
+  };
+  if (!Object.values(dataQuality).every(item => item.ok)) {
+    return json({
+      ok: false,
+      code: "HISTORICAL_DATA_QUALITY",
+      error: "Les données M1/M5/M15 ne passent pas les contrôles de fraîcheur et de continuité.",
+      dataQuality,
+      execution: "AUCUN ORDRE REEL"
+    }, 503);
+  }
+
+  const trades = [];
+  let nextAllowedTime = 0;
+  const firstIndex = 54;
+
+  for (let i = firstIndex; i + maxHoldBars < m1.length; i++) {
+    const signalBar = m1[i];
+    const signalTime = signalBar.time + TIMEFRAMES.M1.ms;
+    if (signalTime < nextAllowedTime) continue;
+
+    const closedM5 = m5.filter(bar =>
+      bar.time + TIMEFRAMES.M5.ms <= signalTime
+    ).slice(-250);
+    const closedM15 = m15.filter(bar =>
+      bar.time + TIMEFRAMES.M15.ms <= signalTime
+    ).slice(-250);
+
+    if (closedM5.length < 55 || closedM15.length < 55) continue;
+
+    const historicalQuote = {
+      bid: signalBar.close - spread / 2,
+      ask: signalBar.close + spread / 2,
+      mid: signalBar.close,
+      spread,
+      timestamp: new Date(signalTime).toISOString(),
+      quoteAgeSeconds: 0,
+      marketState: "historical",
+      source: "BiQuote OHLC mid approximatif"
+    };
+
+    const setup = analyzeSetup(
+      m1.slice(0, i + 1),
+      closedM5,
+      closedM15,
+      settings,
+      historicalQuote
+    );
+
+    if (setup.signal === "ATTENDRE" || setup.alertLevel !== "CONFIRMED") continue;
+
+    const direction = setup.signal === "ACHAT" ? 1 : -1;
+    const entryBarIndex = i + 1;
+    const entryBar = m1[entryBarIndex];
+    const entry = entryBar.open + direction * (spread / 2 + slippage);
+    const stop = entry - direction * settings.stop;
+    const target = entry + direction * settings.target;
+    const lastExitIndex = Math.min(m1.length - 1, i + maxHoldBars);
+    let exit = null;
+    let exitIndex = null;
+    let exitReason = null;
+
+    for (let j = entryBarIndex; j <= lastExitIndex; j++) {
+      const bar = m1[j];
+      const stopTouched = direction === 1 ? bar.low <= stop : bar.high >= stop;
+      const targetTouched = direction === 1 ? bar.high >= target : bar.low <= target;
+
+      if (stopTouched) {
+        const gapThroughStop = direction === 1 ? bar.open < stop : bar.open > stop;
+        exit = (gapThroughStop ? bar.open : stop) - direction * (spread / 2 + slippage);
+        exitIndex = j;
+        exitReason = targetTouched ? "STOP_AND_TARGET_SAME_BAR_STOP_FIRST" : "STOP_LOSS";
+        break;
+      }
+      if (targetTouched) {
+        const favorableGap = direction === 1 ? bar.open > target : bar.open < target;
+        exit = (favorableGap ? bar.open : target) - direction * (spread / 2 + slippage);
+        exitIndex = j;
+        exitReason = "TAKE_PROFIT";
+        break;
+      }
+    }
+
+    if (exit === null) {
+      const finalBar = m1[lastExitIndex];
+      exit = finalBar.close - direction * (spread / 2 + slippage);
+      exitIndex = lastExitIndex;
+      exitReason = "MAX_HOLD_TIME";
+    }
+
+    const netPoints = (exit - entry) * direction;
+    const trade = {
+      direction: direction === 1 ? "BUY" : "SELL",
+      score: setup.score,
+      regime: setup.riskChecks?.marketRegime || "INDETERMINE",
+      signalTime: new Date(signalTime).toISOString(),
+      entryTime: new Date(entryBar.time).toISOString(),
+      exitTime: new Date(m1[exitIndex].time + TIMEFRAMES.M1.ms).toISOString(),
+      entry: Number(entry.toFixed(2)),
+      exit: Number(exit.toFixed(2)),
+      netPoints: Number(netPoints.toFixed(3)),
+      result: netPoints > 0 ? "WIN" : "LOSS",
+      exitReason
+    };
+    trades.push(trade);
+    nextAllowedTime = m1[exitIndex].time + TIMEFRAMES.M1.ms + cooldownMs;
+    i = Math.max(i, exitIndex - 1);
+  }
+
+  const wins = trades.filter(trade => trade.netPoints > 0);
+  const losses = trades.filter(trade => trade.netPoints <= 0);
+  const grossProfit = wins.reduce((sum, trade) => sum + trade.netPoints, 0);
+  const grossLoss = Math.abs(losses.reduce((sum, trade) => sum + trade.netPoints, 0));
+  let equity = 0, peak = 0, maxDrawdown = 0;
+  for (const trade of trades) {
+    equity += trade.netPoints;
+    peak = Math.max(peak, equity);
+    maxDrawdown = Math.max(maxDrawdown, peak - equity);
+  }
+
+  return json({
+    ok: true,
+    instrument: CONFIG.SYMBOL,
+    engine: "TRADEPILOT_CORE_SETUP_M1_M5_M15",
+    signalRules: "Même fonction analyzeSetup que le signal live, évaluée uniquement sur des bougies clôturées.",
+    executionModel: "Signal à la clôture M1, entrée à l'ouverture M1 suivante.",
+    sample: {
+      candles: { M1: m1.length, M5: m5.length, M15: m15.length },
+      from: new Date(m1[0].time).toISOString(),
+      to: new Date(m1[m1.length - 1].time + TIMEFRAMES.M1.ms).toISOString(),
+      trades: trades.length
+    },
+    assumptions: {
+      spread,
+      slippagePerSide: slippage,
+      maxHoldMinutes,
+      cooldownMinutes: cooldownMs / 60000,
+      target: settings.target,
+      stop: settings.stop,
+      minScore: settings.minScore,
+      sameBarStopAndTarget: "Stop prioritaire",
+      commissions: "Non incluses",
+      higherTimeframeConfirmation: "H1/H4/D1 non rejoués historiquement",
+      economicCalendar: "Filtre historique non rejoué",
+      note: "Backtest du moteur technique central uniquement. Les filtres macro, calendrier, anticipation H1/H4/D1 et conditions broker ne sont pas reconstruits historiquement."
+    },
+    statistics: {
+      trades: trades.length,
+      wins: wins.length,
+      losses: losses.length,
+      winRate: trades.length ? Number((wins.length / trades.length * 100).toFixed(2)) : 0,
+      grossProfitPoints: Number(grossProfit.toFixed(3)),
+      grossLossPoints: Number(grossLoss.toFixed(3)),
+      netPoints: Number((grossProfit - grossLoss).toFixed(3)),
+      profitFactor: grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(3)) : (grossProfit > 0 ? null : 0),
+      maxDrawdownPoints: Number(maxDrawdown.toFixed(3))
+    },
+    dataQuality,
+    trades,
+    execution: "AUCUN ORDRE REEL",
+    warning: "Fenêtre limitée aux 250 dernières bougies M1 disponibles. Résultat indicatif, non représentatif d'une validation statistique robuste ni d'une garantie future."
+  });
+}
+
 async function handleAnalyze(request, env) {
   const settings = getSettings(new URL(request.url));
   const signal = await getSignal(settings, env, false);
@@ -4001,6 +4194,10 @@ export default {
 
       if (path === "/calendar-key-check") {
         return await handleCalendarKeyCheck(env);
+      }
+
+      if (path === "/strategy-backtest") {
+        return await handleStrategyBacktest(request);
       }
 
       if (path === "/analyze") {
