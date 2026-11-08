@@ -11,7 +11,6 @@ const CONFIG = {
   STOP: 7,
   EARLY_SCORE: 45,
   MIN_SCORE: 60,
-  MIN_RISK_REWARD: 1.0,
 
   MAX_CANDLES: 250,
   COOLDOWN_MS: 15 * 60 * 1000,
@@ -679,8 +678,9 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   }
 
   const riskReward = settings.stop > 0 ? settings.target / settings.stop : 0;
-  const riskRewardOK = Number.isFinite(riskReward) &&
-    riskReward >= CONFIG.MIN_RISK_REWARD;
+  const breakEvenWinRate = settings.target + settings.stop > 0
+    ? settings.stop / (settings.target + settings.stop)
+    : 1;
   const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
   const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
   const marketRegime = i15.adx.adx === null
@@ -695,8 +695,8 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   // and the deterministic risk checks both pass. No broker order is sent.
   const riskChecks = {
     riskReward: Number(riskReward.toFixed(3)),
-    minimumRiskReward: CONFIG.MIN_RISK_REWARD,
-    riskRewardOK,
+    breakEvenWinRate: Number((breakEvenWinRate * 100).toFixed(2)),
+    // The break-even rate excludes spread, commissions and slippage.
     spreadToATR: spreadToATR === null ? null : Number(spreadToATR.toFixed(3)),
     maxSpreadToATR: 0.20,
     spreadOK,
@@ -704,7 +704,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   };
 
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
-    score >= settings.minScore && riskRewardOK && spreadOK
+    score >= settings.minScore && spreadOK
       ? "CONFIRMED"
       : "EARLY";
 
@@ -877,6 +877,7 @@ function buildAlertMessage(signal) {
     `💵 Capital de référence : ${signal.capital} USD`,
     `⚙️ Levier indicatif : x${signal.leverage}`,
     `⚖️ Ratio gain/risque : ${signal.riskReward}`,
+    `📊 Réussite minimale théorique hors frais : ${signal.riskChecks.breakEvenWinRate}%`,
     `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
     "",
     "📈 Tendances :",
