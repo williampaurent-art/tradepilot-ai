@@ -54,6 +54,20 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 @media(max-width:850px){.exec-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.exec-head{flex-direction:column}.exec-state{align-self:flex-start}}
 @media(max-width:520px){.wrap{padding:12px}.mainnav{margin-right:-12px;padding-right:12px}.executive{padding:16px;border-radius:15px}.exec-grid{gap:7px}.exec-kpi{padding:10px}.exec-kpi strong{font-size:14px}.exec-copy{font-size:12px}.top{margin-bottom:12px}.topright .pill{font-size:9px}}
 
+
+/* Second pass: investor readability and navigation */
+.mainnav{position:sticky;top:0;z-index:20;margin:0 -2px 16px;padding:10px 2px;background:rgba(8,15,26,.88);backdrop-filter:blur(16px);border-bottom:1px solid rgba(145,161,185,.12)}
+.mainnav a:first-child{color:var(--gold);border-color:rgba(243,200,107,.35)}
+.reading-guide{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 20px}
+.guide-item{display:flex;gap:11px;align-items:flex-start;padding:13px 14px;border:1px solid rgba(145,161,185,.14);border-radius:12px;background:rgba(13,23,38,.72)}
+.guide-num{display:grid;place-items:center;flex:0 0 25px;height:25px;border-radius:8px;background:rgba(243,200,107,.12);color:var(--gold);font-size:11px;font-weight:900}
+.guide-item strong{display:block;font-size:11px;margin:1px 0 4px}
+.guide-item span{display:block;color:var(--muted);font-size:10px;line-height:1.5}
+.exec-kpi{min-height:91px}
+.exec-kpi strong{line-height:1.35}
+.section{scroll-margin-top:76px}
+@media(max-width:650px){.reading-guide{grid-template-columns:1fr;gap:7px}.guide-item{padding:10px 12px}.mainnav{top:0}.section{scroll-margin-top:65px}}
+
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
@@ -67,6 +81,11 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
   <div class="exec-kpi"><label>Couverture des données</label><strong id="execCoverage">—</strong><small id="execCoverageMeta">Fraîcheur et continuité</small></div>
  </div>
  <div class="exec-foot"><span class="exec-tag">Macro : <strong id="execMacro">—</strong></span><span class="exec-tag">Configuration : <strong id="execSetup">—</strong></span><span class="exec-tag">Exécution : <strong>Analyse uniquement · aucun ordre réel</strong></span></div>
+</section>
+<section class="reading-guide" aria-label="Comment lire TradePilot">
+ <div class="guide-item"><div class="guide-num">01</div><div><strong>Commencez par la synthèse</strong><span>Elle résume l'état du marché, la direction multi-unités et la fiabilité des données disponibles.</span></div></div>
+ <div class="guide-item"><div class="guide-num">02</div><div><strong>Vérifiez les confirmations</strong><span>Une tendance, une cassure ou un retournement doit être confirmé par la structure et les unités supérieures.</span></div></div>
+ <div class="guide-item"><div class="guide-num">03</div><div><strong>Contrôlez le contexte</strong><span>La volatilité, les annonces économiques et les niveaux d'invalidation aident à repérer les situations à risque.</span></div></div>
 </section>
 <section id="market-view" class="grid hero">
 <article class="card"><div class="eyebrow">Cours de l'or · XAUUSD</div><div id="price" class="price">—</div><div id="priceMeta" class="priceMeta">Attente des données réelles…</div><div class="metrics"><div class="metric"><label>Bid</label><strong id="bid">—</strong></div><div class="metric"><label>Ask</label><strong id="ask">—</strong></div><div class="metric"><label>Spread</label><strong id="spread">—</strong></div></div></article>
@@ -87,7 +106,7 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.9";
+const UI_VERSION="2026.11.08.10";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -152,7 +171,9 @@ function renderInvestorSummary(d){
  const m=d.market||{},frames=d.timeframes||[],valid=frames.filter(x=>x.ok&&x.analysis?.dataQuality?.ok),live= m.open===true;
  const c=d.multiTimeframeConfluence||{},setup=d.setupConfluence||{},macro=d.macroCrossAsset||{},calendar=d.economicCalendar||{};
  const m15=frames.find(x=>x.timeframe==="M15"&&x.ok)?.analysis;
- const bias=live?(c.bias||"MIXTE / NON CONFIRMÉ"):m.open===false?"HISTORIQUE · MARCHÉ FERMÉ":"NON CONFIRMÉ";
+ const directions=valid.map(x=>x.analysis.trend?.direction).filter(x=>x==="HAUSSIER"||x==="BAISSIER");
+ const bullish=directions.filter(x=>x==="HAUSSIER").length,bearish=directions.filter(x=>x==="BAISSIER").length;
+ const bias=live?(bullish>bearish?"HAUSSIER":bearish>bullish?"BAISSIER":"MIXTE / NON CONFIRMÉ"):m.open===false?"HISTORIQUE · MARCHÉ FERMÉ":"NON CONFIRMÉ";
  const regime=live&&m15?.dataQuality?.ok?(m15.regime?.regime||"INDETERMINÉ")+" · "+(m15.regime?.phase||""):"NON ACTUALISÉ";
  const macroLabel=macro.bias==="SOUTIEN_HAUSSIER_OR"?"Soutien potentiel à l'or":macro.bias==="PRESSION_BAISSIERE_OR"?"Pression potentielle sur l'or":macro.bias==="SIGNAUX_MIXTES"?"Signaux mixtes":macro.bias==="NEUTRE"?"Neutre":"Non évalué";
  const setupLabel=live&&setup.leading?setup.leading.replaceAll("_"," "):"Non confirmé";
