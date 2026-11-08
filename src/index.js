@@ -1458,6 +1458,16 @@ async function getSignal(settings, env, recordStatistics = false) {
       result.score=Math.max(0,result.score-3);
       reasons.push("Contexte inter-marchés DXY/taux opposé au scénario (pondération légère).");
     }
+    const latestSurprise=(economicContext.recentSurprises||[])[0];
+    if (latestSurprise && latestSurprise.goldBias==="SOUTIEN_POTENTIEL_OR") {
+      const points=side==="HAUSSIER"?2:-2;
+      result.score=Math.max(0,Math.min(100,result.score+points));
+      reasons.push("Dernière surprise économique : soutien potentiel à l'or, pondération légère.");
+    } else if (latestSurprise && latestSurprise.goldBias==="PRESSION_POTENTIELLE_OR") {
+      const points=side==="BAISSIER"?2:-2;
+      result.score=Math.max(0,Math.min(100,result.score+points));
+      reasons.push("Dernière surprise économique : pression potentielle sur l'or, pondération légère.");
+    }
   }
   result.reasons=[...(result.reasons||[]),...reasons];
   result.score=Math.round(result.score);
@@ -1565,6 +1575,9 @@ function buildAlertMessage(signal) {
     `Anticipation : ${anticipation.phase || "NON EVALUÉE"} — ${anticipation.direction || "INDETERMINE"} (${anticipation.confluenceIndex ?? "—"}/100)`,
     `Retournement : ${reversal.status || "NON EVALUÉ"} — ${reversal.bias || "NEUTRE"}`,
     `Contexte DXY/taux : ${intelligence.macroCrossAsset?.bias || "NON ÉVALUÉ"}`,
+    eventMonitoring.recentSurprises?.length
+      ? `Dernière surprise : ${eventMonitoring.recentSurprises[0].name} — ${eventMonitoring.recentSurprises[0].actual} vs consensus ${eventMonitoring.recentSurprises[0].consensus} — ${eventMonitoring.recentSurprises[0].goldBias}`
+      : "Surprise économique récente : aucune donnée actual/consensus vérifiée.",
     `Unités analysées : ${(intelligence.availableTimeframes || []).join(", ") || "M1/M5/M15"}`,
     eventMonitoring.active
       ? `📰 Fenêtre annonce active : ${eventMonitoring.activeEvent || "publication majeure"} — entrée suspendue pendant la fenêtre de sécurité.`
