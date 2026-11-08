@@ -8,7 +8,7 @@ const CONFIG = {
   LEVERAGE: 500,
 
   TARGET: 2,
-  STOP: 7,
+  STOP: 10,
   EARLY_SCORE: 45,
   MIN_SCORE: 60,
 
@@ -842,13 +842,13 @@ function analyzeMarketRegime(bars, indicator) {
 // ANALYSE DU MARCHE : INDICATEURS + CASSURE/RETEST
 // --------------------------------------------------
 
-function buildStructuralTradePlan(bars, side, entry, atr, minimumTarget) {
+function buildStructuralTradePlan(bars, side, entry, atr, minimumTarget, maximumStop) {
   if (!Array.isArray(bars) || bars.length < 12 ||
       !Number.isFinite(entry) || !Number.isFinite(atr) || atr <= 0) {
     return { confirmed: false, reason: "Historique M1 ou ATR insuffisant." };
   }
-  // Use only the latest closed candles. The current signal candle is closed
-  // before this function is called in live and historical replay.
+  // Fixed-distance XAUUSD plan: configured favorable TP and adverse SL.
+  // Recent swings remain contextual references, not stop placement.
   const window = bars.slice(-12);
   const swingLow = Math.min(...window.map(bar => Number(bar.low)));
   const swingHigh = Math.max(...window.map(bar => Number(bar.high)));
@@ -856,23 +856,13 @@ function buildStructuralTradePlan(bars, side, entry, atr, minimumTarget) {
       swingHigh <= swingLow) {
     return { confirmed: false, reason: "Structure de prix inexploitable." };
   }
-  const buffer = Math.max(atr * 0.20, 0.10);
-  const minStop = Math.max(atr * 0.70, 0.50);
-  const maxStop = Math.max(atr * 3.00, 2.00);
-  const stopPrice = side === "BUY" ? swingLow - buffer : swingHigh + buffer;
-  const stopMove = side === "BUY" ? entry - stopPrice : stopPrice - entry;
-  if (!Number.isFinite(stopMove) || stopMove < minStop || stopMove > maxStop) {
-    return {
-      confirmed: false,
-      reason: "Stop structurel hors de la plage de risque autorisée.",
-      swingLow: Number(swingLow.toFixed(2)),
-      swingHigh: Number(swingHigh.toFixed(2)),
-      stopMove: Number.isFinite(stopMove) ? Number(stopMove.toFixed(2)) : null,
-      minStop: Number(minStop.toFixed(2)),
-      maxStop: Number(maxStop.toFixed(2))
-    };
+  const targetMove = Number(minimumTarget);
+  const stopMove = Number(maximumStop);
+  if (!Number.isFinite(targetMove) || targetMove <= 0 ||
+      !Number.isFinite(stopMove) || stopMove <= 0) {
+    return { confirmed: false, reason: "Distances TP/SL invalides." };
   }
-  const targetMove = Math.max(Number(minimumTarget) || 0, stopMove * 1.5);
+  const stopPrice = side === "BUY" ? entry - stopMove : entry + stopMove;
   const targetPrice = side === "BUY" ? entry + targetMove : entry - targetMove;
   const riskReward = targetMove / stopMove;
   return {
@@ -887,8 +877,8 @@ function buildStructuralTradePlan(bars, side, entry, atr, minimumTarget) {
     invalidationLevel: Number((side === "BUY" ? swingLow : swingHigh).toFixed(2)),
     swingLow: Number(swingLow.toFixed(2)),
     swingHigh: Number(swingHigh.toFixed(2)),
-    buffer: Number(buffer.toFixed(2)),
-    rewardRiskMinimum: 1.5,
+    stopModel: "FIXED_DISTANCE",
+    rewardRiskMinimum: Number(riskReward.toFixed(3)),
     lookbackBars: window.length
   };
 }
@@ -1131,9 +1121,9 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
       : "AUCUN_SIGNAL";
 
   const tradePlan = signal === "ACHAT"
-    ? buildStructuralTradePlan(m1, "BUY", liveQuote.ask, i1.atr, settings.target)
+    ? buildStructuralTradePlan(m1, "BUY", liveQuote.ask, i1.atr, settings.target, settings.stop)
     : signal === "VENTE"
-      ? buildStructuralTradePlan(m1, "SELL", liveQuote.bid, i1.atr, settings.target)
+      ? buildStructuralTradePlan(m1, "SELL", liveQuote.bid, i1.atr, settings.target, settings.stop)
       : { confirmed: false, reason: "Aucun signal directionnel." };
   if (tradePlan.confirmed && regime === "RANGE") {
     const structuralObstacleDistance = signal === "ACHAT"
@@ -1730,9 +1720,9 @@ function buildAlertMessage(signal) {
     "",
     `💰 Prix de référence ${entrySide} à l'alerte : ${signal.entry}`,
     `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
-    `🎯 Objectif structurel : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
-    `🛑 Stop structurel : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
-    `📏 Invalidation structurelle : ${signal.tradePlan?.invalidationLevel ?? "indisponible"}`,
+    `🎯 Take Profit fixe : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
+    `🛑 Stop Loss fixe : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
+    `📏 Repère structurel M1 : ${signal.tradePlan?.invalidationLevel ?? "indisponible"}`,
     `⚠️ Niveaux affichés calculés depuis le prix de l'alerte : recalcule TP/SL depuis le prix réel d'exécution MT5.`,
     `🕒 Âge du cours reçu : ${signal.liveQuote.quoteAgeSeconds}s`,
     `🕓 Horodatage du cours : ${signal.liveQuote.timestamp}`,
