@@ -151,6 +151,24 @@ function backtest(candles, strategy, options = {}) {
     }
   }
 
+  const timeKey = ["timestamp", "time", "datetime", "date"]
+    .find(key => candles.every(candle => candle[key] !== undefined && candle[key] !== null));
+  if (timeKey) {
+    const times = candles.map(candle => {
+      const raw = candle[timeKey];
+      const parsed = typeof raw === "number" ? raw : Date.parse(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    });
+    if (times.some(value => value === null)) {
+      throw new Error("Horodatage historique illisible.");
+    }
+    for (let i = 1; i < times.length; i++) {
+      if (times[i] <= times[i - 1]) {
+        throw new Error("Les bougies doivent être strictement triées par ordre chronologique, sans doublons.");
+      }
+    }
+  }
+
   const closes = candles.map(candle => candle.close);
   const fast = sma(closes, 10);
   const slow = sma(closes, 20);
@@ -355,6 +373,8 @@ function walkForwardCompare(candles, options = {}) {
         returnPercent: result.returnPercent,
         profitFactor: result.profitFactor,
         maxDrawdownPercent: result.maxDrawdownPercent,
+        grossProfit: result.history.filter(trade => trade.pnl > 0).reduce((sum, trade) => sum + trade.pnl, 0),
+        grossLoss: Math.abs(result.history.filter(trade => trade.pnl <= 0).reduce((sum, trade) => sum + trade.pnl, 0)),
         regimeStats: result.regimeStats
       };
     });
@@ -372,6 +392,8 @@ function walkForwardCompare(candles, options = {}) {
     const trades = results.reduce((sum, item) => sum + item.trades, 0);
     const wins = results.reduce((sum, item) => sum + item.wins, 0);
     const netProfit = results.reduce((sum, item) => sum + item.netProfit, 0);
+    const grossProfit = results.reduce((sum, item) => sum + item.grossProfit, 0);
+    const grossLoss = results.reduce((sum, item) => sum + item.grossLoss, 0);
     const totalCapital = capital * results.length;
     const profitableFolds = results.filter(item => item.netProfit > 0).length;
     const activeFolds = results.filter(item => item.trades > 0).length;
@@ -387,6 +409,7 @@ function walkForwardCompare(candles, options = {}) {
       wins,
       losses: trades - wins,
       winRate: trades ? Number((wins / trades * 100).toFixed(2)) : 0,
+      profitFactor: grossLoss > 0 ? Number((grossProfit / grossLoss).toFixed(3)) : (grossProfit > 0 ? null : 0),
       netProfit: Number(netProfit.toFixed(2)),
       averageFoldReturnPercent: results.length
         ? Number((results.reduce((sum, item) => sum + item.returnPercent, 0) / results.length).toFixed(2))
