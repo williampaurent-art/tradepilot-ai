@@ -3396,21 +3396,39 @@ async function handleAssistantChat(request, env) {
     "Contexte de marché structuré (JSON) : " + JSON.stringify(context)
   ].join("\n");
 
-  const prompt = system + "\n\n" + messages.map(item =>
-    (item.role === "assistant" ? "TradePilot: " : "Utilisateur: ") + item.content
-  ).join("\n") + "\n\nTradePilot:";
+  const modelMessages = [
+    { role: "system", content: system },
+    ...messages.map(item => ({
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: item.content
+    }))
+  ];
   try {
     const result = await env.AI.run("@cf/zai-org/glm-4.7-flash", {
-      prompt,
-      max_tokens: 420,
-      temperature: 0.25
+      messages: modelMessages,
+      max_completion_tokens: 520,
+      temperature: 0.25,
+      reasoning_effort: "low",
+      chat_template_kwargs: { enable_thinking: false }
     });
+    const choice = Array.isArray(result?.choices) ? result.choices[0] : null;
+    const messageContent = choice?.message?.content ?? choice?.text ??
+      result?.result?.response ?? result?.result?.output_text;
+    const rawAnswer = result?.response ?? result?.output_text ?? result?.text ??
+      messageContent ?? result?.content ??
+      (typeof result === "string" ? result : "");
     const answer = assistantCleanText(
-      result?.response || result?.output_text || result?.text ||
-      (typeof result === "string" ? result : ""),
+      typeof rawAnswer === "string" ? rawAnswer :
+      Array.isArray(rawAnswer) ? rawAnswer.map(part => part?.text || "").join("\\n") :
+      rawAnswer?.text || rawAnswer?.content || "",
       3200
     ).trim();
-    if (!answer) throw new Error("Réponse IA vide.");
+    if (!answer) {
+      const shape = result && typeof result === "object"
+        ? Object.keys(result).slice(0, 12).join(",")
+        : typeof result;
+      throw new Error("Réponse texte absente du modèle (champs reçus : " + (shape || "aucun") + ").");
+    }
     return json({
       ok: true,
       answer,
