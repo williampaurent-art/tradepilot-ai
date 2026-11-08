@@ -1687,7 +1687,8 @@ async function getEconomicContext(env) {
 
   try {
     const now = new Date();
-    const from = now.toISOString().slice(0, 10);
+    const from = new Date(now.getTime() - 3 * 86400 * 1000)
+      .toISOString().slice(0, 10);
     const to = new Date(now.getTime() + 7 * 86400 * 1000)
       .toISOString().slice(0, 10);
 
@@ -1700,7 +1701,7 @@ async function getEconomicContext(env) {
     url.searchParams.set("country", "US,EU");
     url.searchParams.set("impact", "high");
     url.searchParams.set("tz", "Europe/Paris");
-    url.searchParams.set("limit", "5");
+    url.searchParams.set("limit", "100");
 
     const response = await fetch(url.toString(), {
       headers: {
