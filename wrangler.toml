@@ -29,6 +29,7 @@ run_worker_first = [
   "/health",
   "/status",
   "/dashboard-data",
+  "/assistant-chat",
   "/analyze",
   "/scalp",
   "/gold*",
