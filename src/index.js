@@ -2858,6 +2858,69 @@ function analyzeSetupConfluence(results, marketOpen) {
   };
 }
 
+// GOLD MACRO CROSS-ASSET: DXY live + Treasury 10Y daily.
+async function fetchMacroJson(url) {
+  const r = await fetch(url,{headers:{accept:"application/json"},signal:AbortSignal.timeout(9000)});
+  if(!r.ok) throw new Error("HTTP "+r.status);
+  return r.json();
+}
+function macroRows(p) {
+  if(Array.isArray(p)) return p;
+  for(const k of ["items","symbols","results","data"]) if(Array.isArray(p?.[k])) return p[k];
+  return [];
+}
+async function findDxySymbol() {
+  const u=new URL("https://biquote.io/api/symbols/search");u.searchParams.set("q","US Dollar Index");u.searchParams.set("limit","20");
+  const rows=macroRows(await fetchMacroJson(u.toString()));
+  const found=rows.map(x=>({name:String(x.name||x.symbol||""),description:String(x.description||""),type:String(x.type||"")}))
+    .filter(x=>x.name&&/(?:^DXY$|US Dollar Index|Dollar Index)/i.test(x.name+" "+x.description));
+  found.sort((a,b)=>Number(/^DXY$/i.test(b.name))-Number(/^DXY$/i.test(a.name)));
+  return found[0]||null;
+}
+function xmlField(entry,field) {
+  const re=new RegExp("<(?:[A-Za-z0-9_]+:)?" + field + "(?:\\s[^>]*)?>([\\s\\S]*?)</(?:[A-Za-z0-9_]+:)?" + field + ">","i");
+  const m=entry.match(re);return m?m[1].replace(/<[^>]*>/g,"").trim():"";
+}
+async function fetchTreasury10Y() {
+  const month=new Date().toISOString().slice(0,7).replace("-","");
+  const u=new URL("https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml");
+  u.searchParams.set("data","daily_treasury_yield_curve");u.searchParams.set("field_tdr_date_value_month",month);
+  const r=await fetch(u.toString(),{headers:{accept:"application/xml,text/xml"},signal:AbortSignal.timeout(10000)});
+  if(!r.ok) throw new Error("Treasury HTTP "+r.status);
+  const xml=await r.text(),entries=xml.match(/<entry\\b[\\s\\S]*?<\\/entry>/gi)||[];
+  const rows=entries.map(e=>({date:xmlField(e,"NEW_DATE").slice(0,10),value:Number(xmlField(e,"BC_10YEAR"))}))
+    .filter(x=>/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date)&&Number.isFinite(x.value)).sort((a,b)=>b.date.localeCompare(a.date));
+  if(!rows.length) throw new Error("Aucune observation 10 ans exploitable.");
+  const a=rows[0],p=rows[1]||null,ageDays=Math.floor((Date.now()-Date.parse(a.date+"T23:59:59Z"))/86400000);
+  return {value:a.value,date:a.date,changeBps:p?Number(((a.value-p.value)*100).toFixed(1)):null,ageDays,fresh:ageDays>=0&&ageDays<=4,frequency:"QUOTIDIEN",source:"U.S. Treasury"};
+}
+async function fetchGoldMacroContext() {
+  const errors=[];let dxy=null,treasury10y=null;
+  try {
+    const sym=await findDxySymbol();if(!sym)throw new Error("Symbole DXY non identifié dans le catalogue.");
+    const u=new URL("https://biquote.io/api/latest");u.searchParams.append("symbols",sym.name);
+    const payload=await fetchMacroJson(u.toString()),rows=macroRows(payload);
+    const q=rows.find(x=>String(x.symbol||x.name||"").toUpperCase()===sym.name.toUpperCase())||(Array.isArray(payload)?payload[0]:payload?.[sym.name]);
+    if(!q)throw new Error("Cotation DXY absente.");
+    const age=Number(q.quoteAgeSeconds),price=Number(q.mid),change=Number(q.dayDiffPercent);
+    const live=q.marketState==="open"&&q.stale!==true&&Number.isFinite(age)&&age>=0&&age<=300&&Number.isFinite(price)&&price>0;
+    dxy={symbol:sym.name,price:Number.isFinite(price)&&price>0?price:null,dayChangePercent:Number.isFinite(change)?change:null,quoteAgeSeconds:Number.isFinite(age)?age:null,marketState:q.marketState||"UNKNOWN",live,timestamp:q.timestamp||null};
+    if(!live)errors.push("DXY non live ou cotation trop ancienne.");
+  }catch(e){errors.push("DXY : "+e.message);}
+  try{treasury10y=await fetchTreasury10Y();if(!treasury10y.fresh)errors.push("Taux 10 ans : observation trop ancienne.");}
+  catch(e){errors.push("Taux 10 ans : "+e.message);}
+  const dd=dxy?.live&&dxy.dayChangePercent!==null?(dxy.dayChangePercent>0.05?"HAUSSE":dxy.dayChangePercent< -0.05?"BAISSE":"STABLE"):"INCONNU";
+  const yd=treasury10y?.fresh&&treasury10y.changeBps!==null?(treasury10y.changeBps>1?"HAUSSE":treasury10y.changeBps< -1?"BAISSE":"STABLE"):"INCONNU";
+  let bias="NON_EVALUE",explanation="Contexte macro incomplet : aucune conclusion directionnelle fiable.";
+  if(dd!=="INCONNU"&&yd!=="INCONNU"){
+    if(dd==="HAUSSE"&&yd==="HAUSSE"){bias="PRESSION_BAISSIERE_OR";explanation="Dollar et taux nominaux en hausse : contexte généralement défavorable à l'or, pas un signal de vente.";}
+    else if(dd==="BAISSE"&&yd==="BAISSE"){bias="SOUTIEN_HAUSSIER_OR";explanation="Dollar et taux nominaux en baisse : contexte généralement favorable à l'or, pas un signal d'achat.";}
+    else if(dd==="STABLE"&&yd==="STABLE"){bias="NEUTRE";explanation="Dollar et taux relativement stables sur leurs fenêtres respectives.";}
+    else{bias="SIGNAUX_MIXTES";explanation="Dollar et taux divergent : pas de biais macro directionnel clair.";}
+  }
+  return {status:dxy?.live&&treasury10y?.fresh?"DONNEES_DISPONIBLES":"COUVERTURE_PARTIELLE",bias,explanation,dxy,treasury10y,dxyDirection:dd,yieldDirection:yd,errors,generatedAt:new Date().toISOString(),note:"DXY live si frais ; taux 10 ans Treasury publié quotidiennement, jamais intraday. Contexte uniquement, aucun ordre."};
+}
+
 async function handleDashboardData(env) {
   const timeframes = Object.keys(TIMEFRAMES);
   const results = await Promise.all(timeframes.map(async timeframe => {
@@ -2880,6 +2943,9 @@ async function handleDashboardData(env) {
   } catch (error) {
     calendar = { configured: false, status: "UNAVAILABLE", message: error.message, events: [] };
   }
+  let macroCrossAsset;
+  try { macroCrossAsset = await fetchGoldMacroContext(); }
+  catch (error) { macroCrossAsset = {status:"INDISPONIBLE",bias:"NON_EVALUE",explanation:"Analyse macro indisponible.",errors:[error.message]}; }
   const available = results.filter(x => x.ok);
   const m1 = available.find(x => x.timeframe === "M1")?.analysis;
   const marketOpen = quote ? true :
@@ -2909,6 +2975,7 @@ async function handleDashboardData(env) {
     setupConfluence,
     reversalMultiTimeframe,
     economicCalendar: calendar,
+    macroCrossAsset,
     execution: "AUCUN ORDRE REEL",
     note: "Analyse technique descriptive. Un score technique n'est pas une probabilité."
   });
