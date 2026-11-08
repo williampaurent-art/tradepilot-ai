@@ -843,7 +843,8 @@ async function updateSniperStatistics(env, signal, m1) {
     if (sample.outcome !== "PENDING") continue;
     const eligible = m1.filter(bar =>
       bar.time >= sample.firstEligibleBarTime &&
-      bar.time <= now
+      bar.time + TIMEFRAMES.M1.ms <= sample.expiresAt &&
+      bar.time + TIMEFRAMES.M1.ms <= now
     );
     let resolved = false;
 
