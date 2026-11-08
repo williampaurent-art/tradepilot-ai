@@ -800,6 +800,24 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     stopPrice = entry + settings.stop;
   }
 
+  // En range, aucune entrée immédiate sans rejet de borne et espace suffisant.
+  if (regime === "RANGE") {
+    const validRangeBuy = rangeLocation === "BORNE_BASSE" && bullishRejection && buyRoomOK;
+    const validRangeSell = rangeLocation === "BORNE_HAUTE" && bearishRejection && sellRoomOK;
+    if ((signal === "ACHAT" && !validRangeBuy) ||
+        (signal === "VENTE" && !validRangeSell)) {
+      signal = "ATTENDRE";
+      alertLevel = "NONE";
+      reasons = [
+        "Range détecté : aucune entrée immédiate sans rejet confirmé de la borne et espace suffisant jusqu'à l'objectif.",
+        ...reasons
+      ];
+      targetPrice = null;
+      stopPrice = null;
+      entry = liveQuote.mid;
+    }
+  }
+
   const riskReward = settings.stop > 0 ? settings.target / settings.stop : 0;
   const breakEvenWinRate = settings.target + settings.stop > 0
     ? settings.stop / (settings.target + settings.stop)
