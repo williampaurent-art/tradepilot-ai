@@ -3939,7 +3939,8 @@ async function handleStrategyBacktest(request, env) {
       spread: 0,
       rewardRisk: 0
     },
-    confirmedCandidates: 0
+    confirmedCandidates: 0,
+    rejectedDetails: []
   };
   let nextAllowedTime = 0;
   const firstIndex = 54;
@@ -4065,6 +4066,21 @@ async function handleStrategyBacktest(request, env) {
     if (!planOK) diagnostics.rejected.structuralPlan++;
     if (!scoreOK) diagnostics.rejected.score++;
     if (!spreadOK) diagnostics.rejected.spread++;
+    if (diagnostics.rejectedDetails.length < 25) {
+      diagnostics.rejectedDetails.push({
+        time: new Date(signalTime).toISOString(),
+        direction: setup.signal,
+        score: setup.score,
+        minScore: settings.minScore,
+        spread: setup.riskChecks?.spread,
+        spreadToAtr: setup.riskChecks?.spreadToAtr,
+        spreadOK,
+        entryTrigger: setup.entryQuality,
+        tradePlan: setup.tradePlan,
+        rewardRisk: setup.riskReward,
+        advancedReasons
+      });
+    }
     setup.alertLevel = scoreOK && spreadOK && triggerOK && planOK
       ? "CONFIRMED" : "EARLY";
     if (setup.alertLevel !== "CONFIRMED") continue;
