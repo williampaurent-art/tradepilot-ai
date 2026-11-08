@@ -3400,7 +3400,7 @@ async function handleAssistantChat(request, env) {
     (item.role === "assistant" ? "TradePilot: " : "Utilisateur: ") + item.content
   ).join("\n") + "\n\nTradePilot:";
   try {
-    const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+    const result = await env.AI.run("@cf/zai-org/glm-4.7-flash", {
       prompt,
       max_tokens: 420,
       temperature: 0.25
@@ -3414,7 +3414,7 @@ async function handleAssistantChat(request, env) {
     return json({
       ok: true,
       answer,
-      model: "@cf/meta/llama-3.1-8b-instruct",
+      model: "@cf/zai-org/glm-4.7-flash",
       generatedAt: new Date().toISOString(),
       contextAt: context.generatedAt,
       execution: "AUCUN ORDRE REEL"
@@ -3426,7 +3426,7 @@ async function handleAssistantChat(request, env) {
       ok: false,
       code: "AI_MODEL_ERROR",
       error: "Workers AI n'a pas répondu correctement. Diagnostic : " + (diagnostic || "erreur inconnue"),
-      model: "@cf/meta/llama-3.1-8b-instruct"
+      model: "@cf/zai-org/glm-4.7-flash"
     }, 502);
   }
 }
