@@ -3734,7 +3734,24 @@ async function handleStrategyBacktestHistory(env){
  const sessions=Array.isArray(state?.sessions)?state.sessions:[];
  return json({ok:true,storageConfigured:Boolean(env.TP_STATE),sessions,count:sessions.length,note:'Historique des replays manuels, 20 sessions maximum.'});
 }
-async function handleStrategyBacktest(request) {
+function historicalGapReport(bars, timeframe) {
+  const tf = TIMEFRAMES[timeframe];
+  if (!tf || !Array.isArray(bars) || bars.length < 2) return { count: 0, maxGapMs: 0, gaps: [], recentWindowContiguous: false };
+  const gaps = [];
+  for (let i = 1; i < bars.length; i++) { const delta = bars[i].time - bars[i - 1].time; if (delta > tf.ms + CONFIG.GAP_TOLERANCE_MS) gaps.push({ from: new Date(bars[i - 1].time).toISOString(), to: new Date(bars[i].time).toISOString(), gapMs: delta, missingIntervals: Math.max(1, Math.round(delta / tf.ms) - 1) }); }
+  return { count: gaps.length, maxGapMs: gaps.reduce((max, gap) => Math.max(max, gap.gapMs), 0), gaps: gaps.slice(-10), recentWindowContiguous: !hasRecentCandleGap(bars, timeframe, 55) };
+}
+function hasRecentCandleGap(bars, timeframe, lookback = 55) {
+  const tf = TIMEFRAMES[timeframe]; if (!tf || !Array.isArray(bars) || bars.length < lookback) return true;
+  const recent = bars.slice(-lookback); for (let i = 1; i < recent.length; i++) if (recent[i].time - recent[i - 1].time > tf.ms + CONFIG.GAP_TOLERANCE_MS) return true;
+  return false;
+}
+function hasCandleGapInRange(bars, timeframe, startIndex, endIndex) {
+  const tf = TIMEFRAMES[timeframe]; if (!tf || !Array.isArray(bars)) return true;
+  for (let i = Math.max(1, startIndex); i <= Math.min(endIndex, bars.length - 1); i++) if (bars[i].time - bars[i - 1].time > tf.ms + CONFIG.GAP_TOLERANCE_MS) return true;
+  return false;
+}
+async function handleStrategyBacktest(request, env) {
   const url = new URL(request.url);
   const settings = getSettings(url);
   const spread = numberParam(url, "spread", 0.30, 0, 10);
@@ -3763,9 +3780,9 @@ async function handleStrategyBacktest(request) {
   }
 
   const dataQuality = {
-    M1: inspectDataQuality(m1, "M1"),
-    M5: inspectDataQuality(m5, "M5"),
-    M15: inspectDataQuality(m15, "M15")
+    M1: { ...inspectDataQuality(m1, "M1"), historical: historicalGapReport(m1, "M1") },
+    M5: { ...inspectDataQuality(m5, "M5"), historical: historicalGapReport(m5, "M5") },
+    M15: { ...inspectDataQuality(m15, "M15"), historical: historicalGapReport(m15, "M15") }
   };
   const validHistoricalSeries = bars =>
     Array.isArray(bars) && bars.length >= 55 &&
@@ -3794,12 +3811,16 @@ async function handleStrategyBacktest(request) {
   );
 
   const trades = [];
+  let gapSkippedSignals = 0;
+  let gapSkippedHoldingWindows = 0;
+  let higherTimeframesExcludedForGaps = 0;
   let nextAllowedTime = 0;
   const firstIndex = 54;
 
   for (let i = firstIndex; i + maxHoldBars < m1.length; i++) {
     const signalBar = m1[i];
     const signalTime = signalBar.time + TIMEFRAMES.M1.ms;
+    if (hasRecentCandleGap(m1.slice(0, i + 1), "M1", 55)) { gapSkippedSignals++; continue; }
     if (signalTime < nextAllowedTime) continue;
 
     const closedM5 = m5.filter(bar =>
@@ -3810,6 +3831,7 @@ async function handleStrategyBacktest(request) {
     ).slice(-250);
 
     if (closedM5.length < 55 || closedM15.length < 55) continue;
+    if (hasRecentCandleGap(closedM5, "M5", 55) || hasRecentCandleGap(closedM15, "M15", 55)) { gapSkippedSignals++; continue; }
 
     const historicalQuote = {
       bid: signalBar.close - spread / 2,
@@ -3843,6 +3865,7 @@ async function handleStrategyBacktest(request) {
       const closed = validHistoricalSeries(bars)
         ? bars.filter(bar => bar.time + TIMEFRAMES[tf].ms <= signalTime).slice(-250)
         : [];
+      if (closed.length >= 55 && hasRecentCandleGap(closed, tf, 55)) { higherTimeframesExcludedForGaps++; continue; }
       if (closed.length >= 55) {
         frameResults.push({
           timeframe: tf,
@@ -3917,6 +3940,7 @@ async function handleStrategyBacktest(request) {
     const stop = entry - direction * settings.stop;
     const target = entry + direction * settings.target;
     const lastExitIndex = Math.min(m1.length - 1, i + maxHoldBars);
+    if (hasCandleGapInRange(m1, "M1", entryBarIndex, lastExitIndex)) { gapSkippedHoldingWindows++; continue; }
     let exit = null;
     let exitIndex = null;
     let exitReason = null;
@@ -4008,6 +4032,12 @@ async function handleStrategyBacktest(request) {
     comparisons: { byDirection, byRegime },
     history: { saved: historySaved, retainedSessions: Math.min(20, sessions.length), sessionId: session.id },
     dataQuality,
+    gapDiagnostics: {
+      skippedSignalsForRecentGaps: gapSkippedSignals,
+      skippedHoldingWindowsForGaps: gapSkippedHoldingWindows,
+      higherTimeframesExcludedForGaps,
+      policy: "Les 55 dernières bougies utilisées pour une décision doivent être continues et aucun trade ne traverse un trou M1."
+    },
     trades,
     execution: "AUCUN ORDRE REEL",
     warning: "Fenêtre limitée aux 250 dernières bougies M1 disponibles. Les confirmations H1/H4/D1 ne sont prises en compte que si leur historique est disponible. Le contexte macro et le calendrier historique restent exclus. Résultat indicatif, non représentatif d'une validation statistique robuste ni d'une garantie future."
