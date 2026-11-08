@@ -2887,9 +2887,9 @@ async function fetchTreasury10Y() {
   u.searchParams.set("data","daily_treasury_yield_curve");u.searchParams.set("field_tdr_date_value_month",month);
   const r=await fetch(u.toString(),{headers:{accept:"application/xml,text/xml"},signal:AbortSignal.timeout(10000)});
   if(!r.ok) throw new Error("Treasury HTTP "+r.status);
-  const xml=await r.text(),entries=xml.match(/<entry\\b[\\s\\S]*?<\\/entry>/gi)||[];
+  const xml=await r.text(),entries=xml.match(/<entry\b[\s\S]*?<\/entry>/gi)||[];
   const rows=entries.map(e=>({date:xmlField(e,"NEW_DATE").slice(0,10),value:Number(xmlField(e,"BC_10YEAR"))}))
-    .filter(x=>/^\\d{4}-\\d{2}-\\d{2}$/.test(x.date)&&Number.isFinite(x.value)).sort((a,b)=>b.date.localeCompare(a.date));
+    .filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&Number.isFinite(x.value)).sort((a,b)=>b.date.localeCompare(a.date));
   if(!rows.length) throw new Error("Aucune observation 10 ans exploitable.");
   const a=rows[0],p=rows[1]||null,ageDays=Math.floor((Date.now()-Date.parse(a.date+"T23:59:59Z"))/86400000);
   return {value:a.value,date:a.date,changeBps:p?Number(((a.value-p.value)*100).toFixed(1)):null,ageDays,fresh:ageDays>=0&&ageDays<=4,frequency:"QUOTIDIEN",source:"U.S. Treasury"};
