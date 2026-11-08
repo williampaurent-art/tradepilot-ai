@@ -153,7 +153,7 @@ const liveRev=snapshot?.market?.open===true&&a.dataQuality?.ok;
 put("reversalStatus",liveRev?(rev.status||"INDISPONIBLE"):"HISTORIQUE — NON LIVE");
 put("reversalDirection",liveRev?(rev.direction||"INDETERMINE"):"—");
 put("reversalStage",liveRev?(rev.stage||"NON EVALUE"):"—");
-put("reversalScore",liveRev?(rev.direction==="HAUSSIER"?rev.bullishScore:rev.direction==="BAISSIER"?rev.bearishScore:Math.max(rev.bullishScore||0,rev.bearishScore||0))+"/ indicateurs":"—");
+put("reversalScore",liveRev?(rev.direction==="HAUSSIER"?rev.bullishScore:rev.direction==="BAISSIER"?rev.bearishScore:Math.max(rev.bullishScore||0,rev.bearishScore||0))+" points":"—");
 put("reversalConfirmations",liveRev?((rev.candleConfirmation?"Rejet ✓":"Rejet —")+" · "+(rev.structureConfirmation?"CHOCH ✓":"CHOCH —")+" · "+(rev.momentumConfirmation?"Momentum ✓":"Momentum —")):"—");
 put("reversalCandle",liveRev?(rev.candleConfirmation?"OUI":"NON"):"—");
 put("reversalStructure",liveRev?(rev.structureConfirmation?"OUI":"NON"):"—");
