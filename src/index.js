@@ -11,6 +11,7 @@ const CONFIG = {
   STOP: 7,
   EARLY_SCORE: 45,
   MIN_SCORE: 60,
+  MIN_RISK_REWARD: 1.0,
 
   MAX_CANDLES: 250,
   COOLDOWN_MS: 15 * 60 * 1000,
@@ -677,8 +678,35 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     stopPrice = entry + settings.stop;
   }
 
+  const riskReward = settings.stop > 0 ? settings.target / settings.stop : 0;
+  const riskRewardOK = Number.isFinite(riskReward) &&
+    riskReward >= CONFIG.MIN_RISK_REWARD;
+  const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
+  const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
+  const marketRegime = i15.adx.adx === null
+    ? "INDETERMINE"
+    : i15.adx.adx >= 25
+      ? "TENDANCE"
+      : i15.adx.adx <= 18
+        ? "RANGE"
+        : "TRANSITION";
+
+  // A signal can only be labelled CONFIRMED when the technical score
+  // and the deterministic risk checks both pass. No broker order is sent.
+  const riskChecks = {
+    riskReward: Number(riskReward.toFixed(3)),
+    minimumRiskReward: CONFIG.MIN_RISK_REWARD,
+    riskRewardOK,
+    spreadToATR: spreadToATR === null ? null : Number(spreadToATR.toFixed(3)),
+    maxSpreadToATR: 0.20,
+    spreadOK,
+    marketRegime
+  };
+
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
-    score >= settings.minScore ? "CONFIRMED" : "EARLY";
+    score >= settings.minScore && riskRewardOK && spreadOK
+      ? "CONFIRMED"
+      : "EARLY";
 
   const round = value => Number(value.toFixed(2));
   return {
@@ -688,6 +716,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     stopPrice: stopPrice === null ? null : round(stopPrice),
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number((settings.target / settings.stop).toFixed(3)),
+    riskChecks,
     liveQuote: {
       bid: Number(liveQuote.bid.toFixed(2)),
       ask: Number(liveQuote.ask.toFixed(2)),
@@ -724,7 +753,8 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
       support: levels.support === null ? null : round(levels.support),
       resistance: levels.resistance === null ? null : round(levels.resistance),
       breakoutRetest: { brokeUp, brokeDown, retestUp, retestDown },
-      volatility
+      volatility,
+      marketRegime
     },
     reasons,
     generatedAt: new Date().toISOString(),
@@ -846,6 +876,8 @@ function buildAlertMessage(signal) {
     `📦 Taille indicative : ${signal.lotSize} lot`,
     `💵 Capital de référence : ${signal.capital} USD`,
     `⚙️ Levier indicatif : x${signal.leverage}`,
+    `⚖️ Ratio gain/risque : 1:${signal.riskReward}`,
+    `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
     "",
     "📈 Tendances :",
     `M1 : ${signal.market.trendM1}`,
@@ -1003,7 +1035,8 @@ async function getEconomicContext(env) {
     // Requête minimale conforme à l'exemple officiel de l'API.
     // On réintroduira les filtres de dates/fuseau après validation.
     const url = new URL(ECONOMIC_CALENDAR.URL);
-    url.searchParams.set("country", "US,GB");
+    // Gold is primarily USD-sensitive; include Euro-area releases as well.
+    url.searchParams.set("country", "US,EU");
     url.searchParams.set("impact", "high");
     url.searchParams.set("limit", "5");
 
