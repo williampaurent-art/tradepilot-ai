@@ -3884,11 +3884,6 @@ async function handleStrategyBacktest(request, env) {
     }, 503);
   }
 
-  const dataQuality = {
-    M1: { ...inspectDataQuality(m1, "M1"), historical: historicalGapReport(m1, "M1") },
-    M5: { ...inspectDataQuality(m5, "M5"), historical: historicalGapReport(m5, "M5") },
-    M15: { ...inspectDataQuality(m15, "M15"), historical: historicalGapReport(m15, "M15") }
-  };
   const validHistoricalSeries = bars =>
     Array.isArray(bars) && bars.length >= 55 &&
     bars.every((bar, index) =>
@@ -3898,6 +3893,42 @@ async function handleStrategyBacktest(request, env) {
       bar.low <= Math.min(bar.open, bar.close) &&
       (index === 0 || bar.time > bars[index - 1].time)
     );
+
+  // A historical replay must not be marked stale merely because its last
+  // candle is old relative to the current wall clock. Keep replay integrity
+  // and live-feed freshness as separate diagnostics.
+  const replayFrames = { M1: m1, M5: m5, M15: m15 };
+  const dataQuality = Object.fromEntries(
+    Object.entries(replayFrames).map(([timeframe, bars]) => {
+      const historical = historicalGapReport(bars, timeframe);
+      const seriesValid = validHistoricalSeries(bars);
+      return [timeframe, {
+        ok: seriesValid && historical.recentWindowContiguous,
+        seriesValid,
+        fresh: null,
+        freshnessApplicable: false,
+        ageMs: null,
+        maxAgeMs: null,
+        gapCount: historical.count,
+        gaps: historical.gaps,
+        historical
+      }];
+    })
+  );
+  const liveFreshness = Object.fromEntries(
+    Object.entries(replayFrames).map(([timeframe, bars]) => {
+      const tf = TIMEFRAMES[timeframe];
+      const last = bars?.[bars.length - 1];
+      const ageMs = last && tf ? Date.now() - (last.time + tf.ms) : null;
+      const maxAgeMs = tf ? tf.ms * 2 + CONFIG.FRESHNESS_GRACE_MS : null;
+      return [timeframe, {
+        fresh: Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= maxAgeMs,
+        ageMs,
+        maxAgeMs,
+        note: "Information de fraîcheur du flux actuel uniquement ; elle ne dégrade pas la validité du replay historique."
+      }];
+    })
+  );
   if (![m1, m5, m15].every(validHistoricalSeries)) {
     return json({
       ok: false,
@@ -4159,7 +4190,7 @@ async function handleStrategyBacktest(request, env) {
   const statistics = summarizeBacktestGroup(trades);
   const byDirection = groupBacktestTrades(trades, 'direction', ['BUY', 'SELL']);
   const byRegime = groupBacktestTrades(trades, 'regime');
-  const session = { id: 'BT_' + Date.now(), createdAt: new Date().toISOString(), instrument: CONFIG.SYMBOL, period: { from: new Date(m1[0].time).toISOString(), to: new Date(m1[m1.length-1].time + TIMEFRAMES.M1.ms).toISOString() }, statistics, byDirection, byRegime, assumptions: { spread, slippagePerSide: slippage, maxHoldMinutes, minScore: settings.minScore }, sampleTrades: trades.slice(-10) };
+  const session = { id: 'BT_' + Date.now(), createdAt: new Date().toISOString(), instrument: CONFIG.SYMBOL, period: { from: new Date(m1[0].time).toISOString(), to: new Date(m1[m1.length-1].time + TIMEFRAMES.M1.ms).toISOString() }, statistics, byDirection, byRegime, assumptions: { spread, slippagePerSide: slippage, maxHoldMinutes, minScore: settings.minScore, targetMove: settings.target, stopMove: settings.stop, riskReward: Number((settings.target / settings.stop).toFixed(3)), stopModel: "FIXED_DISTANCE" }, sampleTrades: trades.slice(-10) };
   let previous; try { const raw=await readKV(env,'strategy_backtest_history_v1'); previous=raw?JSON.parse(raw):null; } catch { previous=null; }
   const sessions=Array.isArray(previous?.sessions)?previous.sessions:[]; sessions.push(session); sessions.sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt)));
   const historySaved=await writeKV(env,'strategy_backtest_history_v1',{version:1,updatedAt:Date.now(),sessions:sessions.slice(-20)},90*86400);
@@ -4187,8 +4218,12 @@ async function handleStrategyBacktest(request, env) {
       slippagePerSide: slippage,
       maxHoldMinutes,
       cooldownMinutes: cooldownMs / 60000,
-      target: "Structurel : au moins 1,5R, minimum configurable conservé",
-      stop: "Structurel : swing M1 12 bougies + buffer ATR, plage de risque bornée",
+      target: `Fixe : +${settings.target}$ depuis le prix d'entrée`,
+      stop: `Fixe : -${settings.stop}$ depuis le prix d'entrée`,
+      targetMove: settings.target,
+      stopMove: settings.stop,
+      riskReward: Number((settings.target / settings.stop).toFixed(3)),
+      stopModel: "FIXED_DISTANCE",
       minScore: settings.minScore,
       sameBarStopAndTarget: "Stop prioritaire",
       commissions: "Non incluses",
@@ -4201,6 +4236,7 @@ async function handleStrategyBacktest(request, env) {
     comparisons: { byDirection, byRegime },
     history: { saved: historySaved, retainedSessions: Math.min(20, sessions.length), sessionId: session.id },
     dataQuality,
+    liveFreshness,
     gapDiagnostics: {
       skippedSignalsForRecentGaps: gapSkippedSignals,
       skippedHoldingWindowsForGaps: gapSkippedHoldingWindows,
