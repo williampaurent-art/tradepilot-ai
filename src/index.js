@@ -1291,6 +1291,94 @@ function wilsonInterval(wins, total, z = 1.96) {
   };
 }
 
+function getSniperLearningAdjustment(samples, direction, regime) {
+  const bucket = samples.filter(sample =>
+    sample.direction === direction &&
+    sample.regime === regime &&
+    ["WIN", "LOSS", "TIMEOUT"].includes(sample.outcome)
+  );
+  const wins = bucket.filter(sample => sample.outcome === "WIN").length;
+  const resolved = bucket.length;
+  const interval = wilsonInterval(wins, resolved);
+  const lower = interval.lower;
+  const upper = interval.upper;
+  // Calibration volontairement conservatrice : aucune correction avant
+  // 30 résultats et aucune décision si l'intervalle de confiance recoupe 60 %.
+  let adjustment = 0;
+  let reason = "Échantillon insuffisant ou résultats encore incertains : moteur inchangé.";
+  if (resolved >= 30 && upper !== null && upper < SNIPER_STATS.TARGET_WIN_RATE) {
+    adjustment = -4;
+    reason = "Sous-performance statistiquement étayée dans cette direction et ce régime : pénalité de prudence de 4 points.";
+  } else if (resolved >= 30 && lower !== null && lower > SNIPER_STATS.TARGET_WIN_RATE) {
+    adjustment = 2;
+    reason = "Surperformance historiquement étayée : bonus limité de 2 points.";
+  }
+  return {
+    adjustment,
+    reason,
+    direction,
+    regime,
+    resolved,
+    wins,
+    winRate: resolved ? Number((wins / resolved * 100).toFixed(2)) : null,
+    confidence95: {
+      lower: lower === null ? null : Number((lower * 100).toFixed(2)),
+      upper: upper === null ? null : Number((upper * 100).toFixed(2))
+    },
+    minimumResolved: 30,
+    referenceWinRate: SNIPER_STATS.TARGET_WIN_RATE * 100
+  };
+}
+
+function buildSniperLearningInsights(samples) {
+  const resolved = samples.filter(sample => ["WIN", "LOSS", "TIMEOUT"].includes(sample.outcome));
+  const scoreBands = [
+    { label: "50-59", min: 50, max: 59 },
+    { label: "60-69", min: 60, max: 69 },
+    { label: "70-79", min: 70, max: 79 },
+    { label: "80-100", min: 80, max: 100 }
+  ];
+  const byScore = [];
+  for (const direction of ["BUY", "SELL"]) {
+    for (const band of scoreBands) {
+      const group = resolved.filter(sample =>
+        sample.direction === direction &&
+        Number(sample.score) >= band.min &&
+        Number(sample.score) <= band.max
+      );
+      const wins = group.filter(sample => sample.outcome === "WIN").length;
+      byScore.push({
+        direction,
+        scoreBand: band.label,
+        samples: group.length,
+        wins,
+        losses: group.filter(sample => sample.outcome === "LOSS").length,
+        timeouts: group.filter(sample => sample.outcome === "TIMEOUT").length,
+        winRate: group.length ? Number((wins / group.length * 100).toFixed(2)) : null
+      });
+    }
+  }
+  const mature = resolved.length >= 30;
+  return {
+    mode: "APPRENTISSAGE_CONTROLE",
+    status: mature ? "DONNEES_EN_COURS_D_ANALYSE" : "COLLECTE_EN_COURS",
+    totalResolved: resolved.length,
+    pending: samples.filter(sample => sample.outcome === "PENDING").length,
+    byScore,
+    corrections: {
+      automaticAdjustmentEnabled: true,
+      policy: "Ajustement du score limité à -4/+2 points, uniquement par direction/régime avec au moins 30 résultats et intervalle de Wilson à 95 % entièrement d'un côté du seuil historique de 60 %.",
+      strategyRulesAutoRewritten: false,
+      reason: "Les règles fondamentales ne sont jamais réécrites automatiquement. Les corrections de score restent bornées, traçables et fondées sur les résultats observés."
+    },
+    limitations: [
+      "Les résultats sont estimés à partir des bougies OHLC M1, pas des exécutions MT5 réelles.",
+      "Les frais, le slippage réel et les écarts bid/ask historiques ne sont pas entièrement connus.",
+      "Un résultat historique ne garantit pas le résultat du prochain signal."
+    ]
+  };
+}
+
 function getSniperBucketStats(samples, direction, regime) {
   const bucket = samples.filter(sample =>
     sample.direction === direction &&
@@ -1325,7 +1413,7 @@ function getSniperBucketStats(samples, direction, regime) {
   };
 }
 
-async function updateSniperStatistics(env, signal, m1) {
+async function updateSniperStatistics(env, signal, m1, settings = {}) {
   const raw = await readKV(env, SNIPER_STATS.KEY);
   let state;
   try {
@@ -1420,6 +1508,19 @@ async function updateSniperStatistics(env, signal, m1) {
         direction,
         regime,
         score: signal.score,
+        features: {
+          trigger: signal.entryQuality?.trigger || null,
+          trendM1: signal.market?.trendM1 || null,
+          trendM5: signal.market?.trendM5 || null,
+          trendM15: signal.market?.trendM15 || null,
+          rsiM1: Number.isFinite(Number(signal.market?.rsiM1)) ? Number(signal.market.rsiM1) : null,
+          rsiM5: Number.isFinite(Number(signal.market?.rsiM5)) ? Number(signal.market.rsiM5) : null,
+          adxM1: Number.isFinite(Number(signal.market?.adxM1?.adx)) ? Number(signal.market.adxM1.adx) : null,
+          atrM1: Number.isFinite(Number(signal.market?.atrM1)) ? Number(signal.market.atrM1) : null,
+          volatility: signal.market?.volatility || null,
+          marketPhase: signal.market?.marketPhase || null,
+          advancedReasons: (signal.reasons || []).slice(0, 8)
+        },
         createdAt: now,
         firstEligibleBarTime: Math.floor(now / 60000) * 60000 + 60000,
         expiresAt: now + SNIPER_STATS.MAX_HOLD_MS,
@@ -1458,8 +1559,44 @@ async function updateSniperStatistics(env, signal, m1) {
   const stats = direction
     ? getSniperBucketStats(samples, direction, regime)
     : null;
+  const learningAdjustment = direction
+    ? getSniperLearningAdjustment(samples, direction, regime)
+    : null;
 
   if (stats) {
+    // La correction ne touche qu'au score final, jamais aux règles de setup,
+    // au spread, au calendrier économique ou aux validations structurelles.
+    const beforeLearningScore = Number(signal.score);
+    if (learningAdjustment && learningAdjustment.adjustment !== 0 &&
+        signal.alertLevel === "CONFIRMED" &&
+        !signal.blockedByEconomicCalendar) {
+      signal.score = Math.max(0, Math.min(100,
+        Math.round(beforeLearningScore + learningAdjustment.adjustment)));
+      signal.learningAdjustment = {
+        ...learningAdjustment,
+        applied: true,
+        originalScore: beforeLearningScore,
+        adjustedScore: signal.score
+      };
+      signal.alertLevel =
+        signal.score >= Number(settings?.minScore ?? CONFIG.MIN_SCORE) &&
+        signal.riskChecks?.spreadOK === true &&
+        signal.entryQuality?.confirmed === true &&
+        signal.tradePlan?.confirmed === true
+          ? "CONFIRMED" : "EARLY";
+      if (signal.learningAdjustment.adjustment < 0) {
+        signal.reasons = [...(signal.reasons || []), "Auto-correction statistique : score réduit selon les résultats historiques de cette configuration."];
+      } else {
+        signal.reasons = [...(signal.reasons || []), "Calibration statistique : léger ajustement positif validé par l'historique de cette configuration."];
+      }
+    } else {
+      signal.learningAdjustment = {
+        ...(learningAdjustment || {}),
+        applied: false,
+        originalScore: beforeLearningScore,
+        adjustedScore: beforeLearningScore
+      };
+    }
     signal.statisticalValidation = {
       ...stats,
       status: !saved ? "STORAGE_UNAVAILABLE" :
@@ -1654,7 +1791,7 @@ async function getSignal(settings, env, recordStatistics = false) {
 
   const filtered=applyEconomicFilter(result,economicContext);
   return recordStatistics
-    ? await updateSniperStatistics(env,filtered,m1)
+    ? await updateSniperStatistics(env,filtered,m1,settings)
     : filtered;
 }
 
@@ -1735,6 +1872,9 @@ function buildAlertMessage(signal) {
     `⚖️ Ratio gain/risque : ${signal.riskReward}`,
     `📊 Point mort théorique hors frais : ${signal.riskChecks.breakEvenWinRate}%`,
     `🧪 Validation historique : ${signal.statisticalValidation?.winRate ?? "en constitution"}% (${signal.statisticalValidation?.resolved ?? 0}/100 trades résolus)`,
+    signal.learningAdjustment?.applied
+      ? `🧠 Auto-calibration : score ${signal.learningAdjustment.originalScore} → ${signal.learningAdjustment.adjustedScore} (${signal.learningAdjustment.adjustment > 0 ? "+" : ""}${signal.learningAdjustment.adjustment}) après ${signal.learningAdjustment.resolved} résultats.`
+      : "🧠 Auto-calibration : collecte et vérification des résultats historiques.",
     `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
     "",
     "📈 Tendances :",
@@ -3838,6 +3978,7 @@ async function handleSniperStats(env) {
     resolved: samples.filter(sample => ["WIN", "LOSS"].includes(sample.outcome)).length,
     timeouts: samples.filter(sample => sample.outcome === "TIMEOUT").length,
     buckets,
+    learning: buildSniperLearningInsights(samples),
     updatedAt: state?.updatedAt ? new Date(state.updatedAt).toISOString() : null,
     note: "Résultats simulés sur OHLC M1, spread d'entrée pris en compte de façon prudente; commissions, slippage et prix bid/ask historiques ne sont pas disponibles. Aucun taux n'est garanti."
   });
