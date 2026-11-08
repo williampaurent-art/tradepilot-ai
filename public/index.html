@@ -68,6 +68,14 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 .section{scroll-margin-top:76px}
 @media(max-width:650px){.reading-guide{grid-template-columns:1fr;gap:7px}.guide-item{padding:10px 12px}.mainnav{top:0}.section{scroll-margin-top:65px}}
 
+
+.market-alert{margin:0 0 18px;padding:17px 19px;border:1px solid rgba(145,161,185,.22);border-left:5px solid #64748b;border-radius:15px;background:linear-gradient(110deg,rgba(22,34,52,.98),rgba(12,20,34,.96));box-shadow:0 12px 34px rgba(0,0,0,.16)}
+.market-alert[data-level="critical"]{border-color:rgba(255,113,133,.55);border-left-color:#ff7185;background:linear-gradient(110deg,rgba(75,25,39,.94),rgba(21,20,34,.98))}
+.market-alert[data-level="warning"]{border-color:rgba(243,200,107,.45);border-left-color:#f3c86b;background:linear-gradient(110deg,rgba(67,52,27,.72),rgba(16,24,38,.98))}
+.market-alert[data-level="watch"]{border-left-color:#60a5fa}
+.market-alert-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}.market-alert-kicker{font-size:10px;letter-spacing:.13em;font-weight:900;color:var(--muted)}
+.market-alert-title{font-size:clamp(18px,3vw,25px);font-weight:900;letter-spacing:-.035em;margin:4px 0 6px}.market-alert-copy{font-size:12px;line-height:1.6;color:#c1ccda;max-width:900px}.market-alert-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.market-alert-chip{font-size:10px;padding:6px 9px;border-radius:99px;background:rgba(145,161,185,.11);color:#d9e2ee}.market-alert-pulse{width:9px;height:9px;border-radius:50%;background:#91a1b9;display:inline-block}.market-alert[data-level="critical"] .market-alert-pulse{background:#ff7185;box-shadow:0 0 0 5px rgba(255,113,133,.12)}.market-alert[data-level="warning"] .market-alert-pulse{background:#f3c86b;box-shadow:0 0 0 5px rgba(243,200,107,.12)}
+@media(max-width:650px){.market-alert{padding:14px}.market-alert-title{font-size:19px}}
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
@@ -82,6 +90,7 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
  </div>
  <div class="exec-foot"><span class="exec-tag">Macro : <strong id="execMacro">—</strong></span><span class="exec-tag">Configuration : <strong id="execSetup">—</strong></span><span class="exec-tag">Exécution : <strong>Analyse uniquement · aucun ordre réel</strong></span></div>
 </section>
+<section id="marketAlert" class="market-alert" data-level="calm" role="status" aria-live="polite"><div class="market-alert-head"><span class="market-alert-pulse"></span><span class="market-alert-kicker">SURVEILLANCE ÉVÉNEMENTIELLE · XAUUSD</span><span class="pill">INITIALISATION</span></div><div class="market-alert-title" id="marketAlertTitle">Surveillance du marché en cours</div><div class="market-alert-copy" id="marketAlertCopy">TradePilot vérifie les annonces majeures, la volatilité et les confirmations de retournement.</div><div class="market-alert-meta" id="marketAlertMeta"></div></section>
 <section class="reading-guide" aria-label="Comment lire TradePilot">
  <div class="guide-item"><div class="guide-num">01</div><div><strong>Commencez par la synthèse</strong><span>Elle résume l'état du marché, la direction multi-unités et la fiabilité des données disponibles.</span></div></div>
  <div class="guide-item"><div class="guide-num">02</div><div><strong>Vérifiez les confirmations</strong><span>Une tendance, une cassure ou un retournement doit être confirmé par la structure et les unités supérieures.</span></div></div>
@@ -166,6 +175,38 @@ $("statusDot").className="dot "+(m.open===true?"ok":m.open===false?"bad":"");put
 const currentFrames=m.open===true?ok.filter(x=>x.analysis.dataQuality?.ok):[],dirs=currentFrames.map(x=>x.analysis.trend.direction).filter(x=>x!=="NEUTRE"),u=dirs.filter(x=>x==="HAUSSIER").length,b=dirs.filter(x=>x==="BAISSIER").length,dir=m.open===false?"MARCHÉ FERMÉ":m.open!==true?"BIAS NON CONFIRMÉ":u>b?"HAUSSIER":b>u?"BAISSIER":"MIXTE";
 put("bias",dir);$("bias").className="bigstate "+cls(dir);put("regime",m.open===false?"Marché fermé · dernière analyse historique":m.open!==true?"État du marché non confirmé":a?.dataQuality?.ok?a.regime.regime+" · "+a.regime.phase:"Données non validées");put("strength",m.open===true&&a?.dataQuality?.ok?a.trend.strength:"—");put("score",m.open===true&&a?.dataQuality?.ok&&a.trend.technicalScore!=null?a.trend.technicalScore+"/100":"—");put("confidence",m.open===true?(currentFrames.length>=5&&Math.max(u,b)>=5?"Élevée":currentFrames.length>=3&&Math.max(u,b)>=3?"Modérée":"Faible / mixte"):"Non calculée");
 const fresh=ok.filter(x=>x.analysis.dataQuality.ok).length;put("dataState",m.open===false?"MARCHÉ FERMÉ":m.open!==true?"MARCHÉ NON CONFIRMÉ":fresh===ok.length&&ok.length>0?"DONNÉES FRAÎCHES":"QUALITÉ PARTIELLE");put("dataInfo",m.open===false?"Les indicateurs disponibles sont historiques. Aucun biais actuel ni signal ne doit en être déduit.":fresh+" unité(s) sur "+ok.length+" validées en fraîcheur et continuité.");}
+
+function renderMarketAlert(d){
+ const root=$("marketAlert");if(!root)return;
+ const m=d.market||{},cal=d.economicCalendar||{},rev=d.reversalMultiTimeframe||{};
+ const frames=d.timeframes||[];
+ const m1=frames.find(x=>x.timeframe==="M1"&&x.ok),m5=frames.find(x=>x.timeframe==="M5"&&x.ok);
+ const live=m.open===true&&Boolean(m1?.analysis?.dataQuality?.ok)&&Boolean(m5?.analysis?.dataQuality?.ok);
+ const v1=m1?.analysis?.volatility||{},v5=m5?.analysis?.volatility||{};
+ const next=cal.nextEvent||cal.upcomingEvents?.[0]||null;
+ const imminent=next&&Number.isFinite(Number(next.minutesUntil))&&Number(next.minutesUntil)<=60;
+ const active=cal.riskLevel==="FENETRE_ANNONCE"&&cal.stale!==true;
+ const shock=live&&(v1.status==="EXTREME"||v5.status==="EXTREME");
+ const acceleration=live&&(v1.status==="ACCELERATION"||v5.status==="ACCELERATION");
+ const reversal=live&&["SOUTIEN_UNITES_SUPERIEURES","SOUTIEN_PARTIEL","SIGNAL_LOCAL_SEULEMENT"].includes(rev.status)&&
+   (rev.confirmedCount>0||rev.formationCount>0);
+ const direction=rev.bias==="HAUSSIER"?"HAUSSIER":rev.bias==="BAISSIER"?"BAISSIER":"";
+ let level="calm",title="Aucune alerte majeure détectée",copy="Le système ne détecte actuellement ni choc de volatilité confirmé ni faisceau de retournement suffisamment étayé. La surveillance continue.";
+ let chips=["Données "+(live?"M1/M5 validées":"live non validées")];
+ if(!live){title=m.open===false?"Marché fermé · surveillance historique":"Surveillance suspendue · flux non confirmés";copy="TradePilot ne déclenche pas d'alerte directionnelle à partir de données historiques, périmées ou incomplètes.";chips=["État du marché : "+(m.status||"inconnu"),"Aucun signal live"];}
+ else if(active){level="critical";title="ANNONCE ÉCONOMIQUE MAJEURE EN COURS";copy=(cal.activeEvent?.name||"Publication économique à fort impact")+" · fenêtre de réaction active. La volatilité et les spreads peuvent devenir instables. TradePilot privilégie la prudence et attend une structure exploitable.";chips=["Événement : "+(cal.activeEvent?.country||"US / EU"),"Entrées filtrées pendant la fenêtre de sécurité"];}
+ else if(shock&&reversal){level="critical";title="RISQUE DE RETOURNEMENT MAJEUR · "+(direction||"DIRECTION NON CONFIRMÉE");copy="Une accélération de volatilité coïncide avec des indices de retournement multi-unités. C'est une alerte de changement de régime potentiel, pas une prédiction certaine : attendre la confirmation et vérifier l'invalidation.";chips=["Volatilité M1 : "+(v1.status||"—"),"Retournement : "+(rev.status||"—"),"Unités validées : "+(rev.validTimeframes??"—")+"/6"];}
+ else if(shock){level="warning";title="CHOC DE VOLATILITÉ DÉTECTÉ";copy="L'amplitude récente devient anormale sur les unités courtes. Risque de mouvement brusque, de spread élargi et de faux départ. Ne pas poursuivre une bougie étirée.";chips=["M1 : "+(v1.status||"—"),"M5 : "+(v5.status||"—"),"Attendre stabilisation"];}
+ else if(reversal){level="warning";title="RETOURNEMENT POTENTIEL EN FORMATION · "+(direction||"SENS MIXTE");copy="Des indices de retournement sont détectés, mais leur soutien reste à confirmer. TradePilot surveille les unités supérieures, les cassures de structure et les invalidations.";chips=["État : "+(rev.status||"—"),"Confirmations : "+(rev.confirmedCount??0),"Formations : "+(rev.formationCount??0)];}
+ else if(imminent){level="warning";title="ANNONCE ÉCONOMIQUE MAJEURE IMMINENTE";copy=(next.name||"Publication à fort impact")+" · dans "+next.minutesUntil+" min. Risque de volatilité accrue sur l'or. Éviter d'anticiper la direction avant la réaction réelle du marché.";chips=["Impact : élevé","Heure : "+(next.releaseAt?dateFmt(next.releaseAt):"à confirmer"),"Surveillance renforcée"];}
+ else if(acceleration){level="watch";title="ACCÉLÉRATION DE VOLATILITÉ";copy="La volatilité augmente sur les unités courtes. Une expansion peut se développer, mais aucune direction n'est encore validée. Attendre une clôture et une confirmation.";chips=["M1 : "+(v1.status||"—"),"M5 : "+(v5.status||"—")];}
+ else if(cal.riskLevel==="DONNEES_PERIMEES"){level="watch";title="CALENDRIER MACRO NON FIABLE";copy="La dernière donnée du calendrier est périmée. Le risque événementiel ne peut pas être évalué correctement : prudence renforcée.";chips=["Calendrier : données périmées"];}
+ root.dataset.level=level;
+ const badge=level==="critical"?"ALERTE PRIORITAIRE":level==="warning"?"VIGILANCE ÉLEVÉE":level==="watch"?"À SURVEILLER":"SITUATION CALME";
+ $("marketAlertTitle").textContent=title;$("marketAlertCopy").textContent=copy;
+ $("marketAlertMeta").innerHTML=chips.map(x=>'<span class="market-alert-chip">'+esc(x)+'</span>').join("");
+ const pill=root.querySelector(".pill");if(pill)pill.textContent=badge;
+}
 
 function renderInvestorSummary(d){
  const m=d.market||{},frames=d.timeframes||[],valid=frames.filter(x=>x.ok&&x.analysis?.dataQuality?.ok),live= m.open===true;
@@ -349,6 +390,6 @@ function renderCalendar(c){
    '<div class="eventname" style="margin-top:14px">Surprises économiques récentes (72 h)</div>'+
    ((c.recentSurprises||[]).length?c.recentSurprises.map(s=>'<div class="calendar-event"><div class="eventname">'+esc(s.name)+' · '+esc(s.comparison)+'</div><div class="eventmeta">Réel : '+esc(s.actual)+' '+esc(s.unit||'')+' · Consensus : '+esc(s.consensus)+' · Précédent : '+esc(s.prior===null||s.prior===undefined?'—':s.prior)+' · Lecture or : '+esc(s.goldBias)+'</div><div class="eventmeta">'+esc(s.reason)+'</div></div>').join(""):'<div class="muted">Aucune publication récente avec réel et consensus vérifiables. Les valeurs manquantes restent indisponibles.</div>');
 }
-async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;renderTop(d);renderInvestorSummary(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
+async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 $("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
 </script></body></html>
