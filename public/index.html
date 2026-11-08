@@ -205,6 +205,8 @@ function renderMarketAlert(d){
   copy=(ant.explanation||"Des indices techniques convergent.")+" Indice de convergence : "+(ant.confluenceIndex??0)+"/100 — ce chiffre mesure la convergence des indices, pas une probabilité de gain.";
   if(ant.leadingEvidence?.length)copy+=" Éléments : "+ant.leadingEvidence.slice(0,3).join(" ; ")+".";
   chips=["Biais estimé : "+label,"Convergence : "+(ant.confluenceIndex??0)+"/100","Phase : "+(ant.phase||"—"),"Unités : "+(ant.validTimeframes??0)+"/6"];
+  if(ant.eventWindowActive)chips.push("Fenêtre d’annonce majeure active · prudence renforcée");
+  else if(imminent)chips.push("Annonce majeure : "+(next.name||"à venir")+" · dans "+next.minutesUntil+" min");
   if(ant.trigger!=null)chips.push("Niveau de déclenchement : "+ant.trigger);
   if(ant.invalidation!=null)chips.push("Invalidation : "+ant.invalidation);
  }
