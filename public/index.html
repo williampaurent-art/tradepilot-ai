@@ -69,7 +69,7 @@ function renderReversalMultiTimeframe(d){
   const invalidated=x.invalidated===true;
   const contribution=active?" · poids "+x.weightedContribution+" pts":"";
   const breakInfo=active&&x.breakQuality&&x.breakQuality!=="NON_EVALUE"
-    ?" · CHOCH "+x.breakQuality+(x.breakDistanceAtr!=null?" ("+fmt(x.breakDistanceAtr,2)+" ATR)":""):"";
+    ?" · CHOCH "+x.breakQuality+(x.breakDistanceAtr!=null?" ("+fmt(x.breakDistanceAtr,2)+" ATR)":"")+(x.directionalConflict?" · CONFLIT ADX/DI":""):"";
   const context=active?(x.againstTrend?" · CONTRE tendance":x.withTrend?" · avec tendance":" · tendance neutre"):"";
   const invalidation=(active||invalidated)&&x.invalidationLevel!=null?" · niveau "+fmt(x.invalidationLevel)+(invalidated?" · FRANCHI EN CLÔTURE":x.invalidationDistance!=null?" · distance "+fmt(x.invalidationDistance,2)+" $":""):"";
   return '<div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)"><strong>'+esc(x.timeframe)+'</strong><span>'+esc(invalidated?x.direction+" · SCENARIO INVALIDE"+invalidation:active?x.direction+" · "+x.stage+breakInfo+contribution+context+invalidation:"Aucun indice actif")+'</span><span class="'+(x.trend==="HAUSSIER"?"up":x.trend==="BAISSIER"?"down":"neutral")+'">Tendance '+esc(x.trend)+'</span></div>';
