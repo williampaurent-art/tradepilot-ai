@@ -2966,6 +2966,58 @@ async function fetchGoldMacroContext() {
   return {status:dxy?.live&&treasury10y?.fresh?"DONNEES_DISPONIBLES":"COUVERTURE_PARTIELLE",bias,explanation,dxy,treasury10y,dxyDirection:dd,yieldDirection:yd,errors,generatedAt:new Date().toISOString(),note:"DXY live si frais ; taux 10 ans Treasury publié quotidiennement, jamais intraday. Contexte uniquement, aucun ordre."};
 }
 
+function analyzeMarketAnticipation(results, marketOpen, calendar) {
+  const order=["M1","M5","M15","H1","H4","D1"];
+  const usable=results.filter(x=>x.ok&&x.analysis?.dataQuality?.ok&&order.includes(x.timeframe));
+  const byTf=new Map(usable.map(x=>[x.timeframe,x.analysis]));
+  const empty={status:marketOpen===false?"MARCHE_FERME":"DONNEES_NON_CONFIRMEES",phase:"NON_EVALUEE",direction:"INDETERMINE",confluenceIndex:0,bullishEvidence:[],bearishEvidence:[],validTimeframes:usable.length,trigger:null,invalidation:null,eventRisk:calendar?.riskLevel||"INCONNU",explanation:"Les flux live et la couverture multi-unites doivent etre valides avant toute anticipation.",note:"Indice heuristique de convergence, pas une probabilite ni une prevision certaine."};
+  if(marketOpen!==true||!byTf.has("M1")||!byTf.has("M5"))return empty;
+  const scores={HAUSSIER:0,BAISSIER:0},evidence={HAUSSIER:[],BAISSIER:[]};
+  const weights={M1:1,M5:1.5,M15:2,H1:2.5,H4:3,D1:3};
+  const add=(side,points,label)=>{scores[side]+=points;evidence[side].push(label);};
+  let compression=false,pressure=false,impulse=false,confirmed=false,trigger=null,invalidation=null;
+  for(const tf of order){
+    const a=byTf.get(tf);if(!a)continue;
+    const w=weights[tf],ind=a.indicators||{},st=a.structure||{},r=a.reversalSignals||{},reg=a.regime||{},vol=a.volatility||{},liq=a.liquidity||{};
+    const trend=a.trend?.direction||"NEUTRE";
+    if(trend==="HAUSSIER")add("HAUSSIER",2*w,tf+" : alignement EMA haussier");
+    if(trend==="BAISSIER")add("BAISSIER",2*w,tf+" : alignement EMA baissier");
+    if(Number.isFinite(ind.plusDI)&&Number.isFinite(ind.minusDI)){const gap=ind.plusDI-ind.minusDI;if(gap>=5)add("HAUSSIER",w,tf+" : pression DI acheteuse");if(gap<=-5)add("BAISSIER",w,tf+" : pression DI vendeuse");}
+    const hist=ind.macd?.histogram,prev=ind.macd?.previousHistogram;
+    if(Number.isFinite(hist)&&Number.isFinite(prev)){if(hist>0&&hist>prev)add("HAUSSIER",w,tf+" : momentum MACD en progression");if(hist<0&&hist<prev)add("BAISSIER",w,tf+" : momentum MACD vendeur en progression");}
+    if(Number.isFinite(ind.rsi14)){if(ind.rsi14>=53&&ind.rsi14<=68)add("HAUSSIER",0.6*w,tf+" : RSI en zone de momentum haussier");if(ind.rsi14<=47&&ind.rsi14>=32)add("BAISSIER",0.6*w,tf+" : RSI en zone de momentum baissier");}
+    if(st.bullishDivergence||st.bullishMacdDivergence)add("HAUSSIER",1.5*w,tf+" : divergence haussiere");
+    if(st.bearishDivergence||st.bearishMacdDivergence)add("BAISSIER",1.5*w,tf+" : divergence baissiere");
+    if(st.choch==="CHOCH_HAUSSIER"||st.bos==="BOS_HAUSSIER"){add("HAUSSIER",2.5*w,tf+" : cassure structurelle haussiere");confirmed=true;trigger=st.breakLevel??trigger;}
+    if(st.choch==="CHOCH_BAISSIER"||st.bos==="BOS_BAISSIER"){add("BAISSIER",2.5*w,tf+" : cassure structurelle baissiere");confirmed=true;trigger=st.breakLevel??trigger;}
+    if(r.stage==="RETOURNEMENT_EN_FORMATION"||r.stage==="RETOURNEMENT_CONFIRME"){if(r.direction==="HAUSSIER")add("HAUSSIER",(r.stage==="RETOURNEMENT_CONFIRME"?2:1)*w,tf+" : "+r.stage.toLowerCase().replaceAll("_"," "));if(r.direction==="BAISSIER")add("BAISSIER",(r.stage==="RETOURNEMENT_CONFIRME"?2:1)*w,tf+" : "+r.stage.toLowerCase().replaceAll("_"," "));}
+    if(["M1","M5","M15"].includes(tf)){
+      if(vol.status==="CONTRACTION"||(reg.regime==="RANGE"&&Number(reg.rangeQuality)>=60))compression=true;
+      if(vol.status==="ACCELERATION"||vol.status==="EXTREME")pressure=true;
+      if(vol.status==="EXTREME")impulse=true;
+      if(reg.breakoutCandidateUp||reg.breakoutUp||reg.fakeoutDown)add("HAUSSIER",1.5*w,tf+" : pression vers le haut / rejet du bas");
+      if(reg.breakoutCandidateDown||reg.breakoutDown||reg.fakeoutUp)add("BAISSIER",1.5*w,tf+" : pression vers le bas / rejet du haut");
+      if(["SELL_SIDE","LIQUIDITY_SWEEP_LOW"].includes(liq.sweep))add("HAUSSIER",w,tf+" : balayage de liquidite basse");
+      if(["BUY_SIDE","LIQUIDITY_SWEEP_HIGH"].includes(liq.sweep))add("BAISSIER",w,tf+" : balayage de liquidite haute");
+    }
+    if(tf==="M1"&&Number.isFinite(st.lastSwingLow))invalidation=st.lastSwingLow;
+    if(tf==="M1"&&Number.isFinite(st.lastSwingHigh)&&scores.BAISSIER>scores.HAUSSIER)invalidation=st.lastSwingHigh;
+  }
+  const bull=scores.HAUSSIER,bear=scores.BAISSIER,diff=Math.abs(bull-bear);
+  const direction=diff>=3?(bull>bear?"HAUSSIER":"BAISSIER"):"INDETERMINE";
+  const dominant=direction==="HAUSSIER"?bull:direction==="BAISSIER"?bear:Math.max(bull,bear);
+  const opposition=direction==="HAUSSIER"?bear:direction==="BAISSIER"?bull:Math.min(bull,bear);
+  const index=Math.max(0,Math.min(100,Math.round(dominant/(dominant+opposition+4)*100)));
+  const alignedHigher=direction!=="INDETERMINE"?["M15","H1","H4"].filter(tf=>byTf.get(tf)?.trend?.direction===direction).length:0;
+  const eventActive=calendar?.riskLevel==="FENETRE_ANNONCE"&&!calendar?.stale;
+  let phase="OBSERVATION";
+  if(confirmed)phase="CONFIRMATION_STRUCTURELLE";else if(impulse||pressure)phase="IMPULSION_EN_COURS";else if(compression&&(bull>=3||bear>=3))phase="PREPARATION_POSSIBLE";else if(direction!=="INDETERMINE")phase="PRESSION_DIRECTIONNELLE";
+  const status=direction==="INDETERMINE"?"AUCUN_BIAIS_DOMINANT":index>=68&&alignedHigher>=2?"CONVERGENCE_FORTE":index>=55?"CONVERGENCE_MODEREE":"INDICES_PRELIMINAIRES";
+  const leadingEvidence=evidence[direction]||[];
+  const explanation=direction==="INDETERMINE"?"Les pressions acheteuses et vendeuses restent trop proches : TradePilot ne force pas de direction.":phase==="PREPARATION_POSSIBLE"?"Compression ou range detecte avec une pression directionnelle preliminaire. Une expansion est possible, mais le sens doit encore etre confirme par une cloture hors zone.":phase==="IMPULSION_EN_COURS"?"La volatilite s'accelere. Le sens dominant est estime a partir de plusieurs indices, mais le mouvement peut etre un faux depart.":confirmed?"Une cassure de structure est observee sur une unite validee. La direction est mieux etayee, sous reserve du retest et de l'absence d'invalidation.":"Plusieurs indices techniques convergent, sans cassure structurelle suffisante pour qualifier le mouvement de confirme.";
+  return {status,phase,direction,confluenceIndex:index,bullishIndex:Math.round(Math.min(100,bull*4)),bearishIndex:Math.round(Math.min(100,bear*4)),bullishEvidence:evidence.HAUSSIER.slice(0,8),bearishEvidence:evidence.BAISSIER.slice(0,8),leadingEvidence:leadingEvidence.slice(0,8),validTimeframes:usable.length,alignedHigherTimeframes:alignedHigher,volatility:{compression,pressure,impulse},eventRisk:calendar?.riskLevel||"INCONNU",eventName:calendar?.activeEvent?.name||calendar?.nextEvent?.name||null,eventMinutes:calendar?.nextEvent?.minutesUntil??null,trigger,invalidation,explanation,note:"Indice heuristique de convergence, pas une probabilite de gain. Les annonces peuvent provoquer des gaps, spreads elargis et faux mouvements. Anticipation indicative uniquement."};
+}
+
 async function handleDashboardData(env) {
   const timeframes = Object.keys(TIMEFRAMES);
   const results = await Promise.all(timeframes.map(async timeframe => {
@@ -2998,6 +3050,7 @@ async function handleDashboardData(env) {
   const multiTimeframeConfluence = analyzeMultiTimeframeConfluence(results, marketOpen);
   const setupConfluence = analyzeSetupConfluence(results, marketOpen);
   const reversalMultiTimeframe = analyzeReversalMultiTimeframe(results, marketOpen);
+  const marketAnticipation = analyzeMarketAnticipation(results, marketOpen, calendar);
   return json({
     ok: available.length > 0,
     instrument: CONFIG.SYMBOL,
@@ -3019,6 +3072,7 @@ async function handleDashboardData(env) {
     multiTimeframeConfluence,
     setupConfluence,
     reversalMultiTimeframe,
+    marketAnticipation,
     economicCalendar: calendar,
     macroCrossAsset,
     execution: "AUCUN ORDRE REEL",
