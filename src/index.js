@@ -2370,32 +2370,59 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     .map(x => [x.timeframe, x.analysis]));
   const details = [];
   let bullishWeight = 0, bearishWeight = 0;
-  let bullishCount = 0, bearishCount = 0, higherBullish = 0, higherBearish = 0;
+  let bullishCount = 0, bearishCount = 0;
+  let higherBullish = 0, higherBearish = 0;
+  let higherBullishConfirmed = 0, higherBearishConfirmed = 0;
+  let confirmedCount = 0, formationCount = 0, earlyCount = 0;
+  const higherFrames = ["H1", "H4", "D1"];
+  const stageWeights = {
+    PRECURSEUR: 0.25,
+    REJET_A_SURVEILLER: 0.4,
+    RETOURNEMENT_EN_FORMATION: 0.7,
+    RETOURNEMENT_CONFIRME: 1
+  };
   for (const tf of order) {
     const a = byTf.get(tf);
     if (!a) continue;
     const r = a.reversalSignals || {};
+    const stage = r.stage || "AUCUN_RETOURNEMENT";
     const direction = ["HAUSSIER", "BAISSIER"].includes(r.direction) ? r.direction : "NEUTRE";
-    const active = ["PRECURSEUR", "REJET_A_SURVEILLER", "RETOURNEMENT_EN_FORMATION", "RETOURNEMENT_CONFIRME"].includes(r.stage);
+    const active = Object.prototype.hasOwnProperty.call(stageWeights, stage);
     const trend = a.trend?.direction || "NEUTRE";
+    const higher = higherFrames.includes(tf);
+    const stageWeight = active ? stageWeights[stage] : 0;
     if (active && direction === "HAUSSIER") {
-      bullishCount++; bullishWeight += weights[tf];
-      if (["H1", "H4", "D1"].includes(tf)) higherBullish++;
+      bullishCount++; bullishWeight += weights[tf] * stageWeight;
+      if (higher) {
+        higherBullish++;
+        if (stage === "RETOURNEMENT_CONFIRME") higherBullishConfirmed++;
+      }
     } else if (active && direction === "BAISSIER") {
-      bearishCount++; bearishWeight += weights[tf];
-      if (["H1", "H4", "D1"].includes(tf)) higherBearish++;
+      bearishCount++; bearishWeight += weights[tf] * stageWeight;
+      if (higher) {
+        higherBearish++;
+        if (stage === "RETOURNEMENT_CONFIRME") higherBearishConfirmed++;
+      }
     }
-    details.push({ timeframe: tf, stage: r.stage || "AUCUN_RETOURNEMENT", direction, trend, active, weight: weights[tf] });
+    if (stage === "RETOURNEMENT_CONFIRME") confirmedCount++;
+    else if (stage === "RETOURNEMENT_EN_FORMATION") formationCount++;
+    else if (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER") earlyCount++;
+    details.push({
+      timeframe: tf, stage, direction, trend, active, weight: weights[tf],
+      stageWeight, weightedContribution: Number((weights[tf] * stageWeight).toFixed(2))
+    });
   }
-  const bias = bullishWeight === bearishWeight ? "MIXTE" : bullishWeight > bearishWeight ? "HAUSSIER" : "BAISSIER";
+  const bias = Math.abs(bullishWeight - bearishWeight) < 0.001
+    ? "MIXTE" : bullishWeight > bearishWeight ? "HAUSSIER" : "BAISSIER";
   const opposingHigher = bias === "HAUSSIER" ? higherBearish : bias === "BAISSIER" ? higherBullish : 0;
   const supportingHigher = bias === "HAUSSIER" ? higherBullish : bias === "BAISSIER" ? higherBearish : 0;
+  const supportingHigherConfirmed = bias === "HAUSSIER" ? higherBullishConfirmed : bias === "BAISSIER" ? higherBearishConfirmed : 0;
   let status = "AUCUN_SIGNAL";
   if (!details.length) status = "COUVERTURE_INSUFFISANTE";
   else if (bias === "MIXTE" && (bullishCount || bearishCount)) status = "SIGNAUX_CONTRADICTOIRES";
   else if (opposingHigher > supportingHigher) status = "CONFLIT_UNITES_SUPERIEURES";
-  else if (supportingHigher >= 2) status = "SOUTIEN_UNITES_SUPERIEURES";
-  else if (supportingHigher === 1) status = "SOUTIEN_PARTIEL";
+  else if (supportingHigherConfirmed >= 2) status = "SOUTIEN_UNITES_SUPERIEURES";
+  else if (supportingHigherConfirmed === 1 || supportingHigher > 0) status = "SOUTIEN_PARTIEL";
   else if (bullishCount + bearishCount > 0) status = "SIGNAL_LOCAL_SEULEMENT";
   const explanation = status === "SOUTIEN_UNITES_SUPERIEURES"
     ? "Le même sens de retournement apparaît sur au moins deux unités supérieures. Cela renforce la cohérence, sans garantir le mouvement."
@@ -2410,9 +2437,16 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
             : status === "COUVERTURE_INSUFFISANTE"
               ? "Aucune unité ne dispose de données live validées."
               : "Aucun faisceau de retournement actif détecté sur les unités disponibles.";
-  return { status, bias, bullishCount, bearishCount, higherBullish, higherBearish,
-    validTimeframes: details.length, bullishWeight, bearishWeight, details, explanation,
-    note: "Diagnostics locaux sur bougies clôturées ; aucune confirmation automatique d'ordre." };
+  return {
+    status, bias, bullishCount, bearishCount, higherBullish, higherBearish,
+    higherBullishConfirmed, higherBearishConfirmed,
+    confirmedCount, formationCount, earlyCount,
+    validTimeframes: details.length,
+    bullishWeight: Number(bullishWeight.toFixed(2)),
+    bearishWeight: Number(bearishWeight.toFixed(2)),
+    details, explanation,
+    note: "Les précurseurs pèsent moins que les formations et confirmations. Diagnostics sur bougies clôturées ; aucune confirmation automatique d'ordre."
+  };
 }
 
 function analyzeMultiTimeframeConfluence(results, marketOpen) {
