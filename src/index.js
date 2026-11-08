@@ -1270,8 +1270,8 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
 
 const SNIPER_STATS = {
   KEY: "sniper_stats_v1",
-  TARGET_WIN_RATE: 0.90,
-  MIN_RESOLVED: 100,
+  TARGET_WIN_RATE: 0.60,
+  MIN_RESOLVED: 20,
   MAX_HOLD_MS: 30 * 60 * 1000,
   SAMPLE_TTL_SECONDS: 90 * 86400,
   MAX_SAMPLES: 3000,
@@ -1472,18 +1472,20 @@ async function updateSniperStatistics(env, signal, m1) {
       warning: "Statistique historique, non prédictive et sans garantie de résultat."
     };
 
-    // Une alerte d'entrée exige désormais le filtre technique ET
-    // 100 résultats résolus minimum avec au moins 90 % de réussite observée.
+    // Phase d'apprentissage : les alertes techniquement confirmées restent
+    // autorisées pendant la constitution des 20 premiers résultats.
+    // Ensuite, le filtre statistique intervient avec un seuil de 60 %.
     if (
       signal.alertLevel === "CONFIRMED" &&
-      (!saved || !stats.qualified)
+      (!saved || (
+        stats.resolved >= SNIPER_STATS.MIN_RESOLVED &&
+        !stats.qualified
+      ))
     ) {
       signal.alertLevel = "EARLY";
       signal.statisticalValidation.blockReason = !saved
         ? "Stockage statistique indisponible."
-        : stats.resolved < SNIPER_STATS.MIN_RESOLVED
-          ? "Historique statistique insuffisant."
-          : "Taux de réussite historique inférieur à 90 %.";
+        : "Taux de réussite historique inférieur à 60 % après 20 résultats résolus.";
     }
   } else {
     signal.statisticalValidation = {
