@@ -76,6 +76,14 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 .market-alert-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}.market-alert-kicker{font-size:10px;letter-spacing:.13em;font-weight:900;color:var(--muted)}
 .market-alert-title{font-size:clamp(18px,3vw,25px);font-weight:900;letter-spacing:-.035em;margin:4px 0 6px}.market-alert-copy{font-size:12px;line-height:1.6;color:#c1ccda;max-width:900px}.market-alert-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.market-alert-chip{font-size:10px;padding:6px 9px;border-radius:99px;background:rgba(145,161,185,.11);color:#d9e2ee}.market-alert-pulse{width:9px;height:9px;border-radius:50%;background:#91a1b9;display:inline-block}.market-alert[data-level="critical"] .market-alert-pulse{background:#ff7185;box-shadow:0 0 0 5px rgba(255,113,133,.12)}.market-alert[data-level="warning"] .market-alert-pulse{background:#f3c86b;box-shadow:0 0 0 5px rgba(243,200,107,.12)}
 @media(max-width:650px){.market-alert{padding:14px}.market-alert-title{font-size:19px}}
+
+/* Assistant contextuel TradePilot */
+.assistant-panel{margin:0 0 18px;padding:18px;border:1px solid rgba(243,200,107,.24);border-radius:16px;background:linear-gradient(145deg,rgba(19,31,49,.98),rgba(10,18,30,.98));box-shadow:0 12px 32px rgba(0,0,0,.14)}
+.assistant-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}.assistant-title{font-size:18px;font-weight:900;letter-spacing:-.3px}.assistant-sub{font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px}.assistant-mode{font-size:9px;font-weight:850;letter-spacing:.08em;padding:6px 9px;border:1px solid rgba(66,214,160,.3);border-radius:99px;color:var(--green);white-space:nowrap}
+.assistant-log{display:flex;flex-direction:column;gap:9px;max-height:310px;overflow:auto;padding:10px;border:1px solid rgba(145,161,185,.13);border-radius:12px;background:rgba(3,9,17,.36)}
+.assistant-msg{max-width:92%;padding:10px 12px;border-radius:11px;font-size:12px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.assistant-msg.bot{align-self:flex-start;background:rgba(145,161,185,.11);border:1px solid rgba(145,161,185,.13);color:#dce5f1}.assistant-msg.user{align-self:flex-end;background:rgba(243,200,107,.13);border:1px solid rgba(243,200,107,.2);color:#fff0c9}
+.assistant-prompts{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}.assistant-prompts button{border:1px solid rgba(145,161,185,.2);border-radius:99px;background:rgba(145,161,185,.07);color:#cbd5e1;padding:7px 10px;font-size:10px;cursor:pointer}.assistant-form{display:flex;gap:8px}.assistant-form input{flex:1;min-width:0;border:1px solid rgba(145,161,185,.22);border-radius:10px;background:#081321;color:var(--text);padding:12px;font:inherit;font-size:12px}.assistant-form button{border:0;border-radius:10px;background:var(--gold);color:#172033;font-weight:900;padding:0 16px;cursor:pointer}.assistant-meta{font-size:10px;color:var(--muted);margin-top:9px;line-height:1.5}
+@media(max-width:520px){.assistant-panel{padding:13px}.assistant-head{flex-direction:column}.assistant-mode{align-self:flex-start}.assistant-form button{padding:0 12px}.assistant-msg{max-width:98%}}
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
@@ -91,6 +99,15 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
  <div class="exec-foot"><span class="exec-tag">Macro : <strong id="execMacro">—</strong></span><span class="exec-tag">Configuration : <strong id="execSetup">—</strong></span><span class="exec-tag">Exécution : <strong>Analyse uniquement · aucun ordre réel</strong></span></div>
 </section>
 <section id="marketAlert" class="market-alert" data-level="calm" role="status" aria-live="polite"><div class="market-alert-head"><span class="market-alert-pulse"></span><span class="market-alert-kicker">SURVEILLANCE ÉVÉNEMENTIELLE · XAUUSD</span><span class="pill">INITIALISATION</span></div><div class="market-alert-title" id="marketAlertTitle">Surveillance du marché en cours</div><div class="market-alert-copy" id="marketAlertCopy">TradePilot vérifie les annonces majeures, la volatilité et les confirmations de retournement.</div><div class="market-alert-meta" id="marketAlertMeta"></div></section>
+
+<section id="assistantPanel" class="assistant-panel" aria-label="Assistant de marché TradePilot">
+ <div class="assistant-head"><div><div class="exec-kicker">TRADEPILOT INTELLIGENCE</div><div class="assistant-title">Assistant de marché</div><div class="assistant-sub">Pose une question sur l'analyse XAUUSD actuellement chargée. Les réponses sont construites à partir des indicateurs et diagnostics du tableau de bord.</div></div><span class="assistant-mode">MODE CONTEXTUEL · SANS API EXTERNE</span></div>
+ <div id="assistantLog" class="assistant-log" role="log" aria-live="polite"><div class="assistant-msg bot">Bonjour. Je peux expliquer le biais du marché, les retournements, les ranges, la volatilité, les annonces économiques et les raisons d'attendre. Actualise d'abord le tableau de bord pour obtenir une lecture récente.</div></div>
+ <div class="assistant-prompts"><button type="button" data-question="Quelle est la direction actuelle de l'or ?">Direction du marché</button><button type="button" data-question="Pourquoi TradePilot recommande-t-il d'attendre ?">Pourquoi attendre ?</button><button type="button" data-question="Un retournement est-il en préparation ?">Retournement</button><button type="button" data-question="Quel est le risque économique actuellement ?">Risque macro</button></div>
+ <form id="assistantForm" class="assistant-form"><input id="assistantQuestion" type="text" maxlength="500" autocomplete="off" placeholder="Pose ta question sur XAUUSD…" aria-label="Question à TradePilot"><button type="submit">Envoyer</button></form>
+ <div id="assistantMeta" class="assistant-meta">En attente de la première analyse synchronisée. Aucun ordre n'est envoyé depuis cet assistant.</div>
+</section>
+
 <section class="reading-guide" aria-label="Comment lire TradePilot">
  <div class="guide-item"><div class="guide-num">01</div><div><strong>Commencez par la synthèse</strong><span>Elle résume l'état du marché, la direction multi-unités et la fiabilité des données disponibles.</span></div></div>
  <div class="guide-item"><div class="guide-num">02</div><div><strong>Vérifiez les confirmations</strong><span>Une tendance, une cassure ou un retournement doit être confirmé par la structure et les unités supérieures.</span></div></div>
@@ -115,7 +132,7 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.11";
+const UI_VERSION="2026.11.08.12";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -405,6 +422,74 @@ function renderCalendar(c){
    '<div class="eventname" style="margin-top:14px">Surprises économiques récentes (72 h)</div>'+
    ((c.recentSurprises||[]).length?c.recentSurprises.map(s=>'<div class="calendar-event"><div class="eventname">'+esc(s.name)+' · '+esc(s.comparison)+'</div><div class="eventmeta">Réel : '+esc(s.actual)+' '+esc(s.unit||'')+' · Consensus : '+esc(s.consensus)+' · Précédent : '+esc(s.prior===null||s.prior===undefined?'—':s.prior)+' · Lecture or : '+esc(s.goldBias)+'</div><div class="eventmeta">'+esc(s.reason)+'</div></div>').join(""):'<div class="muted">Aucune publication récente avec réel et consensus vérifiables. Les valeurs manquantes restent indisponibles.</div>');
 }
+
+function assistantPush(text,role){
+ const log=$("assistantLog");if(!log)return;
+ const node=document.createElement("div");node.className="assistant-msg "+(role==="user"?"user":"bot");node.textContent=text;log.append(node);log.scrollTop=log.scrollHeight;
+}
+function assistantAnswer(question){
+ const d=snapshot||{},m=d.market||{},ant=d.marketAnticipation||{},cal=d.economicCalendar||{},rev=d.reversalMultiTimeframe||{},frames=Array.isArray(d.timeframes)?d.timeframes:[];
+ const q=String(question||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+ const valid=frames.filter(x=>x.ok&&x.analysis?.dataQuality?.ok);
+ const frame=tf=>frames.find(x=>x.timeframe===tf&&x.ok)?.analysis||null;
+ const label=v=>v==="HAUSSIER"?"haussier":v==="BAISSIER"?"baissier":v||"indéterminé";
+ const fmtPrice=v=>v===null||v===undefined||!Number.isFinite(Number(v))?"indisponible":fmt(v,2);
+ const lines=[];
+ if(!snapshot)return "Je n'ai pas encore reçu de photographie du marché. Appuie sur « Actualiser » puis repose ta question.";
+ if(m.open!==true)lines.push("⚠️ Le marché n'est pas confirmé ouvert. Je ne peux donc pas présenter les données historiques comme un signal live.");
+ if(q.includes("direction")||q.includes("tendance")||q.includes("biais")||q.includes("achat")||q.includes("vente")){
+  const dirs=valid.map(x=>x.timeframe+" "+label(x.analysis?.trend?.direction));
+  lines.push("Lecture multi-unités : "+(dirs.join(" · ")||"couverture insuffisante")+".");
+  lines.push("Anticipation TradePilot : "+label(ant.direction)+" ; phase "+(ant.phase||"non évaluée")+" ; convergence "+(ant.confluenceIndex??"—")+"/100.");
+  lines.push("Prix de référence : "+fmtPrice(m.price)+". Ce biais descriptif n'est pas un ordre d'achat ou de vente.");
+ }else if(q.includes("pourquoi")||q.includes("attend")||q.includes("signal")||q.includes("entrer")||q.includes("trade")){
+  const evidence=[...(ant.bullishEvidence||[]),...(ant.bearishEvidence||[])].slice(0,6);
+  lines.push("Décision prudente : "+(ant.direction==="INDETERMINE"||!ant.direction?"ATTENDRE / PAS DE BIAIS NET":"ne pas confondre anticipation et confirmation d'entrée")+".");
+  lines.push("Éléments disponibles : "+(evidence.join(" ; ")||"aucune confluence directionnelle exploitable n'est remontée")+".");
+  if(ant.trigger!=null)lines.push("Déclencheur structurel suivi : "+fmtPrice(ant.trigger)+".");
+  if(ant.invalidation!=null)lines.push("Niveau d'invalidation du scénario : "+fmtPrice(ant.invalidation)+".");
+  lines.push("Un signal confirmé reste distinct d'une simple pression ou d'une préparation.");
+ }else if(q.includes("retourn")||q.includes("reversal")||q.includes("choch")||q.includes("bos")){
+  lines.push("Diagnostic multi-timeframe : "+(rev.status||"non disponible")+" ; biais "+label(rev.bias)+" ; "+(rev.confirmedCount??0)+" confirmation(s), "+(rev.formationCount??0)+" formation(s).");
+  const details=Array.isArray(rev.details)?rev.details.slice(0,5).map(x=>x.timeframe+" : "+(x.stage||x.status||x.direction||"observation")):[];
+  lines.push(details.length?details.join(" · "):"Aucun détail de retournement exploitable n'est disponible.");
+  lines.push("Un retournement en formation n'est pas un retournement confirmé. Le niveau d'invalidation doit rester respecté.");
+ }else if(q.includes("range")||q.includes("consolid")||q.includes("cassure")||q.includes("breakout")){
+  const r=frame("M15")?.regime||{};
+  lines.push("Régime M15 : "+(r.regime||"indéterminé")+" ; phase "+(r.phase||"—")+" ; qualité du range "+(r.rangeQuality??"—")+"/100.");
+  lines.push("Cassure : "+(r.breakoutState||"non évaluée")+" ; direction "+(r.breakoutDirection||"—")+".");
+  lines.push("Bornes observées : haut "+fmtPrice(r.rangeHigh)+" · bas "+fmtPrice(r.rangeLow)+".");
+  lines.push("Une cassure candidate ou en attente n'est pas traitée comme confirmée.");
+ }else if(q.includes("volatil")||q.includes("mouvement")||q.includes("accel")||q.includes("choc")){
+  const a=frame("M1")?.volatility||{},b=frame("M5")?.volatility||{},c=frame("M15")?.volatility||{};
+  lines.push("Volatilité : M1 "+(a.status||"—")+" · M5 "+(b.status||"—")+" · M15 "+(c.status||"—")+".");
+  lines.push("La volatilité mesure l'intensité, pas le sens. Une accélération peut provoquer des spreads élargis, des mèches et des fausses cassures.");
+  if(ant.eventWindowActive)lines.push("Une fenêtre d'annonce majeure est actuellement signalée par le calendrier.");
+ }else if(q.includes("macro")||q.includes("annonce")||q.includes("econom")||q.includes("calendrier")||q.includes("news")){
+  const event=cal.activeEvent||cal.nextEvent||cal.upcomingEvents?.[0];
+  lines.push("Risque calendrier : "+(cal.riskLevel||"non évalué")+" ; données périmées : "+(cal.stale===true?"oui":"non signalées")+".");
+  lines.push(event?"Événement de référence : "+(event.name||"publication")+" · "+(event.minutesUntil!=null?"dans "+event.minutesUntil+" minute(s)":"horaire non disponible")+".":"Aucun événement prochain vérifiable n'est remonté.");
+  lines.push("Le calendrier est un filtre de risque, pas une prédiction de la réaction de l'or.");
+ }else if(q.includes("prix")||q.includes("cours")||q.includes("combien")){
+  lines.push("Dernier prix de référence : "+fmtPrice(m.price)+" ; bid "+fmtPrice(m.bid)+" ; ask "+fmtPrice(m.ask)+".");
+  lines.push("État du marché : "+(m.status||"indéterminé")+" ; âge du tick : "+(m.quoteAgeSeconds??"indisponible")+" seconde(s).");
+ }else{
+  lines.push("Je peux expliquer la direction multi-timeframe, les raisons d'attendre, les retournements, les ranges et cassures, la volatilité, le cours et le calendrier macro.");
+  lines.push("Essaie une question précise, par exemple : « Pourquoi le scénario haussier n'est-il pas confirmé ? »");
+ }
+ lines.push("Analyse synchronisée : "+dateFmt(d.generatedAt)+". Mode analyse uniquement — aucun ordre réel.");
+ return lines.join("\n");
+}
+function assistantSubmit(question){
+ const value=String(question||"").trim();if(!value)return;
+ assistantPush(value,"user");const input=$("assistantQuestion");if(input)input.value="";
+ assistantPush(assistantAnswer(value),"bot");
+ const meta=$("assistantMeta");if(meta)meta.textContent=snapshot?"Réponses contextuelles basées sur la dernière analyse chargée · "+dateFmt(snapshot.generatedAt):"Aucune analyse synchronisée.";
+}
+const assistantForm=$("assistantForm");
+if(assistantForm)assistantForm.addEventListener("submit",e=>{e.preventDefault();assistantSubmit($("assistantQuestion")?.value||"");});
+document.querySelectorAll(".assistant-prompts button").forEach(button=>button.addEventListener("click",()=>assistantSubmit(button.dataset.question||"")));
+
 async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 $("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
 </script></body></html>
