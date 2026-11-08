@@ -2040,12 +2040,33 @@ function analyzeLiquidity(bars, indicator) {
   const sweep = sweptHigh ? "BALAYAGE LIQUIDITE HAUSSIERE REJETE" :
     sweptLow ? "BALAYAGE LIQUIDITE BAISSIERE REJETE" : "AUCUN";
   const sweepLevel = sweptHigh?.level ?? sweptLow?.level ?? null;
+  const sweepDirection = sweptLow ? "HAUSSIER" : sweptHigh ? "BAISSIER" : null;
+  const sweepWick = sweptLow ? last.close > last.open ? lowerWick : lowerWick
+    : sweptHigh ? upperWick : 0;
+  const sweepDepth = sweptLow ? sweepLevel - last.low
+    : sweptHigh ? last.high - sweepLevel : null;
+  const sweepDepthAtr = Number.isFinite(sweepDepth) ? sweepDepth / indicator.atr : null;
+  const sweepWickBodyRatio = sweep !== "AUCUN"
+    ? sweepWick / Math.max(Math.abs(last.close - last.open), indicator.atr * 0.01)
+    : null;
+  const sweepClosePosition = (last.close - last.low) / Math.max(last.high - last.low, 1e-9);
+  const rejectionAligned = sweptLow ? sweepClosePosition >= 0.65
+    : sweptHigh ? sweepClosePosition <= 0.35 : false;
+  const sweepQuality = sweep === "AUCUN" ? "NON_EVALUE"
+    : sweepDepthAtr >= 0.08 && sweepWickBodyRatio >= 1.5 && rejectionAligned
+      ? "FORTE"
+      : sweepDepthAtr >= 0.03 && sweepWickBodyRatio >= 1 && (sweptLow
+        ? sweepClosePosition >= 0.55 : sweepClosePosition <= 0.45)
+        ? "MODEREE" : "FAIBLE";
   const status = sweep !== "AUCUN" ? "BALAYAGE DETECTE" :
     equalHighs.length || equalLows.length ? "ZONES EGALES DETECTEES" : "PIVOTS CONFIRMES";
 
   return {
     status, buySideLevels, sellSideLevels, equalHighs, equalLows,
-    sweep, sweepLevel,
+    sweep, sweepLevel, sweepDirection, sweepQuality,
+    sweepDepthAtr: sweepDepthAtr === null ? null : Number(sweepDepthAtr.toFixed(2)),
+    sweepWickBodyRatio: sweepWickBodyRatio === null ? null : Number(sweepWickBodyRatio.toFixed(2)),
+    sweepClosePosition: Number(sweepClosePosition.toFixed(2)),
     tolerance: Number(tolerance.toFixed(3)),
     explanation: sweptHigh
       ? "La dernière bougie a dépassé un sommet suivi puis clôturé dessous : balayage potentiel de liquidité acheteuse, à confirmer par la réaction suivante."
@@ -2231,8 +2252,14 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     (directionalConflict ? " ; DI haussier dominant avec ADX élevé, confirmation rejetée" : ""));
   else if (bearishBos) addBear(1, "BOS baissier : continuation, pas preuve isolée de retournement");
 
-  if (liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE") addBull(3, "Balayage des creux puis réintégration");
-  if (liquidity?.sweep === "BALAYAGE LIQUIDITE HAUSSIERE REJETE") addBear(3, "Balayage des sommets puis réintégration");
+  const sweepPoints = liquidity?.sweepQuality === "FORTE" ? 3
+    : liquidity?.sweepQuality === "MODEREE" ? 1 : 0;
+  if (liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE" && sweepPoints) {
+    addBull(sweepPoints, "Balayage des creux puis réintégration · qualité " + liquidity.sweepQuality.toLowerCase());
+  }
+  if (liquidity?.sweep === "BALAYAGE LIQUIDITE HAUSSIERE REJETE" && sweepPoints) {
+    addBear(sweepPoints, "Balayage des sommets puis réintégration · qualité " + liquidity.sweepQuality.toLowerCase());
+  }
   if (regime?.fakeoutDown) addBull(2, "Fausse cassure baissière détectée");
   if (regime?.fakeoutUp) addBear(2, "Fausse cassure haussière détectée");
 
