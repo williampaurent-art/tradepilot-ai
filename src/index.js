@@ -1974,6 +1974,91 @@ function analyzeLiquidity(bars, indicator) {
   };
 }
 
+function analyzeSmartMoney(bars, structure, indicator) {
+  if (!Array.isArray(bars) || bars.length < 20 || !Number.isFinite(indicator.atr)) {
+    return {
+      status: "INDETERMINE", fairValueGaps: [], orderBlock: null,
+      explanation: "Historique insuffisant pour détecter les déséquilibres et blocs d'ordres."
+    };
+  }
+
+  const lastIndex = bars.length - 1;
+  const last = bars[lastIndex];
+  const lookbackStart = Math.max(2, bars.length - 60);
+  const gaps = [];
+
+  // FVG classique à trois bougies : déséquilibre entre la bougie 1 et la bougie 3.
+  for (let i = lookbackStart; i <= lastIndex; i++) {
+    const first = bars[i - 2], third = bars[i];
+    let direction = null, lower = null, upper = null;
+    if (third.low > first.high) {
+      direction = "HAUSSIER"; lower = first.high; upper = third.low;
+    } else if (third.high < first.low) {
+      direction = "BAISSIER"; lower = third.high; upper = first.low;
+    }
+    if (!direction) continue;
+
+    const later = bars.slice(i + 1);
+    const mitigated = later.some(bar =>
+      direction === "HAUSSIER" ? bar.low <= lower : bar.high >= upper
+    );
+    gaps.push({
+      direction,
+      lower: Number(lower.toFixed(2)),
+      upper: Number(upper.toFixed(2)),
+      formedAt: new Date(third.time).toISOString(),
+      ageCandles: lastIndex - i,
+      mitigated,
+      state: mitigated ? "VISITE / PARTIELLEMENT OU TOTALEMENT MITIGE" : "NON MITIGE"
+    });
+  }
+
+  const recentGaps = gaps.filter(g => !g.mitigated).slice(-5).reverse();
+  const event = structure?.breakEvent || "AUCUN";
+  let orderBlock = null;
+  if (event === "BOS_HAUSSIER" || event === "CHOCH_HAUSSIER" ||
+      event === "BOS_BAISSIER" || event === "CHOCH_BAISSIER") {
+    const bullishBreak = event.endsWith("HAUSSIER");
+    const start = Math.max(0, lastIndex - 12);
+    for (let i = lastIndex - 1; i >= start; i--) {
+      const candle = bars[i];
+      const opposing = bullishBreak ? candle.close < candle.open : candle.close > candle.open;
+      if (!opposing) continue;
+      const lower = Math.min(candle.open, candle.close);
+      const upper = Math.max(candle.open, candle.close);
+      const subsequentlyTouched = bars.slice(i + 1).some(bar =>
+        bar.low <= upper && bar.high >= lower
+      );
+      orderBlock = {
+        direction: bullishBreak ? "HAUSSIER" : "BAISSIER",
+        lower: Number(lower.toFixed(2)),
+        upper: Number(upper.toFixed(2)),
+        formedAt: new Date(candle.time).toISOString(),
+        state: subsequentlyTouched ? "ZONE DEJA RETESTEE" : "ZONE NON RETESTEE",
+        basis: event
+      };
+      break;
+    }
+  }
+
+  const activeBullish = recentGaps.filter(g => g.direction === "HAUSSIER").length;
+  const activeBearish = recentGaps.filter(g => g.direction === "BAISSIER").length;
+  const status = orderBlock ? "RUPTURE STRUCTURELLE — BLOC REPERE" :
+    recentGaps.length ? "DESEQUILIBRES DETECTES" : "AUCUNE ZONE ACTIVE";
+  return {
+    status,
+    fairValueGaps: recentGaps,
+    orderBlock,
+    activeBullishFvg: activeBullish,
+    activeBearishFvg: activeBearish,
+    explanation: orderBlock
+      ? "Un bloc candidat a été repéré avant le dernier BOS/CHOCH. Il doit être confirmé par le contexte, la réaction du prix et la confluence."
+      : recentGaps.length
+        ? "Des déséquilibres à trois bougies restent non mitigés. Ils constituent des zones candidates, pas des ordres institutionnels observés."
+        : "Aucun FVG non mitigé récent détecté. L'absence de zone ne préjuge pas de la direction future."
+  };
+}
+
 function buildDashboardFrame(timeframe, bars) {
   const indicator = getIndicators(bars);
   const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
@@ -1984,6 +2069,7 @@ function buildDashboardFrame(timeframe, bars) {
   const structure = analyzeStructure(bars, indicator);
   const volatility = analyzeVolatility(bars, indicator);
   const liquidity = analyzeLiquidity(bars, indicator);
+  const smartMoney = analyzeSmartMoney(bars, structure, indicator);
   const quality = inspectDataQuality(bars, timeframe);
   const macd = indicator.macd || {};
   const bb = indicator.bollinger || {};
@@ -2018,6 +2104,7 @@ function buildDashboardFrame(timeframe, bars) {
     regime,
     volatility,
     liquidity,
+    smartMoney,
     indicators: {
       price: indicator.price,
       ema20: indicator.ema20,
