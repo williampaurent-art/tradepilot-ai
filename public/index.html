@@ -115,7 +115,7 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.10";
+const UI_VERSION="2026.11.08.11";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
