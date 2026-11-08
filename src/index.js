@@ -1895,6 +1895,85 @@ function analyzeVolatility(bars, indicator) {
   };
 }
 
+function analyzeLiquidity(bars, indicator) {
+  if (!Array.isArray(bars) || bars.length < 40 ||
+      !Number.isFinite(indicator.atr) || indicator.atr <= 0) {
+    return {
+      status: "INDETERMINE", buySideLevels: [], sellSideLevels: [],
+      equalHighs: [], equalLows: [], sweep: "AUCUN",
+      explanation: "Historique ou ATR insuffisant pour cartographier les zones de liquidité."
+    };
+  }
+
+  const recent = bars.slice(-100);
+  const swings = findSwingPoints(recent);
+  const last = recent[recent.length - 1];
+  const tolerance = Math.max(indicator.atr * 0.18, indicator.price * 0.00015);
+  const buffer = Math.max(indicator.atr * 0.08, indicator.price * 0.00005);
+
+  const clusterLevels = points => {
+    const clusters = [];
+    for (const point of points) {
+      let cluster = clusters.find(item => Math.abs(item.level - point.price) <= tolerance);
+      if (!cluster) {
+        cluster = { level: point.price, touches: 0, lastIndex: point.index };
+        clusters.push(cluster);
+      }
+      cluster.touches++;
+      cluster.level = (cluster.level * (cluster.touches - 1) + point.price) / cluster.touches;
+      cluster.lastIndex = Math.max(cluster.lastIndex, point.index);
+    }
+    return clusters
+      .filter(item => item.touches >= 2)
+      .sort((a, b) => b.lastIndex - a.lastIndex)
+      .slice(0, 4)
+      .map(item => ({
+        level: Number(item.level.toFixed(2)),
+        touches: item.touches,
+        label: item.touches >= 3 ? "EGAUX MULTIPLES" : "EGAUX"
+      }));
+  };
+
+  const equalHighs = clusterLevels(swings.highs);
+  const equalLows = clusterLevels(swings.lows);
+  const buySideLevels = [...equalHighs, ...swings.highs.slice(-3).map(p => ({
+    level: Number(p.price.toFixed(2)), touches: 1, label: "SOMMET CONFIRME"
+  }))].sort((a, b) => a.level - b.level)
+    .filter((item, index, all) => all.findIndex(x => Math.abs(x.level - item.level) <= tolerance) === index)
+    .slice(-5);
+  const sellSideLevels = [...equalLows, ...swings.lows.slice(-3).map(p => ({
+    level: Number(p.price.toFixed(2)), touches: 1, label: "CREUX CONFIRME"
+  }))].sort((a, b) => a.level - b.level)
+    .filter((item, index, all) => all.findIndex(x => Math.abs(x.level - item.level) <= tolerance) === index)
+    .slice(0, 5);
+
+  const sweptHigh = buySideLevels
+    .filter(item => last.high > item.level + buffer && last.close < item.level)
+    .sort((a, b) => b.level - a.level)[0] || null;
+  const sweptLow = sellSideLevels
+    .filter(item => last.low < item.level - buffer && last.close > item.level)
+    .sort((a, b) => a.level - b.level)[0] || null;
+
+  const sweep = sweptHigh ? "BALAYAGE LIQUIDITE HAUSSIERE REJETE" :
+    sweptLow ? "BALAYAGE LIQUIDITE BAISSIERE REJETE" : "AUCUN";
+  const sweepLevel = sweptHigh?.level ?? sweptLow?.level ?? null;
+  const status = sweep !== "AUCUN" ? "BALAYAGE DETECTE" :
+    equalHighs.length || equalLows.length ? "ZONES EGALES DETECTEES" : "PIVOTS CONFIRMES";
+
+  return {
+    status, buySideLevels, sellSideLevels, equalHighs, equalLows,
+    sweep, sweepLevel,
+    tolerance: Number(tolerance.toFixed(3)),
+    explanation: sweptHigh
+      ? "La dernière bougie a dépassé un sommet suivi puis clôturé dessous : balayage potentiel de liquidité acheteuse, à confirmer par la réaction suivante."
+      : sweptLow
+        ? "La dernière bougie a percé un creux suivi puis clôturé au-dessus : balayage potentiel de liquidité vendeuse, à confirmer par la réaction suivante."
+        : equalHighs.length || equalLows.length
+          ? "Des sommets ou creux proches et répétés forment des zones candidates de liquidité. Ce sont des estimations OHLC, pas des ordres stop observés."
+          : "Pivots récents identifiés. Aucun balayage confirmé sur la dernière bougie clôturée."
+  };
+}
+
 function buildDashboardFrame(timeframe, bars) {
   const indicator = getIndicators(bars);
   const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
@@ -1904,6 +1983,7 @@ function buildDashboardFrame(timeframe, bars) {
   const regime = analyzeMarketRegime(bars, indicator);
   const structure = analyzeStructure(bars, indicator);
   const volatility = analyzeVolatility(bars, indicator);
+  const liquidity = analyzeLiquidity(bars, indicator);
   const quality = inspectDataQuality(bars, timeframe);
   const macd = indicator.macd || {};
   const bb = indicator.bollinger || {};
@@ -1928,6 +2008,7 @@ function buildDashboardFrame(timeframe, bars) {
   if (Number.isFinite(indicator.rsi) && indicator.rsi <= 30) reversalWarnings.push("RSI en zone basse");
   if (volatility.status === "EXTREME") reversalWarnings.push("VOLATILITE EXTREME : risque de mouvement brutal et d'exécution dégradée.");
   if (volatility.status === "CONTRACTION") reversalWarnings.push("CONTRACTION DE VOLATILITE : attendre une cassure confirmée.");
+  if (liquidity.sweep !== "AUCUN") reversalWarnings.push(liquidity.sweep + " au niveau " + liquidity.sweepLevel + " : attendre une confirmation de la réaction.");
   return {
     timeframe,
     candleCount: bars.length,
@@ -1936,6 +2017,7 @@ function buildDashboardFrame(timeframe, bars) {
     trend: describeTrendStrength(indicator, trend),
     regime,
     volatility,
+    liquidity,
     indicators: {
       price: indicator.price,
       ema20: indicator.ema20,
