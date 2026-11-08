@@ -724,7 +724,7 @@ function analyzeMarketRegime(bars, indicator) {
     regime, phase, rangeHigh, rangeLow,
     rangePosition: Number(rangePosition.toFixed(3)),
     touchesHigh, touchesLow,
-    emaSlopeAtr: Number(emaSlopeAtr.toFixed(3)),
+    emaSlopeAtr: emaSlopeAtr === null ? null : Number(emaSlopeAtr.toFixed(3)),
     breakoutUp, breakoutDown, breakoutCandidateUp, breakoutCandidateDown,
     breakoutState, breakoutDirection, followThrough,
     fakeoutUp, fakeoutDown, retestUp, retestDown,
