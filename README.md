@@ -1,1 +1,40 @@
-# tradepilot-ai
+# TradePilot AI
+
+Tableau de bord d'analyse technique XAUUSD, hébergé sur Cloudflare Workers.
+
+## Interface Market Intelligence
+
+Le dossier `public/` contient l'interface responsive en français. La racine du Worker sert le tableau de bord via Cloudflare Workers Static Assets.
+
+Fonctions affichées :
+- cours Bid/Ask, source et horodatage lorsqu'une cotation live est disponible ;
+- statut de marché uniquement lorsque la source le confirme ;
+- analyse M1, M5, M15, H1, H4 et D1 ;
+- EMA 20/50/200, RSI 14, MACD, ADX/DMI, Bollinger, ATR et Stochastique ;
+- classification de régime (tendance, range, transition, indéterminé) ;
+- structure par pivots, BOS/CHOCH et divergences RSI simplifiées ;
+- supports/résistances, bornes de range et alertes de ralentissement ;
+- calendrier économique Finance Calendar lorsque le secret API est configuré.
+
+## API
+
+- `GET /health` : santé du Worker et confirmation que l'exécution réelle est désactivée.
+- `GET /status` : état du Cron, dernière analyse et dernière alerte.
+- `GET /dashboard-data` : données agrégées pour le tableau de bord.
+- `GET /gold?timeframe=M1|M5|M15|H1|H4|D1` : diagnostic de données par unité.
+- `GET /analyze` : analyse technique utilisée par le robot.
+- `GET /calendar` : contexte du calendrier économique.
+- `GET /sniper-stats` : statistiques historiques simulées du module de validation.
+
+## Données et limites
+
+La source OHLC configurée est BiQuote. Les intervalles H1, H4 et D1 sont demandés au fournisseur ; si un intervalle n'est pas pris en charge, si l'historique est insuffisant ou si les données sont périmées, le tableau de bord l'affiche comme indisponible au lieu d'inventer des valeurs. La disponibilité effective de chaque intervalle doit être vérifiée après déploiement.
+
+Le score affiché est un indicateur technique descriptif et ne représente pas une probabilité de gain. Les divergences et les pivots sont des heuristiques techniques à valider sur données historiques. Le calendrier dépend du secret `FINANCE_CALENDAR_API_KEY`.
+
+## Sécurité d'exécution
+
+- Aucun endpoint du tableau de bord ne transmet d'ordre au broker.
+- `liveTrading: false` reste la configuration attendue.
+- Le Cron d'analyse reste configuré toutes les trois minutes (`*/3 * * * *`).
+- Les alertes Telegram existantes ne sont pas remplacées par l'interface.
