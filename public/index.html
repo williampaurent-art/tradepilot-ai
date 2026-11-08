@@ -432,50 +432,61 @@ function assistantAnswer(question){
  const q=String(question||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
  const valid=frames.filter(x=>x.ok&&x.analysis?.dataQuality?.ok);
  const frame=tf=>frames.find(x=>x.timeframe===tf&&x.ok)?.analysis||null;
- const label=v=>v==="HAUSSIER"?"haussier":v==="BAISSIER"?"baissier":v||"indéterminé";
+ const label=v=>v==="HAUSSIER"?"haussier":v==="BAISSIER"?"baissier":v==="MIXTE"?"mixte":v||"indéterminé";
  const fmtPrice=v=>v===null||v===undefined||!Number.isFinite(Number(v))?"indisponible":fmt(v,2);
  const lines=[];
  if(!snapshot)return "Je n'ai pas encore reçu de photographie du marché. Appuie sur « Actualiser » puis repose ta question.";
- if(m.open!==true)lines.push("⚠️ Le marché n'est pas confirmé ouvert. Je ne peux donc pas présenter les données historiques comme un signal live.");
- if(q.includes("direction")||q.includes("tendance")||q.includes("biais")||q.includes("achat")||q.includes("vente")){
-  const dirs=valid.map(x=>x.timeframe+" "+label(x.analysis?.trend?.direction));
+ if(m.open!==true)lines.push("⚠️ Le marché n'est pas confirmé ouvert. Les données disponibles ne doivent pas être interprétées comme un signal live.");
+ if(q.includes("direction")||q.includes("tendance")||q.includes("biais")||q.includes("achat")||q.includes("vente")||q.includes("marche actuel")){
+  const dirs=valid.map(x=>x.timeframe+" "+label(x.analysis?.trend?.direction)+" (force "+(x.analysis?.trend?.strength||"—")+")");
   lines.push("Lecture multi-unités : "+(dirs.join(" · ")||"couverture insuffisante")+".");
-  lines.push("Anticipation TradePilot : "+label(ant.direction)+" ; phase "+(ant.phase||"non évaluée")+" ; convergence "+(ant.confluenceIndex??"—")+"/100.");
-  lines.push("Prix de référence : "+fmtPrice(m.price)+". Ce biais descriptif n'est pas un ordre d'achat ou de vente.");
- }else if(q.includes("pourquoi")||q.includes("attend")||q.includes("signal")||q.includes("entrer")||q.includes("trade")){
-  const evidence=[...(ant.bullishEvidence||[]),...(ant.bearishEvidence||[])].slice(0,6);
-  lines.push("Décision prudente : "+(ant.direction==="INDETERMINE"||!ant.direction?"ATTENDRE / PAS DE BIAIS NET":"ne pas confondre anticipation et confirmation d'entrée")+".");
-  lines.push("Éléments disponibles : "+(evidence.join(" ; ")||"aucune confluence directionnelle exploitable n'est remontée")+".");
-  if(ant.trigger!=null)lines.push("Déclencheur structurel suivi : "+fmtPrice(ant.trigger)+".");
+  lines.push("Anticipation : "+label(ant.direction)+" ; phase "+(ant.phase||"non évaluée")+" ; convergence "+(ant.confluenceIndex??"—")+"/100.");
+  lines.push("Alignement H1/H4/D1 : "+(ant.alignedHigherTimeframes??"—")+"/3 unités.");
+  lines.push("Prix de référence : "+fmtPrice(m.price)+". Le biais décrit les indices disponibles, ce n'est pas un ordre.");
+ }else if(q.includes("pourquoi")||q.includes("attend")||q.includes("signal")||q.includes("entrer")||q.includes("trade")||q.includes("confirmation")){
+  const evidence=Array.isArray(ant.leadingEvidence)&&ant.leadingEvidence.length?ant.leadingEvidence:[...(ant.bullishEvidence||[]),...(ant.bearishEvidence||[])].slice(0,6);
+  lines.push("Lecture actuelle : "+(ant.direction==="INDETERMINE"||!ant.direction?"aucun biais directionnel suffisamment dominant":"biais "+label(ant.direction)+", phase "+(ant.phase||"observation"))+".");
+  lines.push("Éléments détectés : "+(evidence.join(" ; ")||"aucune confluence directionnelle exploitable n'est remontée")+".");
+  if(ant.trigger!=null)lines.push("Niveau de déclenchement structurel surveillé : "+fmtPrice(ant.trigger)+".");
   if(ant.invalidation!=null)lines.push("Niveau d'invalidation du scénario : "+fmtPrice(ant.invalidation)+".");
-  lines.push("Un signal confirmé reste distinct d'une simple pression ou d'une préparation.");
+  lines.push("Une préparation, une pression ou une impulsion ne vaut pas confirmation d'entrée. En cas de données incomplètes ou de contradiction, la décision prudente reste d'attendre.");
  }else if(q.includes("retourn")||q.includes("reversal")||q.includes("choch")||q.includes("bos")){
-  lines.push("Diagnostic multi-timeframe : "+(rev.status||"non disponible")+" ; biais "+label(rev.bias)+" ; "+(rev.confirmedCount??0)+" confirmation(s), "+(rev.formationCount??0)+" formation(s).");
-  const details=Array.isArray(rev.details)?rev.details.slice(0,5).map(x=>x.timeframe+" : "+(x.stage||x.status||x.direction||"observation")):[];
-  lines.push(details.length?details.join(" · "):"Aucun détail de retournement exploitable n'est disponible.");
-  lines.push("Un retournement en formation n'est pas un retournement confirmé. Le niveau d'invalidation doit rester respecté.");
+  const bias=rev.bias||"INDETERMINE";
+  lines.push("Diagnostic multi-timeframe : "+(rev.status||"non disponible")+" ; biais "+label(bias)+".");
+  lines.push("Comptage : "+(rev.confirmedCount??0)+" retournement(s) confirmé(s), "+(rev.formationCount??0)+" en formation, "+(rev.earlyCount??0)+" précurseur(s), "+(rev.invalidatedCount??0)+" scénario(s) invalidé(s).");
+  const details=Array.isArray(rev.details)?rev.details.slice(0,6).map(x=>x.timeframe+" : "+(x.invalidated?"invalide":x.stage||"observation")+" · "+label(x.direction)+(x.againstTrend?" · contre-tendance":"")):[];
+  lines.push(details.length?details.join(" | "):"Aucun détail de retournement exploitable n'est disponible.");
+  lines.push(rev.explanation||"Un retournement en formation n'est pas un retournement confirmé.");
  }else if(q.includes("range")||q.includes("consolid")||q.includes("cassure")||q.includes("breakout")){
   const r=frame("M15")?.regime||{};
   lines.push("Régime M15 : "+(r.regime||"indéterminé")+" ; phase "+(r.phase||"—")+" ; qualité du range "+(r.rangeQuality??"—")+"/100.");
-  lines.push("Cassure : "+(r.breakoutState||"non évaluée")+" ; direction "+(r.breakoutDirection||"—")+".");
+  lines.push("Cassure : "+(r.breakoutState||"non évaluée")+" ; direction "+label(r.breakoutDirection)+".");
   lines.push("Bornes observées : haut "+fmtPrice(r.rangeHigh)+" · bas "+fmtPrice(r.rangeLow)+".");
-  lines.push("Une cassure candidate ou en attente n'est pas traitée comme confirmée.");
+  lines.push(r.explanation||"Une cassure candidate ou en attente n'est pas traitée comme confirmée.");
  }else if(q.includes("volatil")||q.includes("mouvement")||q.includes("accel")||q.includes("choc")){
   const a=frame("M1")?.volatility||{},b=frame("M5")?.volatility||{},c=frame("M15")?.volatility||{};
   lines.push("Volatilité : M1 "+(a.status||"—")+" · M5 "+(b.status||"—")+" · M15 "+(c.status||"—")+".");
+  lines.push("Détail M1 : "+(a.explanation||"non disponible"));
   lines.push("La volatilité mesure l'intensité, pas le sens. Une accélération peut provoquer des spreads élargis, des mèches et des fausses cassures.");
   if(ant.eventWindowActive)lines.push("Une fenêtre d'annonce majeure est actuellement signalée par le calendrier.");
  }else if(q.includes("macro")||q.includes("annonce")||q.includes("econom")||q.includes("calendrier")||q.includes("news")){
   const event=cal.activeEvent||cal.nextEvent||cal.upcomingEvents?.[0];
-  lines.push("Risque calendrier : "+(cal.riskLevel||"non évalué")+" ; données périmées : "+(cal.stale===true?"oui":"non signalées")+".");
-  lines.push(event?"Événement de référence : "+(event.name||"publication")+" · "+(event.minutesUntil!=null?"dans "+event.minutesUntil+" minute(s)":"horaire non disponible")+".":"Aucun événement prochain vérifiable n'est remonté.");
+  lines.push("Risque calendrier : "+(cal.riskLevel||"non évalué")+" ; état des données : "+(cal.stale===true?"périmées":"fraîcheur non signalée comme périmée")+".");
+  lines.push(event?"Événement de référence : "+(event.name||"publication")+" · "+(event.minutesUntil!=null?(event.minutesUntil===0?"fenêtre active":"dans "+event.minutesUntil+" minute(s)"):"horaire non disponible")+(event.goldImpact?" · impact or estimé : "+event.goldImpact:"")+".":"Aucun événement prochain vérifiable n'est remonté.");
+  lines.push("Filtre d'entrée calendrier : "+(cal.safeToTrade===true&&!cal.blackout?"autorisé par le calendrier":"prudence / entrées potentiellement bloquées")+".");
   lines.push("Le calendrier est un filtre de risque, pas une prédiction de la réaction de l'or.");
  }else if(q.includes("prix")||q.includes("cours")||q.includes("combien")){
   lines.push("Dernier prix de référence : "+fmtPrice(m.price)+" ; bid "+fmtPrice(m.bid)+" ; ask "+fmtPrice(m.ask)+".");
   lines.push("État du marché : "+(m.status||"indéterminé")+" ; âge du tick : "+(m.quoteAgeSeconds??"indisponible")+" seconde(s).");
+ }else if(q.includes("liquid")||q.includes("liquidite")||q.includes("balayage")||q.includes("sweep")){
+  const liq=frame("M15")?.liquidity||{};
+  lines.push("Lecture de liquidité M15 : "+(liq.status||"indéterminée")+" ; balayage : "+(liq.sweep||"non détecté")+".");
+  lines.push("Niveaux au-dessus : "+((liq.buySideLevels||[]).slice(0,4).map(x=>fmtPrice(x.level)).join(", ")||"indisponibles")+".");
+  lines.push("Niveaux en dessous : "+((liq.sellSideLevels||[]).slice(0,4).map(x=>fmtPrice(x.level)).join(", ")||"indisponibles")+".");
+  lines.push("Ces niveaux sont estimés à partir des bougies OHLC ; ils ne représentent pas le carnet d'ordres réel.");
  }else{
-  lines.push("Je peux expliquer la direction multi-timeframe, les raisons d'attendre, les retournements, les ranges et cassures, la volatilité, le cours et le calendrier macro.");
-  lines.push("Essaie une question précise, par exemple : « Pourquoi le scénario haussier n'est-il pas confirmé ? »");
+  lines.push("Je peux expliquer la direction multi-timeframe, les raisons d'attendre, les retournements, les ranges et cassures, la volatilité, les balayages de liquidité, le cours et le calendrier macro.");
+  lines.push("Essaie une question précise, par exemple : « Quels éléments invalideraient le scénario haussier ? »");
  }
  lines.push("Analyse synchronisée : "+dateFmt(d.generatedAt)+". Mode analyse uniquement — aucun ordre réel.");
  return lines.join("\n");
@@ -490,6 +501,6 @@ const assistantForm=$("assistantForm");
 if(assistantForm)assistantForm.addEventListener("submit",e=>{e.preventDefault();assistantSubmit($("assistantQuestion")?.value||"");});
 document.querySelectorAll(".assistant-prompts button").forEach(button=>button.addEventListener("click",()=>assistantSubmit(button.dataset.question||"")));
 
-async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
+async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;const assistantMeta=$("assistantMeta");if(assistantMeta)assistantMeta.textContent="Analyse synchronisée · "+dateFmt(d.generatedAt)+" · "+(d.market?.open===true?"flux live confirmé":"flux live non confirmé")+".";renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 $("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
 </script></body></html>
