@@ -1514,6 +1514,22 @@ const ECONOMIC_CALENDAR = {
   AFTER_MS: 15 * 60 * 1000
 };
 
+function classifyGoldEvent(event) {
+  const name = String(event.name || event.title || event.series_name || "").toLowerCase();
+  const criticalTerms = [
+    "fomc", "federal funds", "interest rate", "fed rate", "powell",
+    "nonfarm", "non-farm", "payroll", "consumer price", "cpi",
+    "pce", "inflation", "unemployment rate", " ism ", "gdp"
+  ];
+  const critical = criticalTerms.some(term => name.includes(term));
+  return {
+    goldImpact: critical ? "CRITIQUE" : "IMPORTANT",
+    goldImpactReason: critical
+      ? "Publication généralement sensible au dollar, aux taux ou aux anticipations de politique monétaire."
+      : "Publication majeure susceptible d'influencer le dollar ou le sentiment de marché."
+  };
+}
+
 function evaluateEconomicEvents(events, fetchedAt, stale = false) {
   const now = Date.now();
   const relevant = events.filter(event =>
@@ -1526,6 +1542,7 @@ function evaluateEconomicEvents(events, fetchedAt, stale = false) {
 
   const timed = relevant.map(event => ({
     ...event,
+    ...classifyGoldEvent(event),
     releaseMs: Date.parse(event.release_at_utc || event.time_utc || ""),
     windowStartMs: Date.parse(event.time_window_start || ""),
     windowEndMs: Date.parse(event.time_window_end || "")
@@ -1536,18 +1553,36 @@ function evaluateEconomicEvents(events, fetchedAt, stale = false) {
       return now >= event.releaseMs - ECONOMIC_CALENDAR.BEFORE_MS &&
         now <= event.releaseMs + ECONOMIC_CALENDAR.AFTER_MS;
     }
-
-    if (
-      Number.isFinite(event.windowStartMs) &&
-      Number.isFinite(event.windowEndMs)
-    ) {
+    if (Number.isFinite(event.windowStartMs) && Number.isFinite(event.windowEndMs)) {
       return now >= event.windowStartMs - ECONOMIC_CALENDAR.BEFORE_MS &&
         now <= event.windowEndMs + ECONOMIC_CALENDAR.AFTER_MS;
     }
-
-    // Une date sans heure exacte ne déclenche pas de blocage arbitraire.
     return false;
   }) || null;
+
+  const upcomingEvents = timed
+    .filter(event => Number.isFinite(event.releaseMs) &&
+      event.releaseMs > now &&
+      event.releaseMs <= now + 24 * 60 * 60 * 1000)
+    .sort((a, b) => a.releaseMs - b.releaseMs)
+    .slice(0, 8)
+    .map(event => ({
+      id: event.id || null,
+      name: event.name || event.title || event.series_name || "Annonce économique",
+      country: event.country || null,
+      impact: event.impact || null,
+      goldImpact: event.goldImpact,
+      goldImpactReason: event.goldImpactReason,
+      releaseAt: event.release_at_utc || event.time_utc || null,
+      minutesUntil: Math.max(0, Math.round((event.releaseMs - now) / 60000)),
+      url: event.url || null
+    }));
+
+  const nextEvent = upcomingEvents[0] || null;
+  const riskLevel = stale ? "DONNEES_PERIMEES"
+    : activeEvent ? "FENETRE_ANNONCE"
+      : nextEvent && nextEvent.minutesUntil <= 60 ? "ELEVE"
+        : nextEvent ? "A_SURVEILLER" : "NORMAL";
 
   return {
     configured: true,
@@ -1558,11 +1593,15 @@ function evaluateEconomicEvents(events, fetchedAt, stale = false) {
     stale,
     eventCount: relevant.length,
     blackout: Boolean(activeEvent),
+    riskLevel,
+    nextEvent,
+    upcomingEvents,
     activeEvent: activeEvent ? {
       id: activeEvent.id || null,
       name: activeEvent.name || activeEvent.title || activeEvent.series_name || "Annonce économique",
       country: activeEvent.country || null,
       impact: activeEvent.impact || null,
+      goldImpact: activeEvent.goldImpact,
       releaseAt: activeEvent.release_at_utc || activeEvent.time_utc || null,
       url: activeEvent.url || null
     } : null,
