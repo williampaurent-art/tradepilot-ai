@@ -37,6 +37,7 @@ run_worker_first = [
   "/calendar-key-check",
   "/sniper-stats",
   "/strategy-backtest",
+  "/strategy-backtest-history",
   "/telegram-test"
 ]
 
