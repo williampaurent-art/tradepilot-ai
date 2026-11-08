@@ -3749,11 +3749,20 @@ async function handleStrategyBacktest(request) {
     M5: inspectDataQuality(m5, "M5"),
     M15: inspectDataQuality(m15, "M15")
   };
-  if (!Object.values(dataQuality).every(item => item.ok)) {
+  const validHistoricalSeries = bars =>
+    Array.isArray(bars) && bars.length >= 55 &&
+    bars.every((bar, index) =>
+      Number.isFinite(bar.time) &&
+      [bar.open, bar.high, bar.low, bar.close].every(Number.isFinite) &&
+      bar.high >= Math.max(bar.open, bar.close, bar.low) &&
+      bar.low <= Math.min(bar.open, bar.close) &&
+      (index === 0 || bar.time > bars[index - 1].time)
+    );
+  if (![m1, m5, m15].every(validHistoricalSeries)) {
     return json({
       ok: false,
-      code: "HISTORICAL_DATA_QUALITY",
-      error: "Les données M1/M5/M15 ne passent pas les contrôles de fraîcheur et de continuité.",
+      code: "HISTORICAL_DATA_INVALID",
+      error: "Les séries historiques M1/M5/M15 sont incomplètes, désordonnées ou contiennent des bougies OHLC invalides.",
       dataQuality,
       execution: "AUCUN ORDRE REEL"
     }, 503);
@@ -3907,7 +3916,7 @@ async function handleStrategyBacktest(request) {
     dataQuality,
     trades,
     execution: "AUCUN ORDRE REEL",
-    warning: "Fenêtre limitée aux 250 dernières bougies M1 disponibles. Résultat indicatif, non représentatif d'une validation statistique robuste ni d'une garantie future."
+    warning: "Fenêtre limitée aux 250 dernières bougies M1 disponibles. La fraîcheur live n'est pas exigée pour ce replay historique. Résultat indicatif, non représentatif d'une validation statistique robuste ni d'une garantie future."
   });
 }
 
