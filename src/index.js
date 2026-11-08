@@ -807,7 +807,6 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     if ((signal === "ACHAT" && !validRangeBuy) ||
         (signal === "VENTE" && !validRangeSell)) {
       signal = "ATTENDRE";
-      alertLevel = "NONE";
       reasons = [
         "Range détecté : aucune entrée immédiate sans rejet confirmé de la borne et espace suffisant jusqu'à l'objectif.",
         ...reasons
