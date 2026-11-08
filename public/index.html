@@ -101,7 +101,7 @@ body{background:radial-gradient(ellipse at 78% -12%,rgba(52,91,143,.25),transpar
 <section id="marketAlert" class="market-alert" data-level="calm" role="status" aria-live="polite"><div class="market-alert-head"><span class="market-alert-pulse"></span><span class="market-alert-kicker">SURVEILLANCE ÉVÉNEMENTIELLE · XAUUSD</span><span class="pill">INITIALISATION</span></div><div class="market-alert-title" id="marketAlertTitle">Surveillance du marché en cours</div><div class="market-alert-copy" id="marketAlertCopy">TradePilot vérifie les annonces majeures, la volatilité et les confirmations de retournement.</div><div class="market-alert-meta" id="marketAlertMeta"></div></section>
 
 <section id="assistantPanel" class="assistant-panel" aria-label="Assistant de marché TradePilot">
- <div class="assistant-head"><div><div class="exec-kicker">TRADEPILOT INTELLIGENCE</div><div class="assistant-title">Assistant de marché</div><div class="assistant-sub">Pose une question sur l'analyse XAUUSD actuellement chargée. Les réponses sont construites à partir des indicateurs et diagnostics du tableau de bord.</div></div><span class="assistant-mode">MODE CONTEXTUEL · SANS API EXTERNE</span></div>
+ <div class="assistant-head"><div><div class="exec-kicker">TRADEPILOT INTELLIGENCE</div><div class="assistant-title">Assistant de marché</div><div class="assistant-sub">Pose une question sur l'analyse XAUUSD actuellement chargée. Les réponses sont construites à partir des indicateurs et diagnostics du tableau de bord.</div></div><span class="assistant-mode">IA CONVERSATIONNELLE · WORKERS AI</span></div>
  <div id="assistantLog" class="assistant-log" role="log" aria-live="polite"><div class="assistant-msg bot">Bonjour. Je peux expliquer le biais du marché, les retournements, les ranges, la volatilité, les annonces économiques et les raisons d'attendre. Actualise d'abord le tableau de bord pour obtenir une lecture récente.</div></div>
  <div class="assistant-prompts"><button type="button" data-question="Quelle est la direction actuelle de l'or ?">Direction du marché</button><button type="button" data-question="Pourquoi TradePilot recommande-t-il d'attendre ?">Pourquoi attendre ?</button><button type="button" data-question="Un retournement est-il en préparation ?">Retournement</button><button type="button" data-question="Quel est le risque économique actuellement ?">Risque macro</button></div>
  <form id="assistantForm" class="assistant-form"><input id="assistantQuestion" type="text" maxlength="500" autocomplete="off" placeholder="Pose ta question sur XAUUSD…" aria-label="Question à TradePilot"><button type="submit">Envoyer</button></form>
@@ -505,8 +505,9 @@ async function assistantSubmit(question){
   assistantPush(payload.answer,"bot");
   if(meta)meta.textContent="Modèle conversationnel actif · "+payload.model+" · contexte marché du "+(payload.contextAt||"—")+".";
  }catch(error){
-  assistantPush("Le modèle conversationnel n'est pas disponible pour le moment. Voici la lecture contextuelle locale :\n\n"+assistantAnswer(value),"bot");
-  if(meta)meta.textContent="Mode de secours contextuel · le service IA doit être activé ou réessayé.";
+  const detail=error&&typeof error.message==="string"&&error.message.trim()?error.message:"Erreur réseau inconnue.";
+  assistantPush("Je n'ai pas pu obtenir de réponse du modèle IA. "+detail,"bot");
+  if(meta)meta.textContent="Connexion IA en échec · vérifie le diagnostic affiché ci-dessus, puis réessaie.";
  }finally{
   if(submit){submit.disabled=false;submit.textContent="Envoyer";}
  }
