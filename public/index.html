@@ -178,7 +178,7 @@ const fresh=ok.filter(x=>x.analysis.dataQuality.ok).length;put("dataState",m.ope
 
 function renderMarketAlert(d){
  const root=$("marketAlert");if(!root)return;
- const m=d.market||{},cal=d.economicCalendar||{},rev=d.reversalMultiTimeframe||{};
+ const m=d.market||{},cal=d.economicCalendar||{},rev=d.reversalMultiTimeframe||{},ant=d.marketAnticipation||{};
  const frames=d.timeframes||[];
  const m1=frames.find(x=>x.timeframe==="M1"&&x.ok),m5=frames.find(x=>x.timeframe==="M5"&&x.ok);
  const live=m.open===true&&Boolean(m1?.analysis?.dataQuality?.ok)&&Boolean(m5?.analysis?.dataQuality?.ok);
@@ -195,6 +195,19 @@ function renderMarketAlert(d){
  let chips=["Données "+(live?"M1/M5 validées":"live non validées")];
  if(!live){title=m.open===false?"Marché fermé · surveillance historique":"Surveillance suspendue · flux non confirmés";copy="TradePilot ne déclenche pas d'alerte directionnelle à partir de données historiques, périmées ou incomplètes.";chips=["État du marché : "+(m.status||"inconnu"),"Aucun signal live"];}
  else if(active){level="critical";title="ANNONCE ÉCONOMIQUE MAJEURE EN COURS";copy=(cal.activeEvent?.name||"Publication économique à fort impact")+" · fenêtre de réaction active. La volatilité et les spreads peuvent devenir instables. TradePilot privilégie la prudence et attend une structure exploitable.";chips=["Événement : "+(cal.activeEvent?.country||"US / EU"),"Entrées filtrées pendant la fenêtre de sécurité"];}
+ else if(ant.direction==="HAUSSIER"||ant.direction==="BAISSIER"){
+  const bull=ant.direction==="HAUSSIER",label=bull?"HAUSSIER":"BAISSIER";
+  level=ant.status==="CONVERGENCE_FORTE"?"warning":"watch";
+  if(ant.phase==="PREPARATION_POSSIBLE")title="MOUVEMENT POTENTIEL EN PRÉPARATION · "+label;
+  else if(ant.phase==="IMPULSION_EN_COURS")title="ACCÉLÉRATION DÉTECTÉE · BIAIS "+label;
+  else if(ant.phase==="CONFIRMATION_STRUCTURELLE")title="CASSURE STRUCTURELLE · "+label;
+  else title="PRESSION DIRECTIONNELLE · "+label;
+  copy=(ant.explanation||"Des indices techniques convergent.")+" Indice de convergence : "+(ant.confluenceIndex??0)+"/100 — ce chiffre mesure la convergence des indices, pas une probabilité de gain.";
+  if(ant.leadingEvidence?.length)copy+=" Éléments : "+ant.leadingEvidence.slice(0,3).join(" ; ")+".";
+  chips=["Biais estimé : "+label,"Convergence : "+(ant.confluenceIndex??0)+"/100","Phase : "+(ant.phase||"—"),"Unités : "+(ant.validTimeframes??0)+"/6"];
+  if(ant.trigger!=null)chips.push("Niveau de déclenchement : "+ant.trigger);
+  if(ant.invalidation!=null)chips.push("Invalidation : "+ant.invalidation);
+ }
  else if(shock&&reversal){level="critical";title="RISQUE DE RETOURNEMENT MAJEUR · "+(direction||"DIRECTION NON CONFIRMÉE");copy="Une accélération de volatilité coïncide avec des indices de retournement multi-unités. C'est une alerte de changement de régime potentiel, pas une prédiction certaine : attendre la confirmation et vérifier l'invalidation.";chips=["Volatilité M1 : "+(v1.status||"—"),"Retournement : "+(rev.status||"—"),"Unités validées : "+(rev.validTimeframes??"—")+"/6"];}
  else if(shock){level="warning";title="CHOC DE VOLATILITÉ DÉTECTÉ";copy="L'amplitude récente devient anormale sur les unités courtes. Risque de mouvement brusque, de spread élargi et de faux départ. Ne pas poursuivre une bougie étirée.";chips=["M1 : "+(v1.status||"—"),"M5 : "+(v5.status||"—"),"Attendre stabilisation"];}
  else if(reversal){level="warning";title="RETOURNEMENT POTENTIEL EN FORMATION · "+(direction||"SENS MIXTE");copy="Des indices de retournement sont détectés, mais leur soutien reste à confirmer. TradePilot surveille les unités supérieures, les cassures de structure et les invalidations.";chips=["État : "+(rev.status||"—"),"Confirmations : "+(rev.confirmedCount??0),"Formations : "+(rev.formationCount??0)];}
