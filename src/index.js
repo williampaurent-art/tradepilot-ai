@@ -3420,10 +3420,13 @@ async function handleAssistantChat(request, env) {
       execution: "AUCUN ORDRE REEL"
     });
   } catch (error) {
+    const diagnostic = assistantCleanText(error?.message || String(error), 220);
+    console.error("TradePilot Workers AI error:", diagnostic);
     return json({
       ok: false,
-      code: "AI_UNAVAILABLE",
-      error: "Le modèle IA est momentanément indisponible. Réessaie dans quelques instants."
+      code: "AI_MODEL_ERROR",
+      error: "Workers AI n'a pas répondu correctement. Diagnostic : " + (diagnostic || "erreur inconnue"),
+      model: "@cf/meta/llama-3.1-8b-instruct"
     }, 502);
   }
 }
