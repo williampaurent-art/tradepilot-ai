@@ -419,26 +419,56 @@ function emaSeries(values, period) {
 }
 
 function calculateRSI(values, period = 14) {
-  if (values.length < period + 1) return null;
-  let gains = 0, losses = 0;
-  for (let i = values.length - period; i < values.length; i++) {
+  if (!Array.isArray(values) || values.length < period + 1) return null;
+
+  // RSI de Wilder : amorçage par moyenne simple des premières variations,
+  // puis lissage récursif sur toute la série jusqu'à la dernière clôture.
+  let gains = 0;
+  let losses = 0;
+
+  for (let i = 1; i <= period; i++) {
     const change = values[i] - values[i - 1];
     if (change > 0) gains += change;
     else losses -= change;
   }
-  const avgGain = gains / period, avgLoss = losses / period;
+
+  let avgGain = gains / period;
+  let avgLoss = losses / period;
+
+  for (let i = period + 1; i < values.length; i++) {
+    const change = values[i] - values[i - 1];
+    const gain = Math.max(change, 0);
+    const loss = Math.max(-change, 0);
+    avgGain = ((avgGain * (period - 1)) + gain) / period;
+    avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+  }
+
   if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
-  return 100 - 100 / (1 + avgGain / avgLoss);
+  const relativeStrength = avgGain / avgLoss;
+  return 100 - 100 / (1 + relativeStrength);
 }
 
 function calculateATR(bars, period = 14) {
-  if (bars.length < period + 1) return null;
-  const ranges = [];
+  if (!Array.isArray(bars) || bars.length < period + 1) return null;
+
+  const trueRanges = [];
   for (let i = 1; i < bars.length; i++) {
-    const c = bars[i], p = bars[i - 1];
-    ranges.push(Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close)));
+    const current = bars[i];
+    const previous = bars[i - 1];
+    trueRanges.push(Math.max(
+      current.high - current.low,
+      Math.abs(current.high - previous.close),
+      Math.abs(current.low - previous.close)
+    ));
   }
-  return sma(ranges, period);
+
+  // ATR de Wilder : moyenne initiale des périodes disponibles,
+  // puis lissage récursif (RMA), et non SMA glissante.
+  let atr = trueRanges.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
+  for (let i = period; i < trueRanges.length; i++) {
+    atr = ((atr * (period - 1)) + trueRanges[i]) / period;
+  }
+  return atr;
 }
 
 function calculateMACD(values) {
