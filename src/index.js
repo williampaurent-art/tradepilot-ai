@@ -1774,20 +1774,29 @@ function analyzeStructure(bars, indicator) {
 
   const closes = recent.map(b => b.close);
   const rsiAt = index => calculateRSI(closes.slice(0, index + 1), 14);
-  let bullishDivergence = false, bearishDivergence = false;
+  const macdAt = index => calculateMACD(closes.slice(0, index + 1)).macd;
   const pivotLows = swings.lows.slice(-2), pivotHighs = swings.highs.slice(-2);
-  if (pivotLows.length === 2) {
-    const [a,b] = pivotLows;
-    const ra = rsiAt(a.index), rb = rsiAt(b.index);
-    bullishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
-      b.index > a.index && b.price < a.price && rb > ra;
-  }
-  if (pivotHighs.length === 2) {
-    const [a,b] = pivotHighs;
-    const ra = rsiAt(a.index), rb = rsiAt(b.index);
-    bearishDivergence = Number.isFinite(ra) && Number.isFinite(rb) &&
-      b.index > a.index && b.price > a.price && rb < ra;
-  }
+  const recentPivot = pivot => Boolean(pivot && recent.length - 1 - pivot.index <= 20);
+  const compareOscillator = (pivots, oscillatorAt, side) => {
+    if (pivots.length !== 2) return false;
+    const [a, b] = pivots;
+    if (!recentPivot(b) || b.index <= a.index) return false;
+    const first = oscillatorAt(a.index), second = oscillatorAt(b.index);
+    if (!Number.isFinite(first) || !Number.isFinite(second)) return false;
+    return side === "LOW"
+      ? b.price < a.price && second > first
+      : b.price > a.price && second < first;
+  };
+  const bullishDivergence = compareOscillator(pivotLows, rsiAt, "LOW");
+  const bearishDivergence = compareOscillator(pivotHighs, rsiAt, "HIGH");
+  const bullishMacdDivergence = compareOscillator(pivotLows, macdAt, "LOW");
+  const bearishMacdDivergence = compareOscillator(pivotHighs, macdAt, "HIGH");
+  const bullishDivergenceCount = Number(bullishDivergence) + Number(bullishMacdDivergence);
+  const bearishDivergenceCount = Number(bearishDivergence) + Number(bearishMacdDivergence);
+  const divergenceBias = bullishDivergenceCount > bearishDivergenceCount ? "HAUSSIER" :
+    bearishDivergenceCount > bullishDivergenceCount ? "BAISSIER" :
+    bullishDivergenceCount > 0 ? "MIXTE" : "AUCUNE";
+
 
   const breakEvent = chochUp ? "CHOCH_HAUSSIER" :
     chochDown ? "CHOCH_BAISSIER" :
@@ -1808,6 +1817,8 @@ function analyzeStructure(bars, indicator) {
     breakEvent,
     breakLevel,
     bullishDivergence, bearishDivergence,
+    bullishMacdDivergence, bearishMacdDivergence,
+    bullishDivergenceCount, bearishDivergenceCount, divergenceBias,
     lastSwingHigh: lastHigh ? lastHigh.price : null,
     lastSwingLow: lastLow ? lastLow.price : null,
     recentHighs: highs.map(x => x.price),
@@ -2084,6 +2095,8 @@ function buildDashboardFrame(timeframe, bars) {
   const reversalWarnings = [];
   if (structure.bullishDivergence) reversalWarnings.push("Divergence RSI haussiere : le prix marque un plus bas alors que le RSI remonte.");
   if (structure.bearishDivergence) reversalWarnings.push("Divergence RSI baissiere : le prix marque un plus haut alors que le RSI faiblit.");
+  if (structure.bullishMacdDivergence) reversalWarnings.push("Divergence MACD haussiere : le prix marque un plus bas tandis que le MACD remonte.");
+  if (structure.bearishMacdDivergence) reversalWarnings.push("Divergence MACD baissiere : le prix marque un plus haut tandis que le MACD faiblit.");
   if (structure.choch !== "AUCUN") reversalWarnings.push(structure.choch + " : changement potentiel de caractere de la structure.");
   if (regime.fakeoutUp) reversalWarnings.push("FAUSSE CASSURE HAUSSIERE : dépassement de résistance rejeté en clôture.");
   if (regime.fakeoutDown) reversalWarnings.push("FAUSSE CASSURE BAISSIERE : passage sous le support rejeté en clôture.");
