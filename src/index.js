@@ -3207,6 +3207,225 @@ async function handleDashboardData(env) {
   });
 }
 
+
+function assistantCleanText(value, max = 240) {
+  return typeof value === "string" ? value.replace(/[<>]/g, "").slice(0, max) : "";
+}
+
+function assistantNumber(value) {
+  return Number.isFinite(Number(value)) ? Number(value) : null;
+}
+
+function buildAssistantMarketContext(raw) {
+  const d = raw && typeof raw === "object" ? raw : {};
+  const market = d.market || {};
+  const ant = d.marketAnticipation || {};
+  const rev = d.reversalMultiTimeframe || {};
+  const cal = d.economicCalendar || {};
+  const macro = d.macroCrossAsset || {};
+  const timeframes = Array.isArray(d.timeframes) ? d.timeframes.slice(0, 6) : [];
+  return {
+    instrument: "XAUUSD",
+    generatedAt: assistantCleanText(d.generatedAt, 40),
+    market: {
+      open: market.open === true ? true : market.open === false ? false : null,
+      status: assistantCleanText(market.status, 40),
+      price: assistantNumber(market.price),
+      bid: assistantNumber(market.bid),
+      ask: assistantNumber(market.ask),
+      quoteAgeSeconds: assistantNumber(market.quoteAgeSeconds),
+      quoteError: assistantCleanText(market.quoteError, 180)
+    },
+    timeframes: timeframes.map(item => {
+      const a = item?.analysis || {};
+      const t = a.trend || {};
+      const r = a.regime || {};
+      const v = a.volatility || {};
+      const st = a.structure || {};
+      const liq = a.liquidity || {};
+      return {
+        timeframe: assistantCleanText(item?.timeframe, 5),
+        available: item?.ok === true && a.dataQuality?.ok === true,
+        trend: assistantCleanText(t.direction, 30),
+        trendStrength: assistantCleanText(t.strength, 30),
+        adx: assistantNumber(t.adx),
+        regime: assistantCleanText(r.regime, 50),
+        regimePhase: assistantCleanText(r.phase, 50),
+        rangeQuality: assistantNumber(r.rangeQuality),
+        rangeHigh: assistantNumber(r.rangeHigh),
+        rangeLow: assistantNumber(r.rangeLow),
+        breakoutState: assistantCleanText(r.breakoutState, 50),
+        breakoutDirection: assistantCleanText(r.breakoutDirection, 30),
+        volatility: assistantCleanText(v.status, 40),
+        volatilityExplanation: assistantCleanText(v.explanation, 180),
+        structure: assistantCleanText(st.structure, 80),
+        bos: assistantCleanText(st.bos, 40),
+        choch: assistantCleanText(st.choch, 40),
+        breakLevel: assistantNumber(st.breakLevel),
+        liquidityStatus: assistantCleanText(liq.status, 40),
+        liquiditySweep: assistantCleanText(liq.sweep, 60),
+        dataQuality: a.dataQuality?.ok === true ? "OK" : "INSUFFISANTE"
+      };
+    }),
+    anticipation: {
+      status: assistantCleanText(ant.status, 60),
+      phase: assistantCleanText(ant.phase, 60),
+      direction: assistantCleanText(ant.direction, 30),
+      confluenceIndex: assistantNumber(ant.confluenceIndex),
+      validTimeframes: assistantNumber(ant.validTimeframes),
+      alignedHigherTimeframes: assistantNumber(ant.alignedHigherTimeframes),
+      bullishEvidence: Array.isArray(ant.bullishEvidence) ? ant.bullishEvidence.slice(0, 6).map(x => assistantCleanText(x, 150)) : [],
+      bearishEvidence: Array.isArray(ant.bearishEvidence) ? ant.bearishEvidence.slice(0, 6).map(x => assistantCleanText(x, 150)) : [],
+      leadingEvidence: Array.isArray(ant.leadingEvidence) ? ant.leadingEvidence.slice(0, 8).map(x => assistantCleanText(x, 150)) : [],
+      trigger: assistantNumber(ant.trigger),
+      invalidation: assistantNumber(ant.invalidation),
+      eventRisk: assistantCleanText(ant.eventRisk, 50),
+      eventWindowActive: ant.eventWindowActive === true,
+      explanation: assistantCleanText(ant.explanation, 350)
+    },
+    reversal: {
+      status: assistantCleanText(rev.status, 50),
+      bias: assistantCleanText(rev.bias, 30),
+      confirmedCount: assistantNumber(rev.confirmedCount),
+      formationCount: assistantNumber(rev.formationCount),
+      earlyCount: assistantNumber(rev.earlyCount),
+      invalidatedCount: assistantNumber(rev.invalidatedCount),
+      explanation: assistantCleanText(rev.explanation, 260),
+      details: Array.isArray(rev.details) ? rev.details.slice(0, 6).map(x => ({
+        timeframe: assistantCleanText(x.timeframe, 5),
+        stage: assistantCleanText(x.stage, 50),
+        direction: assistantCleanText(x.direction, 30),
+        invalidated: x.invalidated === true,
+        againstTrend: x.againstTrend === true
+      })) : []
+    },
+    calendar: {
+      configured: cal.configured === true,
+      status: assistantCleanText(cal.status, 40),
+      stale: cal.stale === true,
+      riskLevel: assistantCleanText(cal.riskLevel, 50),
+      blackout: cal.blackout === true,
+      safeToTrade: cal.safeToTrade === true,
+      activeEvent: cal.activeEvent ? {
+        name: assistantCleanText(cal.activeEvent.name, 120),
+        country: assistantCleanText(cal.activeEvent.country, 12),
+        impact: assistantCleanText(cal.activeEvent.impact, 20),
+        goldImpact: assistantCleanText(cal.activeEvent.goldImpact, 30),
+        releaseAt: assistantCleanText(cal.activeEvent.releaseAt, 40)
+      } : null,
+      nextEvent: cal.nextEvent ? {
+        name: assistantCleanText(cal.nextEvent.name, 120),
+        country: assistantCleanText(cal.nextEvent.country, 12),
+        impact: assistantCleanText(cal.nextEvent.impact, 20),
+        goldImpact: assistantCleanText(cal.nextEvent.goldImpact, 30),
+        minutesUntil: assistantNumber(cal.nextEvent.minutesUntil),
+        releaseAt: assistantCleanText(cal.nextEvent.releaseAt, 40)
+      } : null,
+      recentSurprises: Array.isArray(cal.recentSurprises) ? cal.recentSurprises.slice(0, 3).map(x => ({
+        name: assistantCleanText(x.name, 100),
+        comparison: assistantCleanText(x.comparison, 50),
+        goldBias: assistantCleanText(x.goldBias, 50),
+        reason: assistantCleanText(x.reason, 180)
+      })) : []
+    },
+    macroCrossAsset: {
+      status: assistantCleanText(macro.status, 40),
+      bias: assistantCleanText(macro.bias, 40),
+      explanation: assistantCleanText(macro.explanation, 240)
+    },
+    execution: "AUCUN ORDRE REEL"
+  };
+}
+
+async function handleAssistantChat(request, env) {
+  if (!env.AI || typeof env.AI.run !== "function") {
+    return json({
+      ok: false,
+      code: "AI_BINDING_MISSING",
+      error: "Le service IA Cloudflare n'est pas encore relié à ce Worker."
+    }, 503);
+  }
+
+  const rawBody = await request.text();
+  if (rawBody.length > 24000) {
+    return json({ ok: false, error: "Message trop volumineux. Réduis l'historique de conversation." }, 413);
+  }
+
+  let body;
+  try { body = JSON.parse(rawBody); }
+  catch { return json({ ok: false, error: "Corps JSON invalide." }, 400); }
+
+  const question = assistantCleanText(body?.question, 700).trim();
+  if (!question) return json({ ok: false, error: "Écris une question avant l'envoi." }, 400);
+
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  const ipHash = Array.from(new Uint8Array(digest)).slice(0, 12).map(x => x.toString(16).padStart(2, "0")).join("");
+  const rateKey = "assistant_rate_" + ipHash;
+  if (env.TP_STATE) {
+    const previous = Number(await readKV(env, rateKey) || 0);
+    if (previous >= 12) {
+      return json({ ok: false, code: "RATE_LIMIT", error: "Limite temporaire atteinte. Réessaie dans quelques minutes." }, 429);
+    }
+    await writeKV(env, rateKey, previous + 1, 600);
+  }
+
+  const history = Array.isArray(body?.history) ? body.history.slice(-8) : [];
+  const messages = history.map(item => ({
+    role: item?.role === "assistant" ? "assistant" : "user",
+    content: assistantCleanText(item?.content, 500)
+  })).filter(item => item.content);
+  if (!messages.length || messages[messages.length - 1].role !== "user" ||
+      messages[messages.length - 1].content !== question) {
+    messages.push({ role: "user", content: question });
+  }
+
+  const context = buildAssistantMarketContext(body?.marketContext);
+  const system = [
+    "Tu es TradePilot AI, assistant d'analyse de marché spécialisé dans l'or XAUUSD.",
+    "Réponds en français, de façon claire, professionnelle, naturelle et concise.",
+    "Tu dois répondre à la question en t'appuyant d'abord sur le contexte JSON fourni. Les données sont une photographie au moment generatedAt, pas forcément le cours actuel.",
+    "N'invente jamais de prix, d'indicateur, d'annonce, de résultat, de probabilité ou de confirmation absente du contexte. Si une donnée manque ou est périmée, dis-le explicitement.",
+    "Distingue préparation, pression, impulsion et confirmation structurelle. Un indice de convergence n'est jamais une probabilité de gain.",
+    "Explique les éléments contradictoires et les conditions qui invalideraient un scénario. Si marché fermé, flux non confirmé ou données insuffisantes, indique qu'il ne faut pas présenter cela comme un signal live.",
+    "Les niveaux de liquidité sont des approximations OHLC, pas des données de carnet d'ordres.",
+    "Tu ne donnes pas d'ordre exécutable, tu ne promets aucun rendement et tu ne prétends pas passer d'ordres. L'exécution reste manuelle et le statut est AUCUN ORDRE REEL.",
+    "Si la question sort du contexte XAUUSD, réponds brièvement ou précise les limites.",
+    "Contexte de marché structuré (JSON) : " + JSON.stringify(context)
+  ].join("\n");
+
+  const prompt = system + "\n\n" + messages.map(item =>
+    (item.role === "assistant" ? "TradePilot: " : "Utilisateur: ") + item.content
+  ).join("\n") + "\n\nTradePilot:";
+  try {
+    const result = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+      prompt,
+      max_tokens: 420,
+      temperature: 0.25
+    });
+    const answer = assistantCleanText(
+      result?.response || result?.output_text || result?.text ||
+      (typeof result === "string" ? result : ""),
+      3200
+    ).trim();
+    if (!answer) throw new Error("Réponse IA vide.");
+    return json({
+      ok: true,
+      answer,
+      model: "@cf/meta/llama-3.1-8b-instruct",
+      generatedAt: new Date().toISOString(),
+      contextAt: context.generatedAt,
+      execution: "AUCUN ORDRE REEL"
+    });
+  } catch (error) {
+    return json({
+      ok: false,
+      code: "AI_UNAVAILABLE",
+      error: "Le modèle IA est momentanément indisponible. Réessaie dans quelques instants."
+    }, 502);
+  }
+}
+
 // --------------------------------------------------
 // ROUTES
 // --------------------------------------------------
@@ -3544,6 +3763,10 @@ export default {
         return await handleDashboardData(env);
       }
 
+      if (path === "/assistant-chat") {
+        return await handleAssistantChat(request, env);
+      }
+
       if (path === "/gold") {
         return await handleGold(request);
       }
@@ -3579,6 +3802,7 @@ export default {
           "/health",
           "/status",
           "/dashboard-data",
+          "/assistant-chat",
           "/gold?timeframe=M1",
           "/gold?timeframe=M5",
           "/gold?timeframe=M15",
