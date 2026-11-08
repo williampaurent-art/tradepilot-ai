@@ -2271,6 +2271,16 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
           : stage === "SIGNAUX_CONTRADICTOIRES"
             ? "Les éléments haussiers et baissiers se contredisent : aucun sens de retournement ne domine."
             : "Aucun faisceau suffisant d'indices de retournement n'est identifié sur la dernière bougie clôturée.";
+  const invalidationLevel = direction === "HAUSSIER"
+    ? (Number.isFinite(st.lastSwingLow) ? st.lastSwingLow : null)
+    : direction === "BAISSIER"
+      ? (Number.isFinite(st.lastSwingHigh) ? st.lastSwingHigh : null)
+      : null;
+  const invalidationLabel = direction === "HAUSSIER"
+    ? "Invalidation sous le dernier creux confirmé"
+    : direction === "BAISSIER"
+      ? "Invalidation au-dessus du dernier sommet confirmé"
+      : "Aucun niveau : scénario contradictoire";
   return {
     status, stage, direction,
     bullishScore, bearishScore,
@@ -2279,8 +2289,13 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     trendExhaustion, trendContext: trend, againstTrend: oppositeTrend,
     emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
     macdSlowing, adxFalling,
+    invalidationLevel,
+    invalidationLabel,
+    invalidationBasis: invalidationLevel === null
+      ? "Aucun pivot structurel confirmé disponible."
+      : "Dernier pivot opposé confirmé ; niveau technique à revalider selon le spread et les conditions du courtier.",
     explanation,
-    note: "Score heuristique d'indices, pas une probabilité de réussite. Confirmation locale à cette unité de temps, non garantie multi-timeframe."
+    note: "Score heuristique d'indices, pas une probabilité de réussite. Le niveau d'invalidation est un repère structurel, pas un stop-loss calculé ni un ordre. Confirmation locale à cette unité de temps, non garantie multi-timeframe."
   };
 }
 function buildDashboardFrame(timeframe, bars) {
