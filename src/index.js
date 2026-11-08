@@ -4099,6 +4099,12 @@ async function handleStrategyBacktest(request, env) {
       exitTime: new Date(m1[exitIndex].time + TIMEFRAMES.M1.ms).toISOString(),
       entry: Number(entry.toFixed(2)),
       exit: Number(exit.toFixed(2)),
+      stopPrice: Number(stop.toFixed(2)),
+      targetPrice: Number(target.toFixed(2)),
+      stopDistance: Number(stopDistance.toFixed(2)),
+      targetDistance: Number(targetDistance.toFixed(2)),
+      rewardRiskRatio: Number((targetDistance / stopDistance).toFixed(3)),
+      invalidationLevel: setup.tradePlan?.invalidationLevel ?? null,
       netPoints: Number(netPoints.toFixed(3)),
       result: netPoints > 0 ? "WIN" : "LOSS",
       exitReason
