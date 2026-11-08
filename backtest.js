@@ -338,23 +338,23 @@ function compareStrategies(candles, options = {}) {
 }
 
 function walkForwardCompare(candles, options = {}) {
-  const trainingBars = Math.floor(Number(options.trainingBars ?? 500));
+  const warmupBars = Math.floor(Number(options.warmupBars ?? 500));
   const testBars = Math.floor(Number(options.testBars ?? 200));
   const stepBars = Math.floor(Number(options.stepBars ?? testBars));
   const capital = Number(options.capital ?? 10000);
 
-  if (!Array.isArray(candles) || trainingBars < 50 || testBars < 20 ||
-      stepBars < 1 || !Number.isFinite(trainingBars) ||
+  if (!Array.isArray(candles) || warmupBars < 50 || testBars < 20 ||
+      stepBars < testBars || !Number.isFinite(warmupBars) ||
       !Number.isFinite(testBars) || !Number.isFinite(stepBars)) {
     throw new Error("Paramètres walk-forward invalides.");
   }
-  if (candles.length < trainingBars + testBars) {
+  if (candles.length < warmupBars + testBars) {
     throw new Error("Historique insuffisant pour une première fenêtre hors échantillon.");
   }
 
   const strategies = ["trend", "breakout", "reversal"];
   const folds = [];
-  for (let testStart = trainingBars; testStart + testBars <= candles.length; testStart += stepBars) {
+  for (let testStart = warmupBars; testStart + testBars <= candles.length; testStart += stepBars) {
     const testEnd = testStart + testBars;
     const results = strategies.map(strategy => {
       const result = backtest(candles, strategy, {
@@ -379,8 +379,8 @@ function walkForwardCompare(candles, options = {}) {
       };
     });
     folds.push({
-      trainingStartIndex: Math.max(0, testStart - trainingBars),
-      trainingEndIndex: testStart - 1,
+      warmupStartIndex: Math.max(0, testStart - warmupBars),
+      warmupEndIndex: testStart - 1,
       testStartIndex: testStart,
       testEndIndex: testEnd - 1,
       results
@@ -424,14 +424,14 @@ function walkForwardCompare(candles, options = {}) {
   }).sort((a, b) => b.normalizedReturnPercent - a.normalizedReturnPercent);
 
   return {
-    method: "Rolling chronological out-of-sample evaluation",
-    trainingBars,
+    method: "Rolling chronological out-of-sample evaluation with indicator warm-up",
+    warmupBars,
     testBars,
     stepBars,
     folds: folds.length,
     summary,
     foldResults: folds,
-    warning: "Les stratégies ne sont pas optimisées sur la fenêtre de test. Les performances passées ne garantissent pas les résultats futurs. Chaque fenêtre repart du capital initial."
+    warning: "La période warm-up sert uniquement à initialiser les indicateurs; aucune optimisation ni aucun apprentissage de modèle n'est effectué. Les fenêtres de test ne se chevauchent pas. Les performances passées ne garantissent pas les résultats futurs. Chaque fenêtre repart du capital initial."
   };
 }
 
