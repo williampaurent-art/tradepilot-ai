@@ -1564,6 +1564,7 @@ function buildAlertMessage(signal) {
     "🧠 Intelligence multi-unités :",
     `Anticipation : ${anticipation.phase || "NON EVALUÉE"} — ${anticipation.direction || "INDETERMINE"} (${anticipation.confluenceIndex ?? "—"}/100)`,
     `Retournement : ${reversal.status || "NON EVALUÉ"} — ${reversal.bias || "NEUTRE"}`,
+    `Contexte DXY/taux : ${intelligence.macroCrossAsset?.bias || "NON ÉVALUÉ"}`,
     `Unités analysées : ${(intelligence.availableTimeframes || []).join(", ") || "M1/M5/M15"}`,
     eventMonitoring.active
       ? `📰 Fenêtre annonce active : ${eventMonitoring.activeEvent || "publication majeure"} — entrée suspendue pendant la fenêtre de sécurité.`
