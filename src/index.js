@@ -267,7 +267,10 @@ async function fetchCandles(timeframe, limit = 200) {
 
 async function fetchLiveQuote() {
   const url = new URL(`https://biquote.io/api/${CONFIG.SYMBOL}`);
-  url.searchParams.set("allowStale", "false");
+  // Garder le dernier tick disponible permet de distinguer un marché fermé
+  // d'une panne ou d'un flux inconnu. Il n'est jamais utilisé comme cours live
+  // si son état est fermé ou si son âge dépasse le seuil strict ci-dessous.
+  url.searchParams.set("allowStale", "true");
 
   const response = await fetch(url.toString(), {
     headers: { accept: "application/json" },
