@@ -921,10 +921,19 @@ async function updateSniperStatistics(env, signal, m1) {
         createdAt: now,
         firstEligibleBarTime: Math.floor(now / 60000) * 60000 + 60000,
         expiresAt: now + SNIPER_STATS.MAX_HOLD_MS,
+        // OHLC candles are treated as approximate mid-price candles.
+        // Convert executable entry (ASK for BUY / BID for SELL) to mid
+        // using half the observed spread. This is still an approximation
+        // because historical bid/ask ticks are not supplied by the feed.
+        entryExecutable: buy ? Number(signal.liveQuote.ask) : Number(signal.liveQuote.bid),
         entryMid: mid,
         spreadAtEntry: spread,
-        targetMid: buy ? mid + target + spread : mid - target - spread,
-        stopMid: buy ? mid - stop + spread : mid + stop - spread,
+        targetMid: buy
+          ? mid + target + spread / 2
+          : mid - target - spread / 2,
+        stopMid: buy
+          ? mid - stop + spread / 2
+          : mid + stop - spread / 2,
         targetMove: target,
         stopMove: stop,
         outcome: "PENDING",
@@ -956,7 +965,7 @@ async function updateSniperStatistics(env, signal, m1) {
         stats.qualified ? "QUALIFIED_HISTORICALLY" : "BELOW_TARGET",
       sampleMethod: "Signaux techniques confirmés, TP/SL évalués sur bougies M1 clôturées",
       maxHoldingMinutes: SNIPER_STATS.MAX_HOLD_MS / 60000,
-      spreadAdjustment: "Seuils ajustés du spread observé à l'entrée; commissions et slippage non modélisés",
+      spreadAdjustment: "Seuils ajustés de la moitié du spread d'entrée sur OHLC mid approximatif; commissions, slippage et bid/ask historiques non modélisés",
       sameCandleRule: "Si TP et SL sont touchés dans la même bougie, résultat compté comme perte",
       warning: "Statistique historique, non prédictive et sans garantie de résultat."
     };
@@ -1094,8 +1103,11 @@ function buildAlertMessage(signal) {
       : `📊 SIGNAL : ${action} — À SURVEILLER, PAS D'ENTRÉE`,
     `🎯 Score technique : ${signal.score}/100`,
     "",
-    `💰 Cours marché ${entrySide} au moment de l'analyse : ${signal.entry}`,
+    `💰 Prix de référence ${entrySide} à l'alerte : ${signal.entry}`,
     `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
+    `🎯 Objectif de mouvement : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
+    `🛑 Invalidation : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
+    `⚠️ Niveaux affichés calculés depuis le prix de l'alerte : recalcule TP/SL depuis le prix réel d'exécution MT5.`,
     `🕒 Âge du cours reçu : ${signal.liveQuote.quoteAgeSeconds}s`,
     `🕓 Horodatage du cours : ${signal.liveQuote.timestamp}`,
     `✅ Take Profit calculé : ${signal.targetPrice}`,
