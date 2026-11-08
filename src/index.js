@@ -763,10 +763,232 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
 }
 
 // --------------------------------------------------
+// TRADEPILOT SNIPER — VALIDATION STATISTIQUE
+// --------------------------------------------------
+
+const SNIPER_STATS = {
+  KEY: "sniper_stats_v1",
+  TARGET_WIN_RATE: 0.90,
+  MIN_RESOLVED: 100,
+  MAX_HOLD_MS: 30 * 60 * 1000,
+  SAMPLE_TTL_SECONDS: 90 * 86400,
+  MAX_SAMPLES: 3000,
+  SAMPLE_INTERVAL_MS: 15 * 60 * 1000
+};
+
+function wilsonInterval(wins, total, z = 1.96) {
+  if (!total) return { lower: null, upper: null };
+  const p = wins / total;
+  const z2 = z * z;
+  const denominator = 1 + z2 / total;
+  const center = (p + z2 / (2 * total)) / denominator;
+  const margin = z * Math.sqrt((p * (1 - p) / total) + z2 / (4 * total * total)) / denominator;
+  return {
+    lower: Number(Math.max(0, center - margin).toFixed(4)),
+    upper: Number(Math.min(1, center + margin).toFixed(4))
+  };
+}
+
+function getSniperBucketStats(samples, direction, regime) {
+  const bucket = samples.filter(sample =>
+    sample.direction === direction &&
+    sample.regime === regime &&
+    ["WIN", "LOSS", "TIMEOUT"].includes(sample.outcome)
+  );
+  const wins = bucket.filter(sample => sample.outcome === "WIN").length;
+  const losses = bucket.filter(sample => sample.outcome === "LOSS").length;
+  const timeouts = bucket.filter(sample => sample.outcome === "TIMEOUT").length;
+  const resolved = wins + losses;
+  const winRate = resolved ? wins / resolved : null;
+  const interval = wilsonInterval(wins, resolved);
+  return {
+    direction,
+    regime,
+    samples: bucket.length,
+    resolved,
+    wins,
+    losses,
+    timeouts,
+    winRate: winRate === null ? null : Number((winRate * 100).toFixed(2)),
+    confidence95: {
+      lower: interval.lower === null ? null : Number((interval.lower * 100).toFixed(2)),
+      upper: interval.upper === null ? null : Number((interval.upper * 100).toFixed(2))
+    },
+    targetWinRate: SNIPER_STATS.TARGET_WIN_RATE * 100,
+    minimumResolved: SNIPER_STATS.MIN_RESOLVED,
+    qualified: resolved >= SNIPER_STATS.MIN_RESOLVED &&
+      winRate >= SNIPER_STATS.TARGET_WIN_RATE
+  };
+}
+
+async function updateSniperStatistics(env, signal, m1) {
+  const raw = await readKV(env, SNIPER_STATS.KEY);
+  let state;
+  try {
+    state = raw ? JSON.parse(raw) : null;
+  } catch {
+    state = null;
+  }
+  if (!state || !Array.isArray(state.samples)) state = { version: 1, samples: [] };
+
+  const now = Date.now();
+  const cutoff = now - SNIPER_STATS.SAMPLE_TTL_SECONDS * 1000;
+  let samples = state.samples.filter(sample =>
+    Number(sample.createdAt) >= cutoff
+  );
+
+  // Résolution chronologique : en cas de TP et SL dans la même bougie,
+  // on retient le SL par prudence (l'ordre intrabougie est inconnu).
+  for (const sample of samples) {
+    if (sample.outcome !== "PENDING") continue;
+    const eligible = m1.filter(bar =>
+      bar.time >= sample.firstEligibleBarTime &&
+      bar.time <= now
+    );
+    let resolved = false;
+
+    for (const bar of eligible) {
+      const hitTarget = sample.direction === "BUY"
+        ? bar.high >= sample.targetMid
+        : bar.low <= sample.targetMid;
+      const hitStop = sample.direction === "BUY"
+        ? bar.low <= sample.stopMid
+        : bar.high >= sample.stopMid;
+
+      if (hitTarget && hitStop) {
+        sample.outcome = "LOSS";
+        sample.resolvedAt = bar.time;
+        sample.resolution = "TP_ET_SL_DANS_MEME_BOUGIE_SL_RETENU_PAR_PRUDENCE";
+        resolved = true;
+        break;
+      }
+      if (hitStop) {
+        sample.outcome = "LOSS";
+        sample.resolvedAt = bar.time;
+        sample.resolution = "SL";
+        resolved = true;
+        break;
+      }
+      if (hitTarget) {
+        sample.outcome = "WIN";
+        sample.resolvedAt = bar.time;
+        sample.resolution = "TP";
+        resolved = true;
+        break;
+      }
+    }
+
+    if (!resolved && now >= sample.expiresAt) {
+      sample.outcome = "TIMEOUT";
+      sample.resolvedAt = sample.expiresAt;
+      sample.resolution = "DUREE_MAXIMALE_ATTEINTE";
+    }
+  }
+
+  const direction = signal.signal === "ACHAT" ? "BUY" :
+    signal.signal === "VENTE" ? "SELL" : null;
+  const regime = signal.market?.marketRegime || "INDETERMINE";
+
+  // On n'entraîne le journal que sur les configurations techniques
+  // qui auraient franchi le filtre pré-statistique. Les analyses /analyze
+  // simples ne sont pas ajoutées au jeu d'apprentissage.
+  if (
+    direction &&
+    signal.alertLevel === "CONFIRMED" &&
+    !signal.blockedByEconomicCalendar &&
+    signal.riskChecks?.spreadOK &&
+    Number.isFinite(Number(signal.liveQuote?.mid)) &&
+    Number.isFinite(Number(signal.liveQuote?.spread))
+  ) {
+    const sampleWindow = Math.floor(now / SNIPER_STATS.SAMPLE_INTERVAL_MS);
+    const sampleId = direction + "_" + regime + "_" + sampleWindow;
+    const exists = samples.some(sample => sample.id === sampleId);
+
+    if (!exists) {
+      const mid = Number(signal.liveQuote.mid);
+      const spread = Math.max(0, Number(signal.liveQuote.spread));
+      const target = Number(signal.targetMove);
+      const stop = Number(signal.stopMove);
+      const buy = direction === "BUY";
+      samples.push({
+        id: sampleId,
+        direction,
+        regime,
+        score: signal.score,
+        createdAt: now,
+        firstEligibleBarTime: Math.floor(now / 60000) * 60000 + 60000,
+        expiresAt: now + SNIPER_STATS.MAX_HOLD_MS,
+        entryMid: mid,
+        spreadAtEntry: spread,
+        targetMid: buy ? mid + target + spread : mid - target - spread,
+        stopMid: buy ? mid - stop + spread : mid + stop - spread,
+        targetMove: target,
+        stopMove: stop,
+        outcome: "PENDING",
+        resolution: null
+      });
+    }
+  }
+
+  samples.sort((a, b) => a.createdAt - b.createdAt);
+  if (samples.length > SNIPER_STATS.MAX_SAMPLES) {
+    samples = samples.slice(-SNIPER_STATS.MAX_SAMPLES);
+  }
+
+  const saved = await writeKV(env, SNIPER_STATS.KEY, {
+    version: 1,
+    updatedAt: now,
+    samples
+  }, SNIPER_STATS.SAMPLE_TTL_SECONDS);
+
+  const stats = direction
+    ? getSniperBucketStats(samples, direction, regime)
+    : null;
+
+  if (stats) {
+    signal.statisticalValidation = {
+      ...stats,
+      status: !saved ? "STORAGE_UNAVAILABLE" :
+        stats.resolved < SNIPER_STATS.MIN_RESOLVED ? "WAITING_FOR_SAMPLE" :
+        stats.qualified ? "QUALIFIED_HISTORICALLY" : "BELOW_TARGET",
+      sampleMethod: "Signaux techniques confirmés, TP/SL évalués sur bougies M1 clôturées",
+      maxHoldingMinutes: SNIPER_STATS.MAX_HOLD_MS / 60000,
+      spreadAdjustment: "Seuils ajustés du spread observé à l'entrée; commissions et slippage non modélisés",
+      sameCandleRule: "Si TP et SL sont touchés dans la même bougie, résultat compté comme perte",
+      warning: "Statistique historique, non prédictive et sans garantie de résultat."
+    };
+
+    // Une alerte d'entrée exige désormais le filtre technique ET
+    // 100 résultats résolus minimum avec au moins 90 % de réussite observée.
+    if (
+      signal.alertLevel === "CONFIRMED" &&
+      (!saved || !stats.qualified)
+    ) {
+      signal.alertLevel = "EARLY";
+      signal.statisticalValidation.blockReason = !saved
+        ? "Stockage statistique indisponible."
+        : stats.resolved < SNIPER_STATS.MIN_RESOLVED
+          ? "Historique statistique insuffisant."
+          : "Taux de réussite historique inférieur à 90 %.";
+    }
+  } else {
+    signal.statisticalValidation = {
+      status: "NO_DIRECTIONAL_SETUP",
+      targetWinRate: 90,
+      minimumResolved: SNIPER_STATS.MIN_RESOLVED
+    };
+  }
+
+  signal.statisticalValidationStorage = saved ? "OK" : "UNAVAILABLE";
+  signal.execution = "AUCUN ORDRE REEL";
+  return signal;
+}
+
+// --------------------------------------------------
 // ANALYSE COMPLETE
 // --------------------------------------------------
 
-async function getSignal(settings, env) {
+async function getSignal(settings, env, recordStatistics = false) {
   let m1, m5, m15, liveQuote;
 
   try {
@@ -809,7 +1031,10 @@ async function getSignal(settings, env) {
   result.dataQuality = quality;
 
   const economicContext = await getEconomicContext(env);
-  return applyEconomicFilter(result, economicContext);
+  const filtered = applyEconomicFilter(result, economicContext);
+  return recordStatistics
+    ? await updateSniperStatistics(env, filtered, m1)
+    : filtered;
 }
 
 // --------------------------------------------------
@@ -877,7 +1102,8 @@ function buildAlertMessage(signal) {
     `💵 Capital de référence : ${signal.capital} USD`,
     `⚙️ Levier indicatif : x${signal.leverage}`,
     `⚖️ Ratio gain/risque : ${signal.riskReward}`,
-    `📊 Réussite minimale théorique hors frais : ${signal.riskChecks.breakEvenWinRate}%`,
+    `📊 Point mort théorique hors frais : ${signal.riskChecks.breakEvenWinRate}%`,
+    `🧪 Validation historique : ${signal.statisticalValidation?.winRate ?? "en constitution"}% (${signal.statisticalValidation?.resolved ?? 0}/100 trades résolus)`,
     `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
     "",
     "📈 Tendances :",
@@ -1181,7 +1407,7 @@ async function scheduledCheck(env) {
       lots: CONFIG.LOTS_PER_1000
     };
 
-    const signal = await getSignal(settings, env);
+    const signal = await getSignal(settings, env, true);
 
     await writeKV(env, "last_signal", signal, 7 * 86400);
 
@@ -1293,7 +1519,7 @@ async function handleStatus(env) {
 
 async function handleAnalyze(request, env) {
   const settings = getSettings(new URL(request.url));
-  const signal = await getSignal(settings, env);
+  const signal = await getSignal(settings, env, true);
 
   return json(signal, signal.ok ? 200 : 503);
 }
