@@ -1646,6 +1646,8 @@ function buildAlertMessage(signal) {
       ? `📊 DECISION : ${action} MAINTENANT`
       : `📊 SIGNAL : ${action} — À SURVEILLER, PAS D'ENTRÉE`,
     `🎯 Score technique : ${signal.score}/100`,
+    `🧩 Déclencheur M1 : ${signal.entryQuality?.trigger || "NON DISPONIBLE"}`,
+    `📐 Qualité bougie : corps ${signal.entryQuality?.bodyRatio ?? "—"} | clôture ${signal.entryQuality?.closePosition ?? "—"}`,
     "",
     `💰 Prix de référence ${entrySide} à l'alerte : ${signal.entry}`,
     `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
