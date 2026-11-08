@@ -2441,9 +2441,9 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
         if (stage === "RETOURNEMENT_CONFIRME") higherBearishConfirmed++;
       }
     }
-    if (stage === "RETOURNEMENT_CONFIRME") confirmedCount++;
-    else if (stage === "RETOURNEMENT_EN_FORMATION") formationCount++;
-    else if (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER") earlyCount++;
+    if (active && stage === "RETOURNEMENT_CONFIRME") confirmedCount++;
+    else if (active && stage === "RETOURNEMENT_EN_FORMATION") formationCount++;
+    else if (active && (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER")) earlyCount++;
     details.push({
       timeframe: tf, stage: invalidated ? "SCENARIO_INVALIDE" : stage, direction, trend, active, invalidated, againstTrend, withTrend, weight: weights[tf],
       stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
