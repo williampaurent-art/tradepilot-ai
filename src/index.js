@@ -2195,9 +2195,30 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const bearishChoch = st.breakEvent === "CHOCH_BAISSIER";
   const bullishBos = st.breakEvent === "BOS_HAUSSIER";
   const bearishBos = st.breakEvent === "BOS_BAISSIER";
-  if (bullishChoch) addBull(5, "CHOCH haussier : rupture contre la structure précédente");
+  const candleRange = Math.max(last.high - last.low, 1e-9);
+  const candleBodyRatio = Math.abs(last.close - last.open) / candleRange;
+  const closePosition = (last.close - last.low) / candleRange;
+  const breakDistance = bullishChoch || bullishBos
+    ? last.close - st.breakLevel
+    : bearishChoch || bearishBos ? st.breakLevel - last.close : null;
+  const breakDistanceAtr = Number.isFinite(breakDistance) && Number.isFinite(indicator.atr)
+    ? breakDistance / indicator.atr : null;
+  const breakCandleAligned = bullishChoch || bullishBos
+    ? last.close > last.open && closePosition >= 0.60
+    : bearishChoch || bearishBos
+      ? last.close < last.open && closePosition <= 0.40 : false;
+  const breakQuality = breakDistanceAtr === null ? "NON_EVALUE"
+    : breakDistanceAtr >= 0.20 && candleBodyRatio >= 0.45 &&
+      (bullishChoch || bullishBos ? closePosition >= 0.75 : closePosition <= 0.25)
+      ? "FORTE"
+      : breakDistanceAtr >= 0.08 && candleBodyRatio >= 0.25 && breakCandleAligned
+        ? "MODEREE" : "FAIBLE";
+  const structureBreakConfirmed = breakQuality === "FORTE" || breakQuality === "MODEREE";
+  if (bullishChoch) addBull(breakQuality === "FORTE" ? 5 : breakQuality === "MODEREE" ? 3 : 1,
+    "CHOCH haussier " + breakQuality.toLowerCase() + " : clôture au-dessus du pivot confirmé");
   else if (bullishBos) addBull(1, "BOS haussier : continuation, pas preuve isolée de retournement");
-  if (bearishChoch) addBear(5, "CHOCH baissier : rupture contre la structure précédente");
+  if (bearishChoch) addBear(breakQuality === "FORTE" ? 5 : breakQuality === "MODEREE" ? 3 : 1,
+    "CHOCH baissier " + breakQuality.toLowerCase() + " : clôture sous le pivot confirmé");
   else if (bearishBos) addBear(1, "BOS baissier : continuation, pas preuve isolée de retournement");
 
   if (liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE") addBull(3, "Balayage des creux puis réintégration");
@@ -2249,8 +2270,9 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const candleConfirmation = direction === "HAUSSIER"
     ? bullishEngulfing || bullishReject : direction === "BAISSIER"
       ? bearishEngulfing || bearishReject : false;
-  const structureConfirmation = direction === "HAUSSIER" ? bullishChoch :
-    direction === "BAISSIER" ? bearishChoch : false;
+  const structureConfirmation = direction === "HAUSSIER"
+    ? bullishChoch && structureBreakConfirmed
+    : direction === "BAISSIER" ? bearishChoch && structureBreakConfirmed : false;
   const momentumConfirmation = direction === "HAUSSIER" ? bullishMomentum && bullishEmaCross :
     direction === "BAISSIER" ? bearishMomentum && bearishEmaCross : false;
   const oppositeTrend = direction !== "MIXTE" && trend !== "NEUTRE" && trend !== direction;
@@ -2302,7 +2324,9 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     status, stage, direction,
     bullishScore, bearishScore,
     bullishEvidence, bearishEvidence,
-    candleConfirmation, structureConfirmation, momentumConfirmation,
+    candleConfirmation, structureConfirmation, structureBreakConfirmed,
+    breakQuality, breakDistanceAtr: breakDistanceAtr === null ? null : Number(breakDistanceAtr.toFixed(2)),
+    breakCandleAligned, momentumConfirmation,
     trendExhaustion, trendContext: trend, againstTrend: oppositeTrend,
     emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
     macdSlowing, macdDecelerationConfirmed, adxFalling, adxFallingConfirmed,
