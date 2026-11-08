@@ -549,59 +549,123 @@ function getTrend(indicator) {
   return "NEUTRE";
 }
 
+function countSeparatedTouches(bars, field, level, tolerance, minGap = 2) {
+  let count = 0, lastIndex = -Infinity;
+  bars.forEach((bar, index) => {
+    if (Math.abs(bar[field] - level) <= tolerance && index - lastIndex >= minGap) {
+      count++;
+      lastIndex = index;
+    }
+  });
+  return count;
+}
+
 function analyzeMarketRegime(bars, indicator) {
   const recent = bars.slice(-40);
   if (recent.length < 25 || indicator.adx.adx === null ||
       indicator.bollinger.bandwidth === null || indicator.atr === null) {
-    return { regime: "INDETERMINE", phase: "DONNEES_INSUFFISANTES",
+    return {
+      regime: "INDETERMINE", phase: "DONNEES_INSUFFISANTES",
       rangeHigh: null, rangeLow: null, rangePosition: null,
       touchesHigh: 0, touchesLow: 0, emaSlopeAtr: null,
-      breakoutUp: false, breakoutDown: false, explanation: "Historique insuffisant pour classifier le régime." };
+      breakoutUp: false, breakoutDown: false,
+      fakeoutUp: false, fakeoutDown: false,
+      retestUp: false, retestDown: false,
+      explanation: "Historique insuffisant pour classifier le régime."
+    };
   }
-  const closed = recent.slice(0, -1);
-  const rangeHigh = Math.max(...closed.map(b => b.high));
-  const rangeLow = Math.min(...closed.map(b => b.low));
+
+  // Les trois dernières bougies sont exclues du calcul des bornes :
+  // elles servent à détecter une cassure, un rejet ou un retest sans
+  // déplacer artificiellement le haut/bas de la zone de référence.
+  const base = recent.slice(0, -3);
+  const last = recent[recent.length - 1];
+  const previous = recent[recent.length - 2];
+  const rangeHigh = Math.max(...base.map(b => b.high));
+  const rangeLow = Math.min(...base.map(b => b.low));
   const width = rangeHigh - rangeLow;
-  const price = indicator.price;
+  const price = last.close;
   const rangePosition = width > 0 ? (price - rangeLow) / width : 0.5;
-  const tolerance = Math.max(indicator.atr * 0.25, width * 0.06);
-  const touchesHigh = closed.filter(b => Math.abs(b.high - rangeHigh) <= tolerance).length;
-  const touchesLow = closed.filter(b => Math.abs(b.low - rangeLow) <= tolerance).length;
+  const tolerance = Math.max(indicator.atr * 0.25, width * 0.04);
+  const buffer = indicator.atr * 0.10;
+  const touchesHigh = countSeparatedTouches(base, "high", rangeHigh, tolerance);
+  const touchesLow = countSeparatedTouches(base, "low", rangeLow, tolerance);
+
   const closes = bars.map(b => b.close);
   const priorEma21 = ema(closes.slice(0, -5), 21);
-  const emaSlopeAtr = priorEma21 === null ? null : (indicator.ema21 - priorEma21) / (indicator.atr * 5);
-  const breakoutUp = price > rangeHigh + indicator.atr * 0.10;
-  const breakoutDown = price < rangeLow - indicator.atr * 0.10;
+  const emaSlopeAtr = priorEma21 === null ? null :
+    (indicator.ema21 - priorEma21) / (indicator.atr * 5);
+
+  const lastThree = recent.slice(-3);
+  const fakeoutUp = lastThree.some(b =>
+    b.high > rangeHigh + buffer && b.close <= rangeHigh
+  ) || (previous.close > rangeHigh + buffer && last.close < rangeHigh);
+  const fakeoutDown = lastThree.some(b =>
+    b.low < rangeLow - buffer && b.close >= rangeLow
+  ) || (previous.close < rangeLow - buffer && last.close > rangeLow);
+
+  const breakoutUp = last.close > rangeHigh + buffer;
+  const breakoutDown = last.close < rangeLow - buffer;
+  const retestUp = !breakoutUp && previous.close > rangeHigh &&
+    last.low <= rangeHigh + tolerance && last.close > rangeHigh &&
+    last.close >= last.open;
+  const retestDown = !breakoutDown && previous.close < rangeLow &&
+    last.high >= rangeLow - tolerance && last.close < rangeLow &&
+    last.close <= last.open;
+
   const adx = indicator.adx.adx;
-  const compressed = indicator.bollinger.bandwidth < 0.0035;
-  const flat = emaSlopeAtr !== null && Math.abs(emaSlopeAtr) < 0.18;
-  const rangeStructure = touchesHigh >= 2 && touchesLow >= 2 && rangePosition >= 0 && rangePosition <= 1;
+  const compressed = indicator.bollinger.bandwidth < 0.0045;
+  const flat = emaSlopeAtr !== null && Math.abs(emaSlopeAtr) < 0.20;
+  const rangeStructure = touchesHigh >= 2 && touchesLow >= 2 &&
+    rangePosition >= 0 && rangePosition <= 1;
+
   let regime = "TRANSITION";
   let phase = "MARCHE_MIXTE";
   let explanation = "Signaux de régime contradictoires : prudence.";
-  if (breakoutUp && adx >= 18) {
+
+  if (fakeoutUp) {
+    phase = "FAUSSE_CASSURE_HAUSSIERE";
+    explanation = "Le prix a dépassé la résistance de référence mais a clôturé de nouveau dans la zone : risque de piège haussier.";
+  } else if (fakeoutDown) {
+    phase = "FAUSSE_CASSURE_BAISSIERE";
+    explanation = "Le prix a percé le support de référence mais a clôturé de nouveau dans la zone : risque de piège baissier.";
+  } else if (breakoutUp && adx >= 18) {
     regime = "TENDANCE"; phase = "CASSURE_HAUSSIERE";
-    explanation = "Cassure haussière de la zone récente avec force directionnelle.";
+    explanation = "Clôture au-dessus de la zone récente avec une force directionnelle suffisante.";
   } else if (breakoutDown && adx >= 18) {
     regime = "TENDANCE"; phase = "CASSURE_BAISSIERE";
-    explanation = "Cassure baissière de la zone récente avec force directionnelle.";
-  } else if (adx <= 18 && flat && (rangeStructure || compressed)) {
-    regime = "RANGE"; phase = rangePosition <= 0.25 ? "PROCHE_SUPPORT" :
+    explanation = "Clôture sous la zone récente avec une force directionnelle suffisante.";
+  } else if (retestUp) {
+    regime = "TENDANCE"; phase = "RETEST_HAUSSIER";
+    explanation = "L'ancienne résistance est retestée et défendue en clôture : confirmation technique à surveiller.";
+  } else if (retestDown) {
+    regime = "TENDANCE"; phase = "RETEST_BAISSIER";
+    explanation = "L'ancien support est retesté et rejeté en clôture : confirmation technique à surveiller.";
+  } else if (adx <= 20 && flat && (rangeStructure || compressed) &&
+      rangePosition >= 0 && rangePosition <= 1) {
+    regime = "RANGE";
+    phase = rangePosition <= 0.25 ? "PROCHE_SUPPORT" :
       rangePosition >= 0.75 ? "PROCHE_RESISTANCE" : "MILIEU_RANGE";
-    explanation = "ADX faible, pente EMA réduite et marché contenu dans une zone horizontale.";
-  } else if (adx >= 25 && emaSlopeAtr !== null && Math.abs(emaSlopeAtr) >= 0.18) {
-    regime = "TENDANCE"; phase = getTrend(indicator) === "HAUSSIER" ? "TENDANCE_HAUSSIERE" :
-      getTrend(indicator) === "BAISSIER" ? "TENDANCE_BAISSIERE" : "TENDANCE_EN_CONSTRUCTION";
+    explanation = "ADX faible, pente EMA réduite et prix contenu dans une zone horizontale.";
+  } else if (adx >= 25 && emaSlopeAtr !== null && Math.abs(emaSlopeAtr) >= 0.20) {
+    regime = "TENDANCE";
+    phase = getTrend(indicator) === "HAUSSIER" ? "TENDANCE_HAUSSIERE" :
+      getTrend(indicator) === "BAISSIER" ? "TENDANCE_BAISSIERE" :
+      "TENDANCE_EN_CONSTRUCTION";
     explanation = "ADX et pente EMA indiquent une dynamique directionnelle.";
   }
-  return { regime, phase, rangeHigh, rangeLow,
-    rangePosition: Number(rangePosition.toFixed(3)), touchesHigh, touchesLow,
-    emaSlopeAtr: emaSlopeAtr === null ? null : Number(emaSlopeAtr.toFixed(3)),
-    breakoutUp, breakoutDown, adx: Number(adx.toFixed(2)),
-    bollingerBandwidth: Number(indicator.bollinger.bandwidth.toFixed(5)),
-    compressed, flat, explanation };
-}
 
+  return {
+    regime, phase, rangeHigh, rangeLow,
+    rangePosition: Number(rangePosition.toFixed(3)),
+    touchesHigh, touchesLow,
+    emaSlopeAtr: emaSlopeAtr === null ? null : Number(emaSlopeAtr.toFixed(3)),
+    breakoutUp, breakoutDown, fakeoutUp, fakeoutDown, retestUp, retestDown,
+    adx: Number(adx.toFixed(2)),
+    bollingerBandwidth: Number(indicator.bollinger.bandwidth.toFixed(5)),
+    compressed, flat, explanation
+  };
+}
 // --------------------------------------------------
 // ANALYSE DU MARCHE : INDICATEURS + CASSURE/RETEST
 // --------------------------------------------------
@@ -1762,10 +1826,14 @@ function buildDashboardFrame(timeframe, bars) {
     Math.abs(macd.histogram) < Math.abs(macd.previousHistogram)
   );
   const reversalWarnings = [];
-  if (structure.bullishDivergence) reversalWarnings.push("Divergence RSI haussiere");
-  if (structure.bearishDivergence) reversalWarnings.push("Divergence RSI baissiere");
-  if (structure.choch !== "AUCUN") reversalWarnings.push(structure.choch);
-  if (slowing) reversalWarnings.push("Histogramme MACD en ralentissement");
+  if (structure.bullishDivergence) reversalWarnings.push("Divergence RSI haussiere : le prix marque un plus bas alors que le RSI remonte.");
+  if (structure.bearishDivergence) reversalWarnings.push("Divergence RSI baissiere : le prix marque un plus haut alors que le RSI faiblit.");
+  if (structure.choch !== "AUCUN") reversalWarnings.push(structure.choch + " : changement potentiel de caractere de la structure.");
+  if (regime.fakeoutUp) reversalWarnings.push("FAUSSE CASSURE HAUSSIERE : dépassement de résistance rejeté en clôture.");
+  if (regime.fakeoutDown) reversalWarnings.push("FAUSSE CASSURE BAISSIERE : passage sous le support rejeté en clôture.");
+  if (regime.retestUp) reversalWarnings.push("RETEST HAUSSIER : ancienne résistance défendue en clôture.");
+  if (regime.retestDown) reversalWarnings.push("RETEST BAISSIER : ancien support rejeté en clôture.");
+  if (slowing) reversalWarnings.push("Histogramme MACD en ralentissement : impulsion potentiellement moins forte.");
   if (Number.isFinite(indicator.rsi) && indicator.rsi >= 70) reversalWarnings.push("RSI en zone haute");
   if (Number.isFinite(indicator.rsi) && indicator.rsi <= 30) reversalWarnings.push("RSI en zone basse");
   return {
