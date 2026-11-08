@@ -2162,8 +2162,10 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const lowerWick = Math.min(last.open, last.close) - last.low;
   const closes = bars.map(b => b.close);
   const priorMacd = calculateMACD(closes.slice(0, -1));
+  const priorPriorMacd = calculateMACD(closes.slice(0, -2));
   const currentMacd = indicator.macd || calculateMACD(closes);
   const priorAdx = calculateADX(bars.slice(0, -1), 14);
+  const priorPriorAdx = calculateADX(bars.slice(0, -2), 14);
   const bullishEvidence = [], bearishEvidence = [];
   let bullishScore = 0, bearishScore = 0;
   const addBull = (points, label) => { bullishScore += points; bullishEvidence.push(label); };
@@ -2214,6 +2216,9 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
   const macdSlowing = Number.isFinite(currentMacd.histogram) &&
     Number.isFinite(priorMacd.histogram) &&
     Math.abs(currentMacd.histogram) < Math.abs(priorMacd.histogram);
+  const macdDecelerationConfirmed = macdSlowing &&
+    Number.isFinite(priorPriorMacd.histogram) &&
+    Math.abs(priorMacd.histogram) < Math.abs(priorPriorMacd.histogram);
   const bullishMomentum = Number.isFinite(indicator.rsi) && indicator.rsi > 50 &&
     Number.isFinite(currentMacd.histogram) && currentMacd.histogram > 0;
   const bearishMomentum = Number.isFinite(indicator.rsi) && indicator.rsi < 50 &&
@@ -2227,12 +2232,14 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     : "NEUTRE";
   const adxFalling = Number.isFinite(indicator.adx?.adx) &&
     Number.isFinite(priorAdx.adx) && indicator.adx.adx < priorAdx.adx;
-  const trendExhaustion = adxFalling || macdSlowing ||
+  const adxFallingConfirmed = adxFalling &&
+    Number.isFinite(priorPriorAdx.adx) && priorAdx.adx < priorPriorAdx.adx;
+  const trendExhaustion = adxFallingConfirmed || macdDecelerationConfirmed ||
     (Number.isFinite(indicator.rsi) && ((trend === "HAUSSIER" && indicator.rsi < 50) ||
       (trend === "BAISSIER" && indicator.rsi > 50)));
   if (trendExhaustion) {
-    if (trend === "HAUSSIER") addBear(1, "Essoufflement possible de la dynamique haussière");
-    if (trend === "BAISSIER") addBull(1, "Essoufflement possible de la dynamique baissière");
+    if (trend === "HAUSSIER") addBear(1, "Essoufflement confirmé sur plusieurs clôtures ou RSI sous 50");
+    if (trend === "BAISSIER") addBull(1, "Essoufflement confirmé sur plusieurs clôtures ou RSI au-dessus de 50");
   }
 
   const direction = bullishScore === bearishScore ? "MIXTE" :
@@ -2298,7 +2305,7 @@ function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
     candleConfirmation, structureConfirmation, momentumConfirmation,
     trendExhaustion, trendContext: trend, againstTrend: oppositeTrend,
     emaCrossConfirmation: bullishEmaCross || bearishEmaCross,
-    macdSlowing, adxFalling,
+    macdSlowing, macdDecelerationConfirmed, adxFalling, adxFallingConfirmed,
     invalidationLevel,
     invalidationLabel,
     invalidationDistance: invalidationDistance === null ? null : Number(invalidationDistance.toFixed(3)),
