@@ -23,10 +23,12 @@
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
-<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Horodatages affichés selon disponibilité réelle.</footer>
+<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
+const UI_VERSION="2026.11.08.2";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
+const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
 const dateFmt=v=>{if(!v)return"Indisponible";const d=new Date(v);return Number.isNaN(d.getTime())?"Horodatage invalide":d.toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"medium"});};
 const cls=x=>x==="HAUSSIER"?"up":x==="BAISSIER"?"down":"neutral";
