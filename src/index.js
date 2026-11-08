@@ -1532,7 +1532,7 @@ function classifyGoldEvent(event) {
 
 function numericMacroValue(value) {
   if (value === null || value === undefined || value === "") return null;
-  const match = String(value).trim().replace(/\\s/g, "").replace(/,/g, ".").match(/[-+]?\\d+(?:\\.\\d+)?/);
+  const match = String(value).trim().replace(/\s/g, "").replace(/,/g, ".") .match(/[-+]?\d+(?:\.\d+)?/);
   return match ? Number(match[0]) : null;
 }
 function evaluateGoldMacroSurprise(event) {
