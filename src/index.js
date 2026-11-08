@@ -2403,7 +2403,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
   let bullishCount = 0, bearishCount = 0;
   let higherBullish = 0, higherBearish = 0;
   let higherBullishConfirmed = 0, higherBearishConfirmed = 0;
-  let confirmedCount = 0, formationCount = 0, earlyCount = 0;
+  let confirmedCount = 0, formationCount = 0, earlyCount = 0, invalidatedCount = 0;
   let againstTrendCount = 0, withTrendCount = 0;
   const higherFrames = ["H1", "H4", "D1"];
   const stageWeights = {
@@ -2418,10 +2418,12 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     const r = a.reversalSignals || {};
     const stage = r.stage || "AUCUN_RETOURNEMENT";
     const direction = ["HAUSSIER", "BAISSIER"].includes(r.direction) ? r.direction : "NEUTRE";
-    const active = Object.prototype.hasOwnProperty.call(stageWeights, stage);
+    const invalidated = r.invalidationBreached === true;
+    const active = Object.prototype.hasOwnProperty.call(stageWeights, stage) && !invalidated;
     const trend = a.trend?.direction || "NEUTRE";
     const againstTrend = active && trend !== "NEUTRE" && direction !== "NEUTRE" && trend !== direction;
     const withTrend = active && trend !== "NEUTRE" && direction === trend;
+    if (invalidated) invalidatedCount++;
     if (againstTrend) againstTrendCount++;
     if (withTrend) withTrendCount++;
     const higher = higherFrames.includes(tf);
@@ -2443,8 +2445,8 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     else if (stage === "RETOURNEMENT_EN_FORMATION") formationCount++;
     else if (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER") earlyCount++;
     details.push({
-      timeframe: tf, stage, direction, trend, active, againstTrend, withTrend, weight: weights[tf],
-      stageWeight, weightedContribution: Number((weights[tf] * stageWeight).toFixed(2)), invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
+      timeframe: tf, stage: invalidated ? "SCENARIO_INVALIDE" : stage, direction, trend, active, invalidated, againstTrend, withTrend, weight: weights[tf],
+      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
     });
   }
   const bias = Math.abs(bullishWeight - bearishWeight) < 0.001
@@ -2475,7 +2477,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
   return {
     status, bias, bullishCount, bearishCount, higherBullish, higherBearish,
     higherBullishConfirmed, higherBearishConfirmed,
-    confirmedCount, formationCount, earlyCount, againstTrendCount, withTrendCount,
+    confirmedCount, formationCount, earlyCount, invalidatedCount, againstTrendCount, withTrendCount,
     validTimeframes: details.length,
     missingTimeframes: order.filter(tf => !byTf.has(tf)),
     bullishWeight: Number(bullishWeight.toFixed(2)),
