@@ -3651,9 +3651,18 @@ async function handleAssistantChat(request, env) {
     }, 503);
   }
 
+  // Le tableau de bord peut envoyer un instantane OHLC volumineux.
+  // On accepte une requete raisonnable, puis on compacte le contexte
+  // avec buildAssistantMarketContext avant de le transmettre au modele.
   const rawBody = await request.text();
-  if (rawBody.length > 100000) {
-    return json({ ok: false, error: "Contexte de marché trop volumineux (limite 100 Ko). Actualise le tableau de bord puis réessaie." }, 413);
+  const requestBytes = new TextEncoder().encode(rawBody).byteLength;
+  const MAX_ASSISTANT_REQUEST_BYTES = 1_000_000;
+  if (requestBytes > MAX_ASSISTANT_REQUEST_BYTES) {
+    return json({
+      ok: false,
+      code: "ASSISTANT_REQUEST_TOO_LARGE",
+      error: "La requete du chatbot depasse 1 Mo. Recharge le tableau de bord et reessaie."
+    }, 413);
   }
 
   let body;
@@ -3686,6 +3695,17 @@ async function handleAssistantChat(request, env) {
   }
 
   const context = buildAssistantMarketContext(body?.marketContext);
+  const contextJson = JSON.stringify(context);
+  const contextBytes = new TextEncoder().encode(contextJson).byteLength;
+  // Garde-fou : le contexte transmis au modele reste compact meme si
+  // le navigateur envoie un instantane de marche beaucoup plus gros.
+  if (contextBytes > 24_000) {
+    return json({
+      ok: false,
+      code: "ASSISTANT_CONTEXT_COMPACTION_FAILED",
+      error: "Le contexte de marche n'a pas pu etre suffisamment compacte. Recharge le tableau de bord et reessaie."
+    }, 422);
+  }
   const system = [
     "Tu es TradePilot AI, assistant d'analyse de marché spécialisé dans l'or XAUUSD.",
     "Réponds en français, de façon claire, professionnelle, naturelle et concise.",
@@ -3696,7 +3716,7 @@ async function handleAssistantChat(request, env) {
     "Les niveaux de liquidité sont des approximations OHLC, pas des données de carnet d'ordres.",
     "Tu ne donnes pas d'ordre exécutable, tu ne promets aucun rendement et tu ne prétends pas passer d'ordres. L'exécution reste manuelle et le statut est AUCUN ORDRE REEL.",
     "Si la question sort du contexte XAUUSD, réponds brièvement ou précise les limites.",
-    "Contexte de marché structuré (JSON) : " + JSON.stringify(context)
+    "Contexte de marché structuré (JSON) : " + contextJson
   ].join("\n");
 
   const modelMessages = [
