@@ -798,7 +798,9 @@ function getSniperBucketStats(samples, direction, regime) {
   const wins = bucket.filter(sample => sample.outcome === "WIN").length;
   const losses = bucket.filter(sample => sample.outcome === "LOSS").length;
   const timeouts = bucket.filter(sample => sample.outcome === "TIMEOUT").length;
-  const resolved = wins + losses;
+  // A timeout is a non-winning setup for the requested TP-before-SL test.
+  // It stays visible separately but is included in the conservative denominator.
+  const resolved = wins + losses + timeouts;
   const winRate = resolved ? wins / resolved : null;
   const interval = wilsonInterval(wins, resolved);
   return {
