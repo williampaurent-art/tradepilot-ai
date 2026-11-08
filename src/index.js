@@ -2041,8 +2041,7 @@ function analyzeLiquidity(bars, indicator) {
     sweptLow ? "BALAYAGE LIQUIDITE BAISSIERE REJETE" : "AUCUN";
   const sweepLevel = sweptHigh?.level ?? sweptLow?.level ?? null;
   const sweepDirection = sweptLow ? "HAUSSIER" : sweptHigh ? "BAISSIER" : null;
-  const sweepWick = sweptLow ? last.close > last.open ? lowerWick : lowerWick
-    : sweptHigh ? upperWick : 0;
+  const sweepWick = sweptLow ? lowerWick : sweptHigh ? upperWick : 0;
   const sweepDepth = sweptLow ? sweepLevel - last.low
     : sweptHigh ? last.high - sweepLevel : null;
   const sweepDepthAtr = Number.isFinite(sweepDepth) ? sweepDepth / indicator.atr : null;
