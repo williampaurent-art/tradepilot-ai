@@ -1893,6 +1893,81 @@ function buildDashboardFrame(timeframe, bars) {
   };
 }
 
+function analyzeMultiTimeframeConfluence(results, marketOpen) {
+  const weights = { M1: 1, M5: 1.5, M15: 2, H1: 3, H4: 4, D1: 5 };
+  const directions = {};
+  const usable = [];
+  for (const item of results) {
+    if (!item.ok || !item.analysis?.dataQuality?.ok) continue;
+    const tf = item.timeframe;
+    const direction = item.analysis.trend?.direction || "NEUTRE";
+    directions[tf] = direction;
+    if (marketOpen === true && weights[tf] && direction !== "NEUTRE") {
+      usable.push({ timeframe: tf, direction, weight: weights[tf] });
+    }
+  }
+
+  if (marketOpen !== true) {
+    return {
+      status: marketOpen === false ? "MARCHE_FERME" : "ETAT_NON_CONFIRME",
+      bias: "INDETERMINE", agreementIndex: null, validTimeframes: usable.length,
+      directions, higherTimeframeBias: "INDETERMINE",
+      lowerTimeframeConflicts: [],
+      explanation: "Confluence live non calculée : le marché n'est pas confirmé ouvert."
+    };
+  }
+
+  const totals = { HAUSSIER: 0, BAISSIER: 0 };
+  let totalWeight = 0;
+  for (const item of usable) {
+    totals[item.direction] += item.weight;
+    totalWeight += item.weight;
+  }
+  const bias = totals.HAUSSIER === totals.BAISSIER ? "MIXTE" :
+    totals.HAUSSIER > totals.BAISSIER ? "HAUSSIER" : "BAISSIER";
+  const dominantWeight = Math.max(totals.HAUSSIER, totals.BAISSIER);
+  const agreementIndex = totalWeight ? Math.round(dominantWeight / totalWeight * 100) : null;
+
+  const higher = usable.filter(x => ["H1", "H4", "D1"].includes(x.timeframe));
+  const higherTotals = { HAUSSIER: 0, BAISSIER: 0 };
+  higher.forEach(x => { higherTotals[x.direction] += x.weight; });
+  const higherBias = higherTotals.HAUSSIER === higherTotals.BAISSIER ? "MIXTE" :
+    higherTotals.HAUSSIER > higherTotals.BAISSIER ? "HAUSSIER" : "BAISSIER";
+  const lowerConflicts = usable
+    .filter(x => ["M1", "M5", "M15"].includes(x.timeframe) &&
+      higherBias !== "MIXTE" && x.direction !== higherBias)
+    .map(x => x.timeframe);
+
+  const higherCoverage = higher.length;
+  let status = "MIXTE";
+  if (usable.length < 3 || higherCoverage < 2) status = "COUVERTURE_INSUFFISANTE";
+  else if (agreementIndex >= 80 && higherBias === bias && lowerConflicts.length === 0) status = "FORTE_CONFLUENCE";
+  else if (agreementIndex >= 65 && higherBias === bias) status = "CONFLUENCE_PARTIELLE";
+  else if (lowerConflicts.length > 0) status = "CONFLIT_COURT_TERME";
+  else status = "DIRECTIONS_DISPERSEES";
+
+  const explanation = status === "FORTE_CONFLUENCE"
+    ? "Les unités disponibles convergent et les unités supérieures confirment le biais dominant."
+    : status === "CONFLUENCE_PARTIELLE"
+      ? "Le biais dominant est soutenu par les unités supérieures, mais l'alignement n'est pas complet."
+      : status === "CONFLIT_COURT_TERME"
+        ? "Une ou plusieurs unités courtes s'opposent à la tendance des unités supérieures : risque de mouvement à contre-tendance."
+        : status === "COUVERTURE_INSUFFISANTE"
+          ? "Pas assez d'unités de temps fraîches, notamment parmi H1, H4 et D1, pour conclure."
+          : "Les directions sont dispersées : le marché manque d'alignement multi-timeframe.";
+
+  return {
+    status, bias, agreementIndex, validTimeframes: usable.length,
+    directions, higherTimeframeBias: higherBias,
+    lowerTimeframeConflicts: lowerConflicts,
+    higherTimeframeCoverage: higherCoverage,
+    weightedBullish: Number(totals.HAUSSIER.toFixed(1)),
+    weightedBearish: Number(totals.BAISSIER.toFixed(1)),
+    explanation,
+    note: "Indice de concordance pondéré, pas une probabilité de réussite ni un signal d'entrée."
+  };
+}
+
 async function handleDashboardData(env) {
   const timeframes = Object.keys(TIMEFRAMES);
   const results = await Promise.all(timeframes.map(async timeframe => {
@@ -1919,6 +1994,7 @@ async function handleDashboardData(env) {
   const m1 = available.find(x => x.timeframe === "M1")?.analysis;
   const marketOpen = quote ? true :
     (quoteError && /marché XAUUSD fermé/i.test(quoteError) ? false : null);
+  const multiTimeframeConfluence = analyzeMultiTimeframeConfluence(results, marketOpen);
   return json({
     ok: available.length > 0,
     instrument: CONFIG.SYMBOL,
@@ -1937,6 +2013,7 @@ async function handleDashboardData(env) {
     },
     source: CONFIG.SOURCE_URL,
     timeframes: results,
+    multiTimeframeConfluence,
     economicCalendar: calendar,
     execution: "AUCUN ORDRE REEL",
     note: "Analyse technique descriptive. Un score technique n'est pas une probabilité."
