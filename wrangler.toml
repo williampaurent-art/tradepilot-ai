@@ -37,3 +37,6 @@ run_worker_first = [
   "/sniper-stats",
   "/telegram-test"
 ]
+
+[ai]
+binding = "AI"
