@@ -1058,6 +1058,27 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     }
   }
 
+  // Validation du déclencheur sur la dernière bougie M1 clôturée.
+  // Une clôture directionnelle doit se situer près de son extrême et le corps
+  // doit représenter une part suffisante de l'amplitude totale.
+  const triggerRange = Math.max(last.high - last.low, 1e-9);
+  const triggerBodyRatio = Math.abs(last.close - last.open) / triggerRange;
+  const triggerClosePosition = (last.close - last.low) / triggerRange;
+  const bullishTriggerCandle = last.close > last.open &&
+    triggerBodyRatio >= 0.35 && triggerClosePosition >= 0.68;
+  const bearishTriggerCandle = last.close < last.open &&
+    triggerBodyRatio >= 0.35 && triggerClosePosition <= 0.32;
+  const entryTriggerConfirmed = signal === "ACHAT"
+    ? (bullishTriggerCandle || retestUp)
+    : signal === "VENTE"
+      ? (bearishTriggerCandle || retestDown)
+      : false;
+  const triggerDescription = signal === "ACHAT"
+    ? retestUp ? "RETEST_HAUSSIER" : bullishTriggerCandle ? "IMPULSION_M1_HAUSSIERE" : "DECLENCHEUR_INSUFFISANT"
+    : signal === "VENTE"
+      ? retestDown ? "RETEST_BAISSIER" : bearishTriggerCandle ? "IMPULSION_M1_BAISSIERE" : "DECLENCHEUR_INSUFFISANT"
+      : "AUCUN_SIGNAL";
+
   const riskReward = settings.stop > 0 ? settings.target / settings.stop : 0;
   const breakEvenWinRate = settings.target + settings.stop > 0
     ? settings.stop / (settings.target + settings.stop)
@@ -1079,11 +1100,12 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     marketPhase: regimeAnalysis.phase,
     rangeLocation,
     buyRoomOK,
-    sellRoomOK
+    sellRoomOK,
+    entryTriggerConfirmed
   };
 
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
-    score >= settings.minScore && spreadOK
+    score >= settings.minScore && spreadOK && entryTriggerConfirmed
       ? "CONFIRMED"
       : "EARLY";
 
@@ -1096,6 +1118,15 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number((settings.target / settings.stop).toFixed(3)),
     riskChecks,
+    entryQuality: {
+      confirmed: entryTriggerConfirmed,
+      trigger: triggerDescription,
+      bodyRatio: Number(triggerBodyRatio.toFixed(3)),
+      closePosition: Number(triggerClosePosition.toFixed(3)),
+      minimumBodyRatio: 0.35,
+      requiredClosePosition: signal === "ACHAT" ? 0.68 : signal === "VENTE" ? 0.32 : null,
+      rule: "Bougie M1 clôturée avec corps directionnel et clôture proche de son extrême, ou retest structurel confirmé."
+    },
     liveQuote: {
       bid: Number(liveQuote.bid.toFixed(2)),
       ask: Number(liveQuote.ask.toFixed(2)),
@@ -3929,7 +3960,8 @@ async function handleStrategyBacktest(request, env) {
       advancedReasons.push("Confluence avancée faible.");
     }
     setup.score = Math.round(setup.score);
-    setup.alertLevel = setup.score >= settings.minScore && setup.riskChecks?.spreadOK
+    setup.alertLevel = setup.score >= settings.minScore && setup.riskChecks?.spreadOK &&
+      setup.entryQuality?.confirmed === true
       ? "CONFIRMED" : "EARLY";
     if (setup.alertLevel !== "CONFIRMED") continue;
 
