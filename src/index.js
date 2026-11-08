@@ -291,19 +291,19 @@ async function fetchLiveQuote() {
     ? reportedAge
     : (Date.now() - timestamp) / 1000;
 
-  if (
-    quote.marketState !== "open" ||
-    quote.stale === true ||
-    !Number.isFinite(bid) ||
-    !Number.isFinite(ask) ||
-    !Number.isFinite(mid) ||
-    bid <= 0 ||
-    ask < bid ||
-    !Number.isFinite(ageSeconds) ||
-    ageSeconds < 0 ||
-    ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS
-  ) {
-    throw new Error("Cours XAUUSD fermé, périmé ou incomplet. Aucun signal immédiat autorisé.");
+  if (quote.marketState === "closed") {
+    throw new Error("Marché XAUUSD fermé selon la source BiQuote.");
+  }
+  if (quote.marketState !== "open") {
+    throw new Error("État du marché XAUUSD non confirmé par la source.");
+  }
+  if (quote.stale === true || !Number.isFinite(ageSeconds) ||
+      ageSeconds < 0 || ageSeconds > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS) {
+    throw new Error("Cours XAUUSD périmé. Aucun signal immédiat autorisé.");
+  }
+  if (!Number.isFinite(bid) || !Number.isFinite(ask) ||
+      !Number.isFinite(mid) || bid <= 0 || ask < bid) {
+    throw new Error("Cours XAUUSD incomplet ou incohérent.");
   }
 
   return {
@@ -1824,7 +1824,7 @@ async function handleDashboardData(env) {
   const available = results.filter(x => x.ok);
   const m1 = available.find(x => x.timeframe === "M1")?.analysis;
   const marketOpen = quote ? true :
-    (quoteError && /fermé|closed/i.test(quoteError) ? false : null);
+    (quoteError && /marché XAUUSD fermé/i.test(quoteError) ? false : null);
   return json({
     ok: available.length > 0,
     instrument: CONFIG.SYMBOL,
