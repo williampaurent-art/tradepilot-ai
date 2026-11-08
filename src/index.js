@@ -4072,9 +4072,15 @@ async function handleStrategyBacktest(request, env) {
         direction: setup.signal,
         score: setup.score,
         minScore: settings.minScore,
-        spread: setup.riskChecks?.spread,
-        spreadToAtr: setup.riskChecks?.spreadToAtr,
+        spread: setup.liveQuote?.spread,
+        spreadToAtr: setup.riskChecks?.spreadToATR,
+        maxSpreadToAtr: setup.riskChecks?.maxSpreadToATR,
+        atrM1: setup.market?.atrM1,
+        stopToAtr: setup.market?.atrM1 > 0 && Number.isFinite(setup.tradePlan?.stopMove)
+          ? Number((setup.tradePlan.stopMove / setup.market.atrM1).toFixed(3))
+          : null,
         spreadOK,
+        riskChecks: setup.riskChecks,
         entryTrigger: setup.entryQuality,
         tradePlan: setup.tradePlan,
         rewardRisk: setup.riskReward,
