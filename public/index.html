@@ -26,7 +26,7 @@
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.5";
+const UI_VERSION="2026.11.08.6";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -205,7 +205,26 @@ drawChart(a.candles||[]);
 const warns=a.reversalWarnings||[];$("warnings").innerHTML=warns.length?warns.map(v=>"<li>"+esc(v)+"</li>").join(""):"<li>Aucun signe de retournement détecté dans les données disponibles. Cela ne garantit pas l'absence de retournement.</li>";
 const contextLabel=snapshot?.market?.open===false?"Analyse historique (marché fermé). ":snapshot?.market?.open!==true?"Analyse non actualisée (état du marché inconnu). ":"";put("explanation",contextLabel+(a.trend.direction==="NEUTRE"?"Direction neutre ou non confirmée":"Biais "+a.trend.direction.toLowerCase())+" sur "+selected+". Régime "+r.regime.toLowerCase()+" : "+r.explanation+" ADX "+fmt(i.adx14,1)+", force "+a.trend.strength.toLowerCase()+". Score technique "+(a.trend.technicalScore??"indisponible")+", sans valeur probabiliste.");
 const hi=s.lastSwingHigh,lo=s.lastSwingLow;if(snapshot?.market?.open!==true||!a.dataQuality?.ok){put("bullCase","Aucun scénario actuel : marché fermé ou données non validées. Les niveaux affichés sont historiques.");put("bearCase","Aucun scénario actuel : marché fermé ou données non validées. Les niveaux affichés sont historiques.");}else{put("bullCase",hi!=null?"Une clôture confirmée au-dessus du dernier sommet ("+fmt(hi)+") renforcerait le scénario haussier. Invalidation : clôture sous le dernier creux ("+fmt(lo)+") ou CHOCH baissier.":"Scénario non exploitable : sommets/creux non déterminés.");put("bearCase",lo!=null?"Une clôture confirmée sous le dernier creux ("+fmt(lo)+") renforcerait le scénario baissier. Invalidation : reprise au-dessus du dernier sommet ("+fmt(hi)+") ou CHOCH haussier.":"Scénario non exploitable : sommets/creux non déterminés.");}}
-function renderCalendar(c){put("calendarStatus",c?.status||"INDISPONIBLE");const root=$("calendar");if(!c||!c.configured||!Array.isArray(c.events)){root.textContent=c?.message||"Calendrier non configuré ou indisponible.";return;}const ev=c.events.filter(e=>e.status!=="cancelled").slice(0,8);root.innerHTML='<div class="hint">Source : '+esc(c.source||"Finance Calendar")+' · '+(c.stale?"Cache périmé":"Actualisé")+'</div>'+(ev.length?ev.map(e=>'<div class="calendar-event"><div class="eventname">'+esc(e.name||e.title||"Annonce économique")+'</div><div class="eventmeta">'+esc(e.country||"")+' · Impact '+esc(e.impact||"inconnu")+' · '+dateFmt(e.release_at_utc||e.time_utc||e.date)+'</div></div>').join(""):'<div class="muted" style="margin-top:10px">Aucun événement important retourné par la source.</div>');}
+function renderCalendar(c){
+ put("calendarStatus",c?.status||"INDISPONIBLE");
+ const root=$("calendar");
+ if(!c||!c.configured||!Array.isArray(c.events)){
+  root.textContent=c?.message||"Calendrier non configuré ou indisponible.";
+  return;
+ }
+ const upcoming=Array.isArray(c.upcomingEvents)?c.upcomingEvents:[];
+ const ev=upcoming.length?upcoming:c.events.filter(e=>e.status!=="cancelled").slice(0,8);
+ const riskLabels={DONNEES_PERIMEES:"DONNÉES PÉRIMÉES",FENETRE_ANNONCE:"FENÊTRE D'ANNONCE",ELEVE:"RISQUE ÉVÉNEMENTIEL ÉLEVÉ",A_SURVEILLER:"ANNONCE À SURVEILLER",NORMAL:"AUCUN ÉVÉNEMENT MAJEUR IMMINENT"};
+ const risk=c.riskLevel||(c.stale?"DONNEES_PERIMEES":"NORMAL");
+ const riskClass=["DONNEES_PERIMEES","FENETRE_ANNONCE","ELEVE"].includes(risk)?"down":risk==="A_SURVEILLER"?"neutral":"up";
+ root.innerHTML='<div class="hint">Source : '+esc(c.source||"Finance Calendar")+' · '+(c.stale?"Cache périmé":"Actualisé")+'</div>'+
+  '<div class="calendar-event"><div class="eventname '+riskClass+'">'+esc(riskLabels[risk]||risk)+'</div><div class="eventmeta">'+(c.blackout?"Entrée suspendue pendant la fenêtre de sécurité de l'annonce.":"Le niveau de risque macro ne constitue pas un signal de direction.")+'</div></div>'+
+  (ev.length?ev.map(e=>{
+   const mins=Number.isFinite(Number(e.minutesUntil))?Number(e.minutesUntil):null;
+   const timing=mins===null?dateFmt(e.release_at_utc||e.time_utc||e.date):mins<60?"Dans "+mins+" min":"Dans "+Math.floor(mins/60)+" h "+(mins%60)+" min";
+   return '<div class="calendar-event"><div class="eventname">'+esc(e.name||e.title||"Annonce économique")+'</div><div class="eventmeta">'+esc(e.country||"")+" · Impact "+esc(e.impact||"inconnu")+" · GOLD "+esc(e.goldImpact||"IMPORTANT")+" · "+timing+'</div></div>';
+  }).join(""):'<div class="muted" style="margin-top:10px">Aucun événement important dans les prochaines 24 heures.</div>');
+}
 async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;renderTop(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 $("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
 </script></body></html>
