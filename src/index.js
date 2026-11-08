@@ -2235,6 +2235,62 @@ function getAlertKey(signal) {
   return [signal.signal, signal.alertLevel || "CONFIRMED"].join("_");
 }
 
+function getParisDayKey(timestamp = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getParisMinutesOfDay(timestamp = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(timestamp));
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return Number(values.hour) * 60 + Number(values.minute);
+}
+
+async function getDailyAlertState(env) {
+  const raw = await readKV(env, "daily_alerts_paris");
+  const today = getParisDayKey();
+  if (!raw) return { date: today, count: 0 };
+  try {
+    const saved = JSON.parse(raw);
+    return saved?.date === today && Number.isFinite(Number(saved.count))
+      ? { date: today, count: Math.max(0, Math.floor(Number(saved.count))) }
+      : { date: today, count: 0 };
+  } catch {
+    return { date: today, count: 0 };
+  }
+}
+
+function getAdaptiveAlertMinScore(alertCount, timestamp = Date.now()) {
+  // Objectif indicatif : 10 à 15 alertes/jour. Le seuil ne descend
+  // que si le bot est en retard sur le rythme quotidien, et jamais sous 55.
+  const expectedByNow = 15 * (getParisMinutesOfDay(timestamp) / 1440);
+  if (alertCount < expectedByNow - 3) return 55;
+  if (alertCount < expectedByNow) return 57;
+  return CONFIG.MIN_SCORE;
+}
+
+async function recordDailyAlert(env, previousState) {
+  const next = {
+    date: getParisDayKey(),
+    count: previousState.date === getParisDayKey() ? previousState.count + 1 : 1,
+    updatedAt: new Date().toISOString(),
+    target: { min: 10, max: 15 }
+  };
+  const saved = await writeKV(env, "daily_alerts_paris", next, 3 * 86400);
+  return { ...next, saved };
+}
+
 async function shouldSendAlert(env, signal) {
   const previousRaw = await readKV(env, "last_alert");
 
@@ -2274,15 +2330,35 @@ async function scheduledCheck(env) {
   await saveCronStatus(env, "RUNNING");
 
   try {
+    const dailyState = await getDailyAlertState(env);
+    if (dailyState.count >= 15) {
+      await saveCronStatus(env, "COMPLETED", {
+        alertSent: false,
+        dailyAlertCount: dailyState.count,
+        dailyAlertTarget: "10-15",
+        message: "Plafond quotidien de 15 alertes atteint (heure de Paris)."
+      });
+      return { ok: true, alertSent: false, dailyAlertCount: dailyState.count, reason: "DAILY_ALERT_CAP_REACHED" };
+    }
+
+    const adaptiveMinScore = getAdaptiveAlertMinScore(dailyState.count);
     const settings = {
       capital: CONFIG.CAPITAL,
       target: CONFIG.TARGET,
       stop: CONFIG.STOP,
-      minScore: CONFIG.MIN_SCORE,
+      minScore: adaptiveMinScore,
       lots: CONFIG.LOTS_PER_1000
     };
 
     const signal = await getSignal(settings, env, true);
+    signal.dailyAlertControl = {
+      countBeforeSignal: dailyState.count,
+      targetMin: 10,
+      targetMax: 15,
+      adaptiveMinScore,
+      absoluteDailyCap: 15,
+      timezone: "Europe/Paris"
+    };
 
     await writeKV(env, "last_signal", signal, 7 * 86400);
 
@@ -2338,10 +2414,14 @@ async function scheduledCheck(env) {
       time: Date.now()
     }, 7 * 86400);
 
+    const updatedDailyState = await recordDailyAlert(env, dailyState);
     await saveCronStatus(env, "ALERT_SENT", {
       signal: signal.signal,
       score: signal.score,
       alertSent: true,
+      dailyAlertCount: updatedDailyState.count,
+      dailyAlertTarget: "10-15",
+      adaptiveMinScore,
       message: "Alerte Telegram envoyee automatiquement."
     });
 
