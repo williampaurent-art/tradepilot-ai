@@ -1695,7 +1695,7 @@ function analyzeStructure(bars, indicator) {
   const bosUp = Boolean(lastHigh && previous.close <= lastHigh.price && last.close > lastHigh.price);
   const bosDown = Boolean(lastLow && previous.close >= lastLow.price && last.close < lastLow.price);
   const chochDown = bearishStructure === false && bullishStructure && Boolean(lastLow && last.close < lastLow.price);
-  const chochUp = bearishStructure === false && bearishStructure && Boolean(lastHigh && last.close > lastHigh.price);
+  const chochUp = bearishStructure && Boolean(lastHigh && last.close > lastHigh.price);
   const closes = recent.map(b => b.close);
   const rsiAt = index => calculateRSI(closes.slice(0, index + 1), 14);
   let bullishDivergence = false, bearishDivergence = false;
@@ -1744,7 +1744,10 @@ function describeTrendStrength(indicator, trend) {
 
 function buildDashboardFrame(timeframe, bars) {
   const indicator = getIndicators(bars);
-  const trend = getTrend(indicator);
+  const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
+    ? (indicator.ema20 > indicator.ema50 && indicator.ema50 > indicator.ema200 ? "HAUSSIER" :
+       indicator.ema20 < indicator.ema50 && indicator.ema50 < indicator.ema200 ? "BAISSIER" : "NEUTRE")
+    : "NEUTRE";
   const regime = analyzeMarketRegime(bars, indicator);
   const structure = analyzeStructure(bars, indicator);
   const quality = inspectDataQuality(bars, timeframe);
