@@ -26,7 +26,7 @@
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.7";
+const UI_VERSION="2026.11.08.8";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -233,7 +233,9 @@ function renderCalendar(c){
    const mins=Number.isFinite(Number(e.minutesUntil))?Number(e.minutesUntil):null;
    const timing=mins===null?dateFmt(e.release_at_utc||e.time_utc||e.date):mins<60?"Dans "+mins+" min":"Dans "+Math.floor(mins/60)+" h "+(mins%60)+" min";
    return '<div class="calendar-event"><div class="eventname">'+esc(e.name||e.title||"Annonce économique")+'</div><div class="eventmeta">'+esc(e.country||"")+" · Impact "+esc(e.impact||"inconnu")+" · GOLD "+esc(e.goldImpact||"IMPORTANT")+" · "+timing+'</div></div>';
-  }).join(""):'<div class="muted" style="margin-top:10px">Aucun événement important dans les prochaines 24 heures.</div>');
+  }).join(""):'<div class="muted" style="margin-top:10px">Aucun événement important dans les prochaines 24 heures.</div>')+
+   '<div class="eventname" style="margin-top:14px">Surprises économiques récentes (72 h)</div>'+
+   ((c.recentSurprises||[]).length?c.recentSurprises.map(s=>'<div class="calendar-event"><div class="eventname">'+esc(s.name)+' · '+esc(s.comparison)+'</div><div class="eventmeta">Réel : '+esc(s.actual)+' '+esc(s.unit||'')+' · Consensus : '+esc(s.consensus)+' · Précédent : '+esc(s.prior===null||s.prior===undefined?'—':s.prior)+' · Lecture or : '+esc(s.goldBias)+'</div><div class="eventmeta">'+esc(s.reason)+'</div></div>').join(""):'<div class="muted">Aucune publication récente avec réel et consensus vérifiables. Les valeurs manquantes restent indisponibles.</div>');
 }
 async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;renderTop(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 $("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
