@@ -2070,6 +2070,80 @@ function analyzeSmartMoney(bars, structure, indicator) {
   };
 }
 
+function analyzeReversalSignals(bars, structure, indicator, liquidity, regime) {
+  if (!Array.isArray(bars) || bars.length < 3) {
+    return { status: "DONNEES_INSUFFISANTES", direction: "INDETERMINE",
+      bullishEvidence: [], bearishEvidence: [], explanation: "Bougies insuffisantes." };
+  }
+  const last = bars[bars.length - 1], previous = bars[bars.length - 2];
+  const range = last.high - last.low;
+  const body = Math.abs(last.close - last.open);
+  const upperWick = last.high - Math.max(last.open, last.close);
+  const lowerWick = Math.min(last.open, last.close) - last.low;
+  const bullishEvidence = [], bearishEvidence = [];
+  if (range > 0) {
+    if (last.close > last.open && previous.close < previous.open &&
+        last.open <= previous.close && last.close >= previous.open) {
+      bullishEvidence.push("Englobante haussière sur bougie clôturée");
+    }
+    if (last.close < last.open && previous.close > previous.open &&
+        last.open >= previous.close && last.close <= previous.open) {
+      bearishEvidence.push("Englobante baissière sur bougie clôturée");
+    }
+    if (lowerWick >= Math.max(body * 2, indicator.atr * 0.15) &&
+        last.close >= last.low + range * 0.70) {
+      bullishEvidence.push("Mèche basse de rejet avec clôture dans le quart supérieur");
+    }
+    if (upperWick >= Math.max(body * 2, indicator.atr * 0.15) &&
+        last.close <= last.low + range * 0.30) {
+      bearishEvidence.push("Mèche haute de rejet avec clôture dans le quart inférieur");
+    }
+  }
+
+  const st = structure || {};
+  if (st.bullishDivergence) bullishEvidence.push("Divergence RSI haussière récente");
+  if (st.bullishMacdDivergence) bullishEvidence.push("Divergence MACD haussière récente");
+  if (st.bearishDivergence) bearishEvidence.push("Divergence RSI baissière récente");
+  if (st.bearishMacdDivergence) bearishEvidence.push("Divergence MACD baissière récente");
+  if (st.breakEvent === "CHOCH_HAUSSIER" || st.breakEvent === "BOS_HAUSSIER") {
+    bullishEvidence.push(st.breakEvent + " sur clôture");
+  }
+  if (st.breakEvent === "CHOCH_BAISSIER" || st.breakEvent === "BOS_BAISSIER") {
+    bearishEvidence.push(st.breakEvent + " sur clôture");
+  }
+  if (liquidity?.sweep === "BALAYAGE LIQUIDITE BAISSIERE REJETE") {
+    bullishEvidence.push("Balayage des creux puis clôture au-dessus");
+  }
+  if (liquidity?.sweep === "BALAYAGE LIQUIDITE HAUSSIERE REJETE") {
+    bearishEvidence.push("Balayage des sommets puis clôture en dessous");
+  }
+  if (regime?.fakeoutDown) bullishEvidence.push("Fausse cassure baissière détectée");
+  if (regime?.fakeoutUp) bearishEvidence.push("Fausse cassure haussière détectée");
+
+  const bullishScore = bullishEvidence.length, bearishScore = bearishEvidence.length;
+  const direction = bullishScore === bearishScore ? "MIXTE" :
+    bullishScore > bearishScore ? "HAUSSIER" : "BAISSIER";
+  const candleConfirmation = bullishEvidence.some(x => x.startsWith("Englobante") || x.startsWith("Mèche")) ||
+    bearishEvidence.some(x => x.startsWith("Englobante") || x.startsWith("Mèche"));
+  const structureConfirmation = bullishEvidence.some(x => x.includes("CHOCH") || x.includes("BOS")) ||
+    bearishEvidence.some(x => x.includes("CHOCH") || x.includes("BOS"));
+  const status = direction === "MIXTE" ? "SIGNAUX_MIXTES" :
+    candleConfirmation && structureConfirmation ? "REJET_ET_STRUCTURE_ALIGNES" :
+    candleConfirmation ? "REJET_CANDLE_A_SURVEILLER" :
+    structureConfirmation ? "RUPTURE_STRUCTURELLE_A_SURVEILLER" :
+    "INDICES_DE_RETournEMENT";
+  return {
+    status, direction, bullishScore, bearishScore,
+    bullishEvidence, bearishEvidence, candleConfirmation, structureConfirmation,
+    explanation: status === "REJET_ET_STRUCTURE_ALIGNES"
+      ? "Un rejet de bougie et un événement de structure vont dans le même sens. Attendre la tenue du niveau et vérifier les unités supérieures."
+      : status === "SIGNAUX_MIXTES"
+        ? "Les indices de retournement sont contradictoires ou équilibrés."
+        : "Indices précurseurs seulement : sans rejet et rupture de structure alignés, le retournement n'est pas confirmé.",
+    note: "Motifs OHLC heuristiques sur bougie clôturée, pas une prédiction ni un signal automatique."
+  };
+}
+
 function buildDashboardFrame(timeframe, bars) {
   const indicator = getIndicators(bars);
   const trend = indicator.ema200 !== null && indicator.ema20 !== null && indicator.ema50 !== null
@@ -2081,6 +2155,7 @@ function buildDashboardFrame(timeframe, bars) {
   const volatility = analyzeVolatility(bars, indicator);
   const liquidity = analyzeLiquidity(bars, indicator);
   const smartMoney = analyzeSmartMoney(bars, structure, indicator);
+  const reversalSignals = analyzeReversalSignals(bars, structure, indicator, liquidity, regime);
   const quality = inspectDataQuality(bars, timeframe);
   const macd = indicator.macd || {};
   const bb = indicator.bollinger || {};
@@ -2118,6 +2193,7 @@ function buildDashboardFrame(timeframe, bars) {
     volatility,
     liquidity,
     smartMoney,
+    reversalSignals,
     indicators: {
       price: indicator.price,
       ema20: indicator.ema20,
@@ -2283,6 +2359,20 @@ function analyzeSetupConfluence(results, marketOpen) {
     } else if ((direction === "HAUSSIER" && regime.fakeoutUp) ||
                (direction === "BAISSIER" && regime.fakeoutDown)) {
       add(-12, "Fausse cassure contre le scénario");
+    }
+
+    const reversal = execution.reversalSignals || {};
+    const reversalEvidence = direction === "HAUSSIER"
+      ? (reversal.bullishEvidence || []) : (reversal.bearishEvidence || []);
+    const oppositeReversalEvidence = direction === "HAUSSIER"
+      ? (reversal.bearishEvidence || []) : (reversal.bullishEvidence || []);
+    if (reversal.direction === direction && reversalEvidence.length >= 2) {
+      add(10, "Plusieurs indices de retournement " + direction.toLowerCase() + " convergents");
+    } else if (reversalEvidence.length === 1) {
+      add(3, "Un indice de retournement " + direction.toLowerCase() + " à surveiller");
+    }
+    if (oppositeReversalEvidence.length >= 2) {
+      add(-10, "Indices de retournement opposés au scénario");
     }
 
     const vol = execution.volatility || {};
