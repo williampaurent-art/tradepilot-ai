@@ -3349,8 +3349,8 @@ async function handleAssistantChat(request, env) {
   }
 
   const rawBody = await request.text();
-  if (rawBody.length > 24000) {
-    return json({ ok: false, error: "Message trop volumineux. Réduis l'historique de conversation." }, 413);
+  if (rawBody.length > 100000) {
+    return json({ ok: false, error: "Contexte de marché trop volumineux (limite 100 Ko). Actualise le tableau de bord puis réessaie." }, 413);
   }
 
   let body;
