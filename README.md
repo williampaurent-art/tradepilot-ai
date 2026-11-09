@@ -25,7 +25,6 @@ Fonctions affichées :
 - `GET /gold?timeframe=M1|M5|M15|H1|H4|D1` : diagnostic de données par unité.
 - `GET /analyze` : analyse technique utilisée par le robot.
 - `GET /calendar` : contexte du calendrier économique.
-- `GET /sniper-stats` : statistiques historiques simulées du module de validation.
 
 ## Données et limites
 
