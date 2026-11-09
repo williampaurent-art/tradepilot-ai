@@ -4765,13 +4765,6 @@ export default {
         return await handleCalendarKeyCheck(env);
       }
 
-      if (path === "/strategy-backtest") {
-        return await handleStrategyBacktest(request, env);
-      }
-      if (path === "/strategy-backtest-history") {
-        return await handleStrategyBacktestHistory(env);
-      }
-
       if (path === "/analyze") {
         return await handleAnalyze(request, env);
       }
@@ -4801,7 +4794,6 @@ export default {
           "/gold?timeframe=M15",
           "/analyze",
           "/sniper-stats",
-          "/strategy-backtest-history",
           "/calendar",
           "/scalp",
           "/telegram-test?key=VOTRE_CLE"
