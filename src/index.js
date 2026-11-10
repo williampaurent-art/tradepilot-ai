@@ -1743,6 +1743,59 @@ async function getSignal(settings, env, recordStatistics = false) {
 
   const reasons = [];
   const side = result.signal==="ACHAT"?"HAUSSIER":result.signal==="VENTE"?"BAISSIER":null;
+
+  // GARDE ANTI-POURSUITE : un signal de continuation est pénalisé
+  // lorsque M1/M5/M15 montrent déjà un retournement opposé ou un essoufflement.
+  // On ne retourne jamais automatiquement ACHAT/VENTE : le setup opposé doit
+  // satisfaire ses propres critères d'entrée, de spread et de structure.
+  const opposite = side === "HAUSSIER" ? "BAISSIER" : side === "BAISSIER" ? "HAUSSIER" : null;
+  const shortReversals = (reversal.details || []).filter(item =>
+    ["M1", "M5", "M15"].includes(item.timeframe) &&
+    item.active && !item.invalidated && item.direction === opposite
+  );
+  const confirmedOpposite = shortReversals.filter(item =>
+    ["M1", "M5"].includes(item.timeframe) && item.stage === "RETOURNEMENT_CONFIRME"
+  );
+  const formingOpposite = shortReversals.filter(item =>
+    ["M1", "M5", "M15"].includes(item.timeframe) &&
+    item.stage === "RETOURNEMENT_EN_FORMATION"
+  );
+  const exhaustionOpposite = shortReversals.filter(item =>
+    ["PRECURSEUR", "REJET_A_SURVEILLER"].includes(item.stage) &&
+    item.trendExhaustion
+  );
+  let reversalPenalty = 0;
+  let reversalGuardReason = null;
+  if (side && confirmedOpposite.length > 0) {
+    reversalPenalty = 18;
+    reversalGuardReason = "Retournement opposé confirmé sur une unité courte : entrée de continuation suspendue.";
+  } else if (formingOpposite.length >= 2) {
+    reversalPenalty = 15;
+    reversalGuardReason = "Retournement opposé en formation sur plusieurs unités courtes : attendre.";
+  } else if (formingOpposite.length === 1) {
+    reversalPenalty = 10;
+    reversalGuardReason = "Changement de structure opposé en formation : risque de vendre/acheter trop tard.";
+  } else if (exhaustionOpposite.length >= 2) {
+    reversalPenalty = 8;
+    reversalGuardReason = "Essoufflement opposé détecté sur plusieurs unités courtes.";
+  } else if (exhaustionOpposite.length === 1) {
+    reversalPenalty = 4;
+    reversalGuardReason = "Premier signe d'essoufflement opposé : surveiller la poursuite du mouvement.";
+  }
+  if (reversalPenalty > 0) {
+    result.score = Math.max(0, result.score - reversalPenalty);
+    reasons.push(reversalGuardReason);
+  }
+  result.reversalGuard = {
+    applied: reversalPenalty > 0,
+    penalty: reversalPenalty,
+    opposingTimeframes: shortReversals.map(item => item.timeframe),
+    confirmedOpposingTimeframes: confirmedOpposite.map(item => item.timeframe),
+    formingOpposingTimeframes: formingOpposite.map(item => item.timeframe),
+    exhaustionOpposingTimeframes: exhaustionOpposite.map(item => item.timeframe),
+    blockConfirmedAlert: reversalPenalty >= 10,
+    explanation: reversalGuardReason || "Aucun faisceau court terme opposé suffisamment fort."
+  };
   if (side) {
     const opposite = side==="HAUSSIER"?"BAISSIER":"HAUSSIER";
     const higherOpposed = ["H1","H4","D1"].filter(tf=>
@@ -1807,8 +1860,22 @@ async function getSignal(settings, env, recordStatistics = false) {
   result.score=Math.round(result.score);
   // Recalculer le niveau après les modulations avancées, sans contourner
   // le seuil technique ni le contrôle de spread.
+  const confirmationChecksPass = result.riskChecks?.spreadOK === true &&
+    result.riskChecks?.entryTriggerConfirmed === true &&
+    result.riskChecks?.structuralPlanConfirmed === true;
+  if (result.reversalGuard?.blockConfirmedAlert) {
+    result.confirmationBlockers = [
+      ...(result.confirmationBlockers || []),
+      result.reversalGuard.explanation
+    ];
+    if (result.riskChecks) {
+      result.riskChecks.confirmationBlockers = result.confirmationBlockers;
+      result.riskChecks.reversalGuardBlocked = true;
+    }
+  }
   result.alertLevel = result.signal==="ATTENDRE" ? "NONE" :
-    result.score>=settings.minScore && result.riskChecks?.spreadOK ? "CONFIRMED" : "EARLY";
+    result.score>=settings.minScore && confirmationChecksPass &&
+    !result.reversalGuard?.blockConfirmedAlert ? "CONFIRMED" : "EARLY";
   result.advancedIntelligence.eventMonitoring = {
     active:economicContext.blackout===true,
     riskLevel:economicContext.riskLevel||"INCONNU",
@@ -3615,7 +3682,7 @@ function analyzeReversalMultiTimeframe(results, marketOpen) {
     else if (active && (stage === "PRECURSEUR" || stage === "REJET_A_SURVEILLER")) earlyCount++;
     details.push({
       timeframe: tf, stage: invalidated ? "SCENARIO_INVALIDE" : stage, direction, trend, active, invalidated, againstTrend, withTrend, weight: weights[tf],
-      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), breakQuality: r.breakQuality || null, breakDistanceAtr: r.breakDistanceAtr ?? null, structureBreakConfirmed: r.structureBreakConfirmed === true, directionalConflict: r.directionalConflict === true, alignedSweep: r.alignedSweep === true, alignedRetest: r.alignedRetest === true, alignedRangeReentry: r.alignedRangeReentry === true, rangeReentryDirection: r.rangeReentryDirection || "NEUTRE", rangeReentryQuality: r.rangeReentryQuality || "NON_EVALUE", rangeReentryDepthAtr: r.rangeReentryDepthAtr ?? null, reversalConfluenceCount: r.reversalConfluenceCount ?? 0, reversalConfluenceStatus: r.reversalConfluenceStatus || "AUCUNE_CONFLUENCE", invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null
+      stageWeight: active ? stageWeight : 0, weightedContribution: Number((weights[tf] * (active ? stageWeight : 0)).toFixed(2)), breakQuality: r.breakQuality || null, breakDistanceAtr: r.breakDistanceAtr ?? null, structureBreakConfirmed: r.structureBreakConfirmed === true, directionalConflict: r.directionalConflict === true, alignedSweep: r.alignedSweep === true, alignedRetest: r.alignedRetest === true, alignedRangeReentry: r.alignedRangeReentry === true, rangeReentryDirection: r.rangeReentryDirection || "NEUTRE", rangeReentryQuality: r.rangeReentryQuality || "NON_EVALUE", rangeReentryDepthAtr: r.rangeReentryDepthAtr ?? null, reversalConfluenceCount: r.reversalConfluenceCount ?? 0, reversalConfluenceStatus: r.reversalConfluenceStatus || "AUCUNE_CONFLUENCE", invalidationLevel: r.invalidationLevel ?? null, invalidationDistance: r.invalidationDistance ?? null, invalidationDistanceAtr: r.invalidationDistanceAtr ?? null, invalidationBreached: r.invalidationBreached === true, invalidationLabel: r.invalidationLabel || null, trendExhaustion: r.trendExhaustion === true, macdDecelerationConfirmed: r.macdDecelerationConfirmed === true, adxFallingConfirmed: r.adxFallingConfirmed === true
     });
   }
   const bias = Math.abs(bullishWeight - bearishWeight) < 0.001
