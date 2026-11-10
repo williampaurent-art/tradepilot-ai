@@ -1905,6 +1905,7 @@ function buildAlertMessage(signal) {
       ? `🧠 Auto-calibration : score ${signal.learningAdjustment.originalScore} → ${signal.learningAdjustment.adjustedScore} (${signal.learningAdjustment.adjustment > 0 ? "+" : ""}${signal.learningAdjustment.adjustment}) après ${signal.learningAdjustment.resolved} résultats.`
       : "🧠 Auto-calibration : collecte et vérification des résultats historiques.",
     `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
+    signal.economicCalendarWarning ? `⚠️ ${signal.economicCalendarWarning}` : "📰 Calendrier économique vérifié.",
     "",
     "📈 Tendances :",
     `M1 : ${signal.market.trendM1}`,
@@ -2238,20 +2239,24 @@ function applyEconomicFilter(signal, context) {
     sourceUrl: context.sourceUrl || "https://www.financecalendar.com"
   };
 
-  if (!context.safeToTrade || context.blackout) {
+  if (context.blackout) {
     signal.technicalSignal = signal.signal;
     signal.technicalScore = signal.score;
     signal.signal = "ATTENDRE";
     signal.alertLevel = "NONE";
     signal.blockedByEconomicCalendar = true;
     signal.reasons = [
-      context.blackout
-        ? "Entrée bloquée : annonce économique majeure dans la fenêtre de sécurité de 15 minutes."
-        : "Entrée bloquée : calendrier économique indisponible ou non vérifié.",
+      "Entrée suspendue : annonce économique majeure dans la fenêtre de sécurité de 15 minutes.",
       ...(signal.reasons || [])
     ];
   } else {
+    // Une panne ou une absence du calendrier ne doit pas rendre le robot
+    // muet toute la journée. Les validations techniques restent obligatoires ;
+    // l'alerte précise que le calendrier n'a pas pu être vérifié.
     signal.blockedByEconomicCalendar = false;
+    signal.economicCalendarWarning = context.safeToTrade
+      ? null
+      : "Calendrier économique indisponible/non vérifié : vérifier les annonces avant toute décision manuelle.";
   }
 
   return signal;
@@ -2781,7 +2786,11 @@ async function scheduledCheck(env) {
         signal: signal.signal,
         score: signal.score,
         alertSent: false,
-        message: "Analyse terminee : aucun signal valide."
+        message: "Analyse terminee : aucun signal valide.",
+        candidateScores: signal.candidateScores || null,
+        confirmationBlockers: signal.confirmationBlockers || [],
+        economicCalendar: signal.economicCalendar || null,
+        dataQuality: signal.dataQuality || null
       });
 
       return signal;
@@ -2792,7 +2801,11 @@ async function scheduledCheck(env) {
         signal: signal.signal,
         score: signal.score,
         alertSent: false,
-        message: "Signal sous le seuil de confirmation : conserve en surveillance, sans alerte d'entree."
+        message: "Signal sous le seuil de confirmation : conserve en surveillance, sans alerte d'entree.",
+        candidateScores: signal.candidateScores || null,
+        confirmationBlockers: signal.confirmationBlockers || [],
+        riskChecks: signal.riskChecks || null,
+        economicCalendar: signal.economicCalendar || null
       });
 
       return signal;
