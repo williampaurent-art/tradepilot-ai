@@ -8,6 +8,11 @@ workers_dev = true
 binding = "TP_STATE"
 id = "c6ebb2469afe4e8ebe236097ccb97d63"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "tradepilot-ai-db"
+database_id = "947195cd-d27e-4805-8337-483fd3ef226e"
+
 [vars]
 SUPABASE_URL = "https://hehalxaotajtjntfvygr.supabase.co"
 
