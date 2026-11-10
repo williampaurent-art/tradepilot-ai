@@ -215,8 +215,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
  *,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
-.ops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.ops-item,.ops-block{min-width:0;padding:13px;border:1px solid rgba(137,169,209,.14);border-radius:11px;background:rgba(5,13,24,.58)}.ops-label{display:block;color:var(--muted);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;font-weight:800}.ops-item strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}.ops-item small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.ops-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.ops-main{font-size:17px;font-weight:850;margin:7px 0;overflow-wrap:anywhere}.ops-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ops-stats span{padding:7px 10px;border:1px solid rgba(137,169,209,.14);border-radius:8px;background:rgba(5,13,24,.45);font-size:10px;color:var(--muted)}.ops-stats strong{color:var(--text);margin-left:4px}.ops-good{color:var(--green)!important}.ops-bad{color:var(--red)!important}.ops-warn{color:var(--gold)!important}@media(max-width:700px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-columns{grid-template-columns:1fr}.ops-main{font-size:15px}}.history-row{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;padding:11px 9px;border-bottom:1px solid var(--line);font-size:12px}.history-row:last-child{border-bottom:0}.history-row strong{font-size:12px}.history-row small{display:block;color:var(--muted);margin-top:4px;line-height:1.45}.history-state{font-size:10px;font-weight:800;letter-spacing:.4px}.history-row .up{color:var(--green)}.history-row .down{color:var(--red)}.history-reasons{color:var(--muted);font-size:10px;margin-top:5px;line-height:1.5}@media(max-width:600px){.history-row{grid-template-columns:1fr auto;gap:5px}.history-row time{grid-column:1/-1;color:var(--muted)}}
-/* Mobile-first command layout · 2026.11.10 */
+.ops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.ops-item,.ops-block{min-width:0;padding:13px;border:1px solid rgba(137,169,209,.14);border-radius:11px;background:rgba(5,13,24,.58)}.ops-label{display:block;color:var(--muted);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;font-weight:800}.ops-item strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}.ops-item small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.ops-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.ops-main{font-size:17px;font-weight:850;margin:7px 0;overflow-wrap:anywhere}.ops-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ops-stats span{padding:7px 10px;border:1px solid rgba(137,169,209,.14);border-radius:8px;background:rgba(5,13,24,.45);font-size:10px;color:var(--muted)}.ops-stats strong{color:var(--text);margin-left:4px}.ops-good{color:var(--green)!important}.ops-bad{color:var(--red)!important}.ops-warn{color:var(--gold)!important}@media(max-width:700px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-columns{grid-template-columns:1fr}.ops-main{font-size:15px}}/* Mobile-first command layout · 2026.11.10 */
 main.wrap{display:flex;flex-direction:column}
 main.wrap>*{order:20}
 main.wrap>.top{order:0}
@@ -227,7 +226,7 @@ main.wrap>#market-view{order:4}
 main.wrap>#timeframe-view{order:5}
 main.wrap>#assistantPanel{order:6}
 main.wrap>#operations{order:7}
-main.wrap>#signal-journal{order:8}
+main.wrap>#edge-performance-panel{order:8}
 main.wrap>.reading-guide{order:9}
 main.wrap>#deep-analysis{order:10}
 main.wrap>section.section:not([id]){order:11}
@@ -286,10 +285,9 @@ main.wrap>.foot{order:42}
  <div id="opsError" class="hint" role="status" style="margin-top:10px"></div>
  <div class="hint" style="margin-top:9px">Les statistiques sont des évaluations OHLC approximatives, pas des résultats d'exécution MT5. Les états affichés proviennent des endpoints du Worker.</div>
 </section>
-<section id="signal-journal" class="section card">
- <div class="sectionhead"><div><h2>Journal des signaux XAUUSD</h2><span class="hint">Historique des analyses automatiques · 3 minutes</span></div><button class="btn" id="historyRefresh" type="button">Actualiser</button></div>
- <div class="ops-stats"><span>Analyses enregistrées <strong id="historyCount">—</strong></span><span>Alertes envoyées <strong id="historySent">—</strong></span><span>En attente / refusées <strong id="historyWait">—</strong></span><span>Erreurs données <strong id="historyErrors">—</strong></span></div>
- <div class="edge-performance" style="margin-top:16px;padding:14px;border:1px solid rgba(243,200,107,.24);border-radius:14px;background:linear-gradient(130deg,rgba(23,34,51,.8),rgba(9,17,29,.85))">
+<section id="edge-performance-panel" class="section card">
+ <div class="sectionhead"><div><h2>Performance des signaux</h2><span class="hint">Mesure statistique des alertes Telegram confirmées · sans journal détaillé</span></div><span class="scalp-state warn" id="edgeStatusTop">MESURE EN COURS</span></div>
+ <div class="edge-performance" style="margin-top:12px;padding:14px;border:1px solid rgba(243,200,107,.24);border-radius:14px;background:linear-gradient(130deg,rgba(23,34,51,.8),rgba(9,17,29,.85))">
   <div class="sectionhead"><div><div class="exec-kicker">TRADEPILOT EDGE · PERFORMANCE MESURÉE</div><h3 style="margin:4px 0">Ce que valent réellement les alertes</h3><span id="edgeConfidence" class="hint">Échantillon en cours de constitution.</span></div><span id="edgeStatus" class="scalp-state warn">CALCUL EN ATTENTE</span></div>
   <div class="ops-stats" style="margin-top:12px">
    <span>Win rate observé <strong id="edgeWinRate">—</strong></span><span>Espérance moyenne <strong id="edgeExpectancy">—</strong></span><span>Résultats TP / SL <strong id="edgeSample">—</strong></span><span>Alertes à suivre <strong id="edgePending">—</strong></span>
@@ -299,8 +297,6 @@ main.wrap>.foot{order:42}
   </div>
   <div id="edgeMethod" class="hint" style="margin-top:10px">Méthode de mesure chargée depuis le moteur.</div>
  </div>
- <div id="signalHistoryList" style="margin-top:12px"><div class="muted">Chargement du journal…</div></div>
- <div id="signalHistoryMeta" class="hint" style="margin-top:9px">Les anciennes analyses ne sont pas recréées rétroactivement : le journal commence après le déploiement de cette version.</div>
 </section>
 
 <section id="marketAlert" class="market-alert" data-level="calm" role="status" aria-live="polite"><div class="market-alert-head"><span class="market-alert-pulse"></span><span class="market-alert-kicker">SURVEILLANCE ÉVÉNEMENTIELLE · XAUUSD</span><span class="pill">INITIALISATION</span></div><div class="market-alert-title" id="marketAlertTitle">Surveillance du marché en cours</div><div class="market-alert-copy" id="marketAlertCopy">TradePilot vérifie les annonces majeures, la volatilité et les confirmations de retournement.</div><div class="market-alert-meta" id="marketAlertMeta"></div></section>
@@ -352,7 +348,7 @@ main.wrap>.foot{order:42}
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
-<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#signal-journal">Signaux</a><a href="#operations">Robot</a></nav>
+<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#edge-performance-panel">Performance</a><a href="#operations">Robot</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
@@ -856,41 +852,6 @@ async function refreshEdgeStats(){
   opsSet("edgeConfidence",error?.message||"Erreur réseau");
  }
 }
-async function refreshSignalHistory(){
- const root=$("signalHistoryList");if(!root)return;
- try{
-  const response=await fetch(API+"/signal-history?limit=50&t="+Date.now(),{cache:"no-store"});
-  const data=await response.json();
-  if(!response.ok||data?.ok!==true)throw new Error(data?.error||"Journal indisponible");
-  const items=Array.isArray(data.items)?data.items:[];
-  const sent=items.filter(x=>x.alertSent||x.state==="ALERTE_ENVOYEE").length;
-  const errors=items.filter(x=>x.state==="DATA_ERROR").length;
-  const waiting=items.filter(x=>!["ALERTE_ENVOYEE","DATA_ERROR"].includes(x.state)).length;
-  opsSet("historyCount",data.count??items.length);
-  opsSet("historySent",sent);
-  opsSet("historyWait",waiting);
-  opsSet("historyErrors",errors);
-  await refreshEdgeStats();
-  if(!items.length){root.innerHTML='<div class="muted">Aucune analyse enregistrée pour le moment. Le journal se remplira au prochain passage du Cron.</div>';return;}
-  const labels={ALERTE_ENVOYEE:"ALERTE TELEGRAM ENVOYÉE",ATTENDRE:"ATTENDRE · PAS DE SETUP",NON_CONFIRME:"SIGNAL NON CONFIRMÉ",CONFIRME_EN_ATTENTE:"CONFIRMATION EN ATTENTE",DOUBLON_RECENT:"DOUBLON ÉVITÉ",DATA_ERROR:"ERREUR DE DONNÉES"};
-  root.innerHTML=items.map(item=>{
-   const side=item.signal==="ACHAT"?"up":item.signal==="VENTE"?"down":"";
-   const time=opsDate(item.timestamp);
-   const reason=Array.isArray(item.reasons)?item.reasons.slice(0,2).join(" · "):"";
-   const risk=item.riskChecks||{};
-   const scores=item.candidateScores||{};
-   const blockers=Array.isArray(item.confirmationBlockers)?item.confirmationBlockers:[];
-   const checks=["Spread "+(risk.spreadOK===true?"OK":risk.spreadOK===false?"refusé":"—"),"Déclencheur "+(risk.entryTriggerConfirmed===true?"OK":risk.entryTriggerConfirmed===false?"refusé":"—"),"Plan "+(risk.structuralPlanConfirmed===true?"OK":risk.structuralPlanConfirmed===false?"refusé":"—")].join(" · ");
-   const scoreLine=Number.isFinite(Number(scores.buy))&&Number.isFinite(Number(scores.sell))?"Scores achat/vente : "+scores.buy+"/"+scores.sell+" · seuil initial "+(scores.earlyThreshold??45)+" · confirmation "+(scores.confirmationThreshold??"—"):"";
-   const diagnosis=[...blockers,scoreLine,item.tradePlanReason||""].filter(Boolean).join(" · ");
-   const edge=item.edgeOutcome||{};
-   const edgeLabel={WIN:"TP TOUCHÉ · GAGNANT",LOSS:"SL TOUCHÉ · PERDANT",PENDING:"RÉSULTAT EN SUIVI",AMBIGUOUS:"TP/SL DANS LA MÊME BOUGIE",EXPIRED:"EXPIRÉ · 60 MIN"}[edge.status]||"PAS ENCORE ÉVALUÉ";
-   const edgeLine=item.alertSent?'<div class="history-reasons">EDGE : '+esc(edgeLabel)+(edge.mfe!==undefined?' · MFE '+esc(String(edge.mfe))+' · MAE '+esc(String(edge.mae)):'')+'</div>':'';
-   return '<div class="history-row"><time>'+esc(time)+'</time><div><strong class="'+side+'">'+esc(item.signal||"—")+' · '+esc(String(item.score??"—"))+'/100</strong><small>'+esc(labels[item.state]||item.state||"ÉTAT INCONNU")+' · '+esc(item.alertLevel||"—")+'</small><div class="history-reasons">'+esc(diagnosis||reason||checks)+'</div>'+edgeLine+'</div><span class="history-state '+(item.alertSent?"ops-good":"")+'">'+(item.alertSent?"ENVOYÉ":"NON ENVOYÉ")+'</span></div>';
-  }).join("");
-  $("signalHistoryMeta").textContent="Affichage des "+items.length+" dernières analyses. Conservation serveur : jusqu'à 3 500 décisions / 7 jours. Les résultats Edge ne sont calculés que pour les alertes Telegram confirmées.";
- }catch(error){root.innerHTML='<div class="muted">Journal non disponible : '+esc(error?.message||"erreur réseau")+'. Vérifie que la dernière version du Worker est déployée.</div>';}
-}
 async function refreshOperations(){
  const button=$("opsRefresh"),error=$("opsError");if(button){button.disabled=true;button.textContent="Vérification…";}if(error)error.textContent="";
  try{
@@ -923,7 +884,7 @@ async function refreshOperations(){
   opsSet("opsTimeouts",stats?.timeouts??"—");
   $("opsUpdated").textContent="Vérifié à "+new Date().toLocaleTimeString("fr-FR");
   if(error&&(!statsRes.ok||stats?.ok!==true))error.textContent="Statistiques d'apprentissage indisponibles ; les états du Worker et du Cron sont chargés.";
-  await refreshSignalHistory();
+  await refreshEdgeStats();
  }catch(e){
   opsSet("opsWorker","INDISPONIBLE","ops-bad");
   if(error)error.textContent="Diagnostic incomplet : "+(e?.message||"erreur réseau");
@@ -962,7 +923,7 @@ if(assistantForm){
 document.querySelectorAll("[data-question]").forEach(button=>{
  button.addEventListener("click",()=>assistantSubmit(button.getAttribute("data-question")||""));
 });
-$("opsRefresh")?.addEventListener("click",refreshOperations);$("historyRefresh")?.addEventListener("click",refreshSignalHistory);refreshOperations();setInterval(refreshOperations,60000);$("refresh").addEventListener("click",refresh);
+$("opsRefresh")?.addEventListener("click",refreshOperations);refreshOperations();setInterval(refreshOperations,60000);$("refresh").addEventListener("click",refresh);
 $("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});
 const redrawChart=()=>{const x=snapshot?.timeframes?.find(v=>v.timeframe===selected&&v.ok);if(x)drawChart(x.analysis.candles||[],x.analysis,snapshot?.market?.open===true&&x.analysis.dataQuality?.ok===true);};
 $("chartWindow")?.addEventListener("change",e=>{chartWindow=Math.max(10,Math.min(90,Number(e.target.value)||90));redrawChart();});
