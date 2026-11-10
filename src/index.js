@@ -4968,7 +4968,7 @@ async function verifySupabaseAccessToken(request, env) {
     }
 
     const keys = await getSupabaseJwks(env);
-    const jwk = keys.find(key => key.kid === header.kid && key.alg === header.alg);
+    const jwk = keys.find(key => key.kid === header.kid && (!key.alg || key.alg === header.alg));
     if (!jwk) return { ok: false, status: 401, error: "Clé JWT inconnue." };
 
     const importAlgorithm = header.alg === "ES256"
@@ -5053,7 +5053,7 @@ async function provisionSaasAccount(user, env) {
   `).bind(workspace.id, resolvedUserId).run();
 
   await env.DB.prepare(`
-    INSERT INTO subscriptions (id, workspace_id, billing_provider, plan_key, status)
+    INSERT OR IGNORE INTO subscriptions (id, workspace_id, billing_provider, plan_key, status)
     SELECT ?, ?, 'internal', 'free', 'active'
     WHERE NOT EXISTS (
       SELECT 1 FROM subscriptions
