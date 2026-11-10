@@ -8,6 +8,9 @@ workers_dev = true
 binding = "TP_STATE"
 id = "c6ebb2469afe4e8ebe236097ccb97d63"
 
+[vars]
+SUPABASE_URL = "https://hehalxaotajtjntfvygr.supabase.co"
+
 [triggers]
 crons = ["*/3 * * * *"]
 
