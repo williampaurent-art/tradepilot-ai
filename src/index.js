@@ -2250,21 +2250,31 @@ async function getEconomicContext(env) {
         cached.fetchedAt,
         true
       );
+      const paymentRequired = /HTTP 402/.test(error.message);
       return {
         ...fallback,
-        status: "API_ERROR_USING_STALE_CACHE",
-        message: error.message,
+        status: paymentRequired ? "PAYMENT_REQUIRED_USING_STALE_CACHE" : "API_ERROR_USING_STALE_CACHE",
+        paymentRequired,
+        message: paymentRequired
+          ? "Finance Calendar exige désormais un abonnement. Anciennes données conservées uniquement comme contexte périmé."
+          : error.message,
         safeToTrade: false
       };
     }
 
+    const paymentRequired = /HTTP 402/.test(error.message);
     return {
       configured: true,
-      status: "API_ERROR",
+      status: paymentRequired ? "PAYMENT_REQUIRED" : "API_ERROR",
+      paymentRequired,
+      httpStatus: paymentRequired ? 402 : null,
       source: "Finance Calendar",
+      sourceUrl: "https://www.financecalendar.com",
       blackout: false,
       safeToTrade: false,
-      message: error.message
+      message: paymentRequired
+        ? "Accès API Finance Calendar payant. Le moteur technique continue sans calendrier ; vérification manuelle des annonces USD requise."
+        : error.message
     };
   }
 }
@@ -2273,6 +2283,9 @@ function applyEconomicFilter(signal, context) {
   signal.economicCalendar = {
     configured: context.configured,
     status: context.status,
+    paymentRequired: context.paymentRequired === true ||
+      context.status === "PAYMENT_REQUIRED" ||
+      context.status === "PAYMENT_REQUIRED_USING_STALE_CACHE",
     blackout: context.blackout,
     safeToTrade: context.safeToTrade,
     activeEvent: context.activeEvent || null,
