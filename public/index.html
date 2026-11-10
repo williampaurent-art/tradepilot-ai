@@ -870,7 +870,8 @@ async function refreshSignalHistory(){
   opsSet("historySent",sent);
   opsSet("historyWait",waiting);
   opsSet("historyErrors",errors);
-  await refreshEdgeStats();\n  if(!items.length){root.innerHTML='<div class="muted">Aucune analyse enregistrée pour le moment. Le journal se remplira au prochain passage du Cron.</div>';return;}
+  await refreshEdgeStats();
+  if(!items.length){root.innerHTML='<div class="muted">Aucune analyse enregistrée pour le moment. Le journal se remplira au prochain passage du Cron.</div>';return;}
   const labels={ALERTE_ENVOYEE:"ALERTE TELEGRAM ENVOYÉE",ATTENDRE:"ATTENDRE · PAS DE SETUP",NON_CONFIRME:"SIGNAL NON CONFIRMÉ",CONFIRME_EN_ATTENTE:"CONFIRMATION EN ATTENTE",DOUBLON_RECENT:"DOUBLON ÉVITÉ",DATA_ERROR:"ERREUR DE DONNÉES"};
   root.innerHTML=items.map(item=>{
    const side=item.signal==="ACHAT"?"up":item.signal==="VENTE"?"down":"";
