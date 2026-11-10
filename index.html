@@ -346,34 +346,6 @@
       overflow-wrap: anywhere;
     }
 
-    .history {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    .history th, .history td {
-      padding: 13px 9px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-
-    .history th {
-      color: var(--muted);
-      font-weight: 600;
-    }
-
-    .history-wrap {
-      overflow-x: auto;
-    }
-
-    .empty {
-      padding: 24px 0;
-      color: var(--muted);
-      text-align: center;
-    }
-
     footer {
       text-align: center;
       color: var(--muted);
@@ -491,9 +463,6 @@
             ↻ Analyser le marché
           </button>
 
-          <button id="clearHistoryButton" class="btn btn-secondary">
-            Effacer l'historique
-          </button>
         </div>
 
         <div id="statusMessage" class="status-message">
@@ -634,32 +603,6 @@
 
     </section>
 
-    <section class="card">
-      <h2 class="section-title">Historique des signaux</h2>
-
-      <div class="history-wrap">
-        <table class="history">
-          <thead>
-            <tr>
-              <th>Heure</th>
-              <th>Signal</th>
-              <th>Entrée</th>
-              <th>Stop</th>
-              <th>Objectif</th>
-            </tr>
-          </thead>
-
-          <tbody id="historyBody">
-            <tr>
-              <td colspan="5" class="empty">
-                Aucun signal enregistré pour le moment.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
     <footer>
       TRADEPILOT AI · XAUUSD SCALPING<br>
       Analyse indicative uniquement · Aucun ordre réel exécuté
@@ -672,7 +615,8 @@
       "https://tradepilot-ai.williampaurent.workers.dev";
 
     const STORAGE_SETTINGS = "tradepilot_settings_v1";
-    const STORAGE_HISTORY = "tradepilot_history_v1";
+    // Nettoie une éventuelle ancienne liste locale désormais supprimée de l'interface.
+    localStorage.removeItem("tradepilot_history_v1");
 
     const $ = id => document.getElementById(id);
 
@@ -796,108 +740,6 @@
       updateSummary();
     }
 
-    function loadHistory() {
-      try {
-        const history = JSON.parse(
-          localStorage.getItem(STORAGE_HISTORY) || "[]"
-        );
-
-        return Array.isArray(history) ? history : [];
-      } catch (error) {
-        return [];
-      }
-    }
-
-    function saveHistory(history) {
-      try {
-        localStorage.setItem(
-          STORAGE_HISTORY,
-          JSON.stringify(history.slice(0, 30))
-        );
-      } catch (error) {
-        console.warn("Historique local indisponible.");
-      }
-    }
-
-    function addHistory(result) {
-      if (!result || !result.signal) return;
-
-      const history = loadHistory();
-
-      const item = {
-        time: new Date().toISOString(),
-        signal: result.signal,
-        entry: result.entry,
-        stopLoss: result.stopLoss,
-        takeProfit: result.takeProfit,
-        candle: result.lastClosedCandle
-      };
-
-      // Évite de répéter le même signal pour la même bougie.
-      const exists = history.some(old =>
-        old.candle === item.candle &&
-        old.signal === item.signal
-      );
-
-      if (!exists) {
-        history.unshift(item);
-        saveHistory(history);
-      }
-
-      renderHistory();
-    }
-
-    function renderHistory() {
-      const history = loadHistory();
-      const tbody = $("historyBody");
-
-      tbody.replaceChildren();
-
-      if (history.length === 0) {
-        const row = document.createElement("tr");
-        const cell = document.createElement("td");
-
-        cell.colSpan = 5;
-        cell.className = "empty";
-        cell.textContent = "Aucun signal enregistré pour le moment.";
-
-        row.appendChild(cell);
-        tbody.appendChild(row);
-        return;
-      }
-
-      history.slice(0, 30).forEach(item => {
-        const row = document.createElement("tr");
-
-        const time = document.createElement("td");
-        const signal = document.createElement("td");
-        const entry = document.createElement("td");
-        const stop = document.createElement("td");
-        const target = document.createElement("td");
-
-        const date = new Date(item.time);
-
-        time.textContent = Number.isNaN(date.getTime())
-          ? "—"
-          : date.toLocaleString("fr-FR");
-
-        signal.textContent = item.signal;
-        signal.className =
-          item.signal === "ACHAT"
-            ? "green"
-            : item.signal === "VENTE"
-              ? "red"
-              : "";
-
-        entry.textContent = money(item.entry);
-        stop.textContent = money(item.stopLoss);
-        target.textContent = money(item.takeProfit);
-
-        row.append(time, signal, entry, stop, target);
-        tbody.appendChild(row);
-      });
-    }
-
     function renderSignal(data) {
       latestSignal = data;
 
@@ -978,7 +820,6 @@
       showConnection("online", "API connectée");
       setError("");
 
-      addHistory(data);
     }
 
     async function refreshSignal() {
@@ -1045,12 +886,6 @@
 
     $("saveSettingsButton").addEventListener("click", saveSettings);
 
-    $("clearHistoryButton").addEventListener("click", () => {
-      if (confirm("Effacer l'historique enregistré sur cet appareil ?")) {
-        localStorage.removeItem(STORAGE_HISTORY);
-        renderHistory();
-      }
-    });
 
     ["capital", "riskPercent", "target", "stopDistance"]
       .forEach(id => {
@@ -1058,7 +893,6 @@
       });
 
     loadSettings();
-    renderHistory();
     refreshSignal();
 
     // Actualisation automatique toutes les 60 secondes.
