@@ -1965,7 +1965,7 @@ function buildAlertMessage(signal) {
     ...reasons,
     "⚠️ Vérifie le prix MT5 et recalcule TP/SL depuis ton exécution.",
     "Aucun ordre réel exécuté."
-  ].filter(Boolean).join("\\n");
+  ].filter(Boolean).join("\n");
 }
 
 // --------------------------------------------------
