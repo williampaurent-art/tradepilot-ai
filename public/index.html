@@ -215,7 +215,42 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
  *,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
-.ops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.ops-item,.ops-block{min-width:0;padding:13px;border:1px solid rgba(137,169,209,.14);border-radius:11px;background:rgba(5,13,24,.58)}.ops-label{display:block;color:var(--muted);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;font-weight:800}.ops-item strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}.ops-item small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.ops-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.ops-main{font-size:17px;font-weight:850;margin:7px 0;overflow-wrap:anywhere}.ops-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ops-stats span{padding:7px 10px;border:1px solid rgba(137,169,209,.14);border-radius:8px;background:rgba(5,13,24,.45);font-size:10px;color:var(--muted)}.ops-stats strong{color:var(--text);margin-left:4px}.ops-good{color:var(--green)!important}.ops-bad{color:var(--red)!important}.ops-warn{color:var(--gold)!important}@media(max-width:700px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-columns{grid-template-columns:1fr}.ops-main{font-size:15px}}.history-row{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;padding:11px 9px;border-bottom:1px solid var(--line);font-size:12px}.history-row:last-child{border-bottom:0}.history-row strong{font-size:12px}.history-row small{display:block;color:var(--muted);margin-top:4px;line-height:1.45}.history-state{font-size:10px;font-weight:800;letter-spacing:.4px}.history-row .up{color:var(--green)}.history-row .down{color:var(--red)}.history-reasons{color:var(--muted);font-size:10px;margin-top:5px;line-height:1.5}@media(max-width:600px){.history-row{grid-template-columns:1fr auto;gap:5px}.history-row time{grid-column:1/-1;color:var(--muted)}}</style></head>
+.ops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.ops-item,.ops-block{min-width:0;padding:13px;border:1px solid rgba(137,169,209,.14);border-radius:11px;background:rgba(5,13,24,.58)}.ops-label{display:block;color:var(--muted);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;font-weight:800}.ops-item strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}.ops-item small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.ops-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.ops-main{font-size:17px;font-weight:850;margin:7px 0;overflow-wrap:anywhere}.ops-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ops-stats span{padding:7px 10px;border:1px solid rgba(137,169,209,.14);border-radius:8px;background:rgba(5,13,24,.45);font-size:10px;color:var(--muted)}.ops-stats strong{color:var(--text);margin-left:4px}.ops-good{color:var(--green)!important}.ops-bad{color:var(--red)!important}.ops-warn{color:var(--gold)!important}@media(max-width:700px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-columns{grid-template-columns:1fr}.ops-main{font-size:15px}}.history-row{display:grid;grid-template-columns:110px 1fr auto;gap:10px;align-items:center;padding:11px 9px;border-bottom:1px solid var(--line);font-size:12px}.history-row:last-child{border-bottom:0}.history-row strong{font-size:12px}.history-row small{display:block;color:var(--muted);margin-top:4px;line-height:1.45}.history-state{font-size:10px;font-weight:800;letter-spacing:.4px}.history-row .up{color:var(--green)}.history-row .down{color:var(--red)}.history-reasons{color:var(--muted);font-size:10px;margin-top:5px;line-height:1.5}@media(max-width:600px){.history-row{grid-template-columns:1fr auto;gap:5px}.history-row time{grid-column:1/-1;color:var(--muted)}}
+/* Mobile-first command layout · 2026.11.10 */
+main.wrap{display:flex;flex-direction:column}
+main.wrap>*{order:20}
+main.wrap>.top{order:0}
+main.wrap>.mainnav{order:1}
+main.wrap>.executive{order:2}
+main.wrap>#marketAlert{order:3}
+main.wrap>#market-view{order:4}
+main.wrap>#timeframe-view{order:5}
+main.wrap>#assistantPanel{order:6}
+main.wrap>#operations{order:7}
+main.wrap>#signal-journal{order:8}
+main.wrap>.reading-guide{order:9}
+main.wrap>#deep-analysis{order:10}
+main.wrap>section.section:not([id]){order:11}
+main.wrap>#macro-view{order:30}
+main.wrap>.error{order:40}
+main.wrap>.warning{order:41}
+main.wrap>.foot{order:42}
+.mobile-dock{display:none}
+@media(max-width:650px){
+ main.wrap{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
+ .mainnav{display:none}
+ .mobile-dock{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;position:fixed;z-index:100;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));padding:8px 6px;border:1px solid rgba(105,217,237,.24);border-radius:17px;background:rgba(6,13,23,.94);backdrop-filter:blur(20px);box-shadow:0 12px 42px rgba(0,0,0,.48),inset 0 1px rgba(255,255,255,.06)}
+ .mobile-dock a{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:7px 2px;border-radius:10px;color:#9eb0c7;text-decoration:none;font-size:9px;font-weight:800;letter-spacing:.1px}
+ .mobile-dock a:before{font-size:17px;line-height:1}
+ .mobile-dock a:nth-child(1):before{content:"◈"}
+ .mobile-dock a:nth-child(2):before{content:"⌁"}
+ .mobile-dock a:nth-child(3):before{content:"✧"}
+ .mobile-dock a:nth-child(4):before{content:"▤"}
+ .mobile-dock a:nth-child(5):before{content:"⚙"}
+ .mobile-dock a:focus-visible,.mobile-dock a:hover{color:var(--gold);background:rgba(244,199,106,.09);outline:none}
+ .mobile-dock a:first-child{color:var(--gold);background:rgba(244,199,106,.07)}
+}
+</style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
 <nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d’ensemble</a><a href="#marketAlert">Alertes marché</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Centre de contrôle</a></nav>
@@ -284,10 +319,11 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
-<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.08.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
+<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#signal-journal">Signaux</a><a href="#operations">Robot</a></nav>
+<footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.1</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.08.22";
+const UI_VERSION="2026.11.10.1";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
