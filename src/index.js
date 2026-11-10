@@ -883,9 +883,75 @@ function buildStructuralTradePlan(bars, side, entry, atr, minimumTarget, maximum
   };
 }
 
+function detectEarlyReversal(bars, indicator) {
+  const unavailable = {
+    bullishScore: 0, bearishScore: 0,
+    bullish: false, bearish: false,
+    bullishEvidence: [], bearishEvidence: [],
+    sweptLow: false, sweptHigh: false,
+    bullishEngulfing: false, bearishEngulfing: false,
+    rsiTurningUp: false, rsiTurningDown: false,
+    ema9Reclaimed: false, ema9Lost: false
+  };
+  if (!Array.isArray(bars) || bars.length < 25 || !Number.isFinite(indicator.atr) || indicator.atr <= 0) {
+    return { ...unavailable, status: "DONNEES_INSUFFISANTES" };
+  }
+
+  const last = bars[bars.length - 1];
+  const previous = bars[bars.length - 2];
+  const prior = bars.slice(-21, -1);
+  const priorLow = Math.min(...prior.map(bar => bar.low));
+  const priorHigh = Math.max(...prior.map(bar => bar.high));
+  const tolerance = Math.max(indicator.atr * 0.04, 0.05);
+  const sweptLow = last.low < priorLow - tolerance && last.close > priorLow && last.close > last.open;
+  const sweptHigh = last.high > priorHigh + tolerance && last.close < priorHigh && last.close < last.open;
+  const bullishEngulfing = previous.close < previous.open &&
+    last.close > last.open && last.open <= previous.close && last.close >= previous.open;
+  const bearishEngulfing = previous.close > previous.open &&
+    last.close < last.open && last.open >= previous.close && last.close <= previous.open;
+
+  const closes = bars.map(bar => bar.close);
+  const previousRsi = calculateRSI(closes.slice(0, -1), 14);
+  const currentRsi = indicator.rsi;
+  const rsiTurningUp = previousRsi !== null && currentRsi !== null &&
+    previousRsi <= 40 && currentRsi > previousRsi && currentRsi < 55;
+  const rsiTurningDown = previousRsi !== null && currentRsi !== null &&
+    previousRsi >= 60 && currentRsi < previousRsi && currentRsi > 45;
+  const ema9Reclaimed = Number.isFinite(indicator.ema9) &&
+    previous.close <= indicator.ema9 && last.close > indicator.ema9 && last.close > last.open;
+  const ema9Lost = Number.isFinite(indicator.ema9) &&
+    previous.close >= indicator.ema9 && last.close < indicator.ema9 && last.close < last.open;
+
+  const bullishEvidence = [];
+  const bearishEvidence = [];
+  let bullishScore = 0, bearishScore = 0;
+  if (sweptLow) { bullishScore += 18; bullishEvidence.push("Balayage des plus bas puis réintégration"); }
+  if (sweptHigh) { bearishScore += 18; bearishEvidence.push("Balayage des plus hauts puis réintégration"); }
+  if (bullishEngulfing) { bullishScore += 10; bullishEvidence.push("Englobante haussière M1"); }
+  if (bearishEngulfing) { bearishScore += 10; bearishEvidence.push("Englobante baissière M1"); }
+  if (rsiTurningUp) { bullishScore += 8; bullishEvidence.push("RSI M1 se retourne depuis une zone basse"); }
+  if (rsiTurningDown) { bearishScore += 8; bearishEvidence.push("RSI M1 se retourne depuis une zone haute"); }
+  if (ema9Reclaimed) { bullishScore += 5; bullishEvidence.push("Reprise de l'EMA 9 M1"); }
+  if (ema9Lost) { bearishScore += 5; bearishEvidence.push("Perte de l'EMA 9 M1"); }
+
+  return {
+    status: "OK",
+    bullishScore, bearishScore,
+    bullish: bullishScore >= 18,
+    bearish: bearishScore >= 18,
+    bullishEvidence, bearishEvidence,
+    sweptLow, sweptHigh, bullishEngulfing, bearishEngulfing,
+    rsiTurningUp, rsiTurningDown, ema9Reclaimed, ema9Lost,
+    referenceLow: Number(priorLow.toFixed(2)),
+    referenceHigh: Number(priorHigh.toFixed(2))
+  };
+}
+
 function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   const i1 = getIndicators(m1), i5 = getIndicators(m5), i15 = getIndicators(m15);
   const t1 = getTrend(i1), t5 = getTrend(i5), t15 = getTrend(i15);
+  // Early reversal evidence complements (does not replace) trend-following indicators.
+  const reversalDetection = detectEarlyReversal(m1, i1);
   let buyScore = 0, sellScore = 0;
   const buyReasons = [], sellReasons = [];
   const add = (side, points, reason) => {
@@ -959,6 +1025,17 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   // de confirmations ; on reduit son score sans veto automatique.
   if (t1 === "BAISSIER") buyScore -= 5;
   if (t1 === "HAUSSIER") sellScore -= 5;
+
+  // Give a measured score bonus to an actual M1 reversal pattern.
+  // Telegram still requires all existing confirmation and risk checks.
+  if (reversalDetection.bullishScore > 0) {
+    buyScore += reversalDetection.bullishScore;
+    buyReasons.push(...reversalDetection.bullishEvidence.map(reason => "Retournement précoce : " + reason));
+  }
+  if (reversalDetection.bearishScore > 0) {
+    sellScore += reversalDetection.bearishScore;
+    sellReasons.push(...reversalDetection.bearishEvidence.map(reason => "Retournement précoce : " + reason));
+  }
 
   const atrPercent = i1.atr !== null && i1.price > 0 ? (i1.atr / i1.price) * 100 : null;
   let volatility = "NORMALE";
@@ -1208,6 +1285,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number(riskReward.toFixed(3)),
     riskChecks,
+    reversalDetection,
     candidateScores: {
       buy: buyScore,
       sell: sellScore,
