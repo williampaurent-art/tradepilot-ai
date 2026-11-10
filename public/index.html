@@ -254,9 +254,40 @@ main.wrap>.foot{order:42}
 .scalp-command:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(180deg,#f3c86b,#42d6a0);opacity:.9}
 .scalp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.scalp-title{font-size:18px;font-weight:900;letter-spacing:-.4px;margin:3px 0}.scalp-state{border:1px solid var(--line);border-radius:99px;padding:7px 10px;font-size:10px;font-weight:900;letter-spacing:.6px;background:#0b1422}.scalp-state.good{color:var(--green);border-color:rgba(66,214,160,.4)}.scalp-state.warn{color:var(--gold);border-color:rgba(243,200,107,.4)}.scalp-state.bad{color:var(--red);border-color:rgba(255,113,133,.4)}.scalp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:15px}.scalp-cell{background:rgba(5,12,22,.55);border:1px solid rgba(145,161,185,.16);border-radius:11px;padding:11px;min-width:0}.scalp-cell label{display:block;color:var(--muted);font-size:9px;font-weight:850;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}.scalp-cell strong{display:block;font-size:14px;overflow-wrap:anywhere}.scalp-detail{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}.scalp-foot{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:11px}.scalp-note{background:rgba(5,12,22,.35);border:1px solid rgba(145,161,185,.13);border-radius:10px;padding:10px;font-size:11px;color:#bdc9d9;line-height:1.6}.scalp-note strong{color:var(--text)}
 @media(max-width:760px){.scalp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.scalp-foot{grid-template-columns:1fr}.scalp-title{font-size:16px}}
+
+/* TRADEPILOT COCKPIT EXPERIENCE · 2026.11.10.9 */
+#focusToggle{border-color:rgba(105,217,237,.3);background:rgba(10,24,39,.82);color:#bfeefa}
+#focusToggle[aria-pressed="true"]{border-color:rgba(244,199,106,.55);color:#ffe5a1;background:rgba(80,58,20,.24)}
+body.focus-mode .reading-guide,
+body.focus-mode #deep-analysis,
+body.focus-mode #opportunityRadar,
+body.focus-mode #macro-view,
+body.focus-mode #macro-view + .grid.twocol.section,
+body.focus-mode #scalp-command .hint:last-child{display:none!important}
+body.focus-mode .mainnav a[href="#deep-analysis"],
+body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
+#scalp-command{margin-top:0;margin-bottom:18px}
+#scalp-command .scalp-title{font-size:clamp(19px,2.4vw,25px)}
+#market-view .card:first-child{border-color:rgba(105,217,237,.32);background:radial-gradient(ellipse at 88% 8%,rgba(105,217,237,.14),transparent 48%),linear-gradient(145deg,#182d46,#0a1728)}
+#market-view .card:first-child .price{font-variant-numeric:tabular-nums}
+#marketAlert{backdrop-filter:blur(12px)}
+.topright{gap:8px}
+@media(max-width:650px){
+ .top{gap:9px;flex-wrap:wrap}
+ .topright{width:100%;justify-content:space-between}
+ .topright .btn{flex:1;padding:9px 8px;font-size:11px}
+ .topright .pill{flex:1;justify-content:center}
+ .mainnav{gap:6px}
+ .mainnav a{padding:8px 10px;font-size:10px}
+ #scalp-command{padding:13px}
+ #market-view .card:first-child .price{font-size:42px}
+ body.focus-mode .mainnav a[href="#deep-analysis"],
+ body.focus-mode .mainnav a[href="#macro-view"]{display:none}
+}
+
 </style></head>
 <body><main class="wrap">
-<header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
+<header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn" id="focusToggle" type="button" aria-pressed="false">◈ Vue cockpit</button><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
 <nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d’ensemble</a><a href="#marketAlert">Alertes marché</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Centre de contrôle</a></nav>
 <section class="executive" aria-label="Synthèse exécutive">
  <div class="exec-head"><div><div class="exec-kicker">XAUUSD · Gold market intelligence</div><div class="exec-title" id="execHeadline">Lecture du marché en cours</div><div class="exec-copy" id="execNarrative">TradePilot rassemble les données de marché, la structure technique et le contexte macro pour présenter une lecture claire. Chargement des dernières informations…</div></div><div id="execState" class="exec-state">ANALYSE EN ATTENTE</div></div>
@@ -268,6 +299,18 @@ main.wrap>.foot{order:42}
  </div>
  <div class="exec-foot"><span class="exec-tag">Macro : <strong id="execMacro">—</strong></span><span class="exec-tag">Configuration : <strong id="execSetup">—</strong></span><span class="exec-tag">Exécution : <strong>Analyse uniquement · aucun ordre réel</strong></span></div>
 </section>
+<section id="scalp-command" class="section card scalp-command" aria-label="Centre de commandement scalping">
+ <div class="scalp-head"><div><div class="exec-kicker">TRADEPILOT EDGE · XAUUSD</div><div class="scalp-title">Centre de commandement scalping</div><div class="hint">Synthèse opérationnelle des données live et des analyses multi-unités — sans exécution d'ordre.</div></div><span id="scalpState" class="scalp-state warn">SYNCHRONISATION…</span></div>
+ <div class="scalp-grid">
+  <div class="scalp-cell"><label>Biais de travail</label><strong id="scalpBias">—</strong><div id="scalpBiasMeta" class="scalp-detail">En attente des données.</div></div>
+  <div class="scalp-cell"><label>Confluence acheteurs / vendeurs</label><strong id="scalpScores">—</strong><div id="scalpScoresMeta" class="scalp-detail">Scores descriptifs, non probabilistes.</div></div>
+  <div class="scalp-cell"><label>Déclencheur structurel</label><strong id="scalpTrigger">—</strong><div id="scalpTriggerMeta" class="scalp-detail">BOS · CHOCH · balayage · retest</div></div>
+  <div class="scalp-cell"><label>Risque immédiat</label><strong id="scalpRisk">—</strong><div id="scalpRiskMeta" class="scalp-detail">Volatilité · calendrier · spread</div></div>
+ </div>
+ <div class="scalp-foot"><div class="scalp-note"><strong>Lecture du moteur</strong><div id="scalpRead">TradePilot assemble les unités courtes et le contexte supérieur.</div></div><div class="scalp-note"><strong>Ce qui manque pour agir</strong><div id="scalpBlock">Validation des données en cours.</div></div></div>
+ <div class="hint" style="margin-top:10px">Ce panneau hiérarchise les éléments déjà calculés. Il ne transforme pas un score en probabilité et ne constitue pas à lui seul un signal d'entrée.</div>
+</section>
+
 <section id="operations" class="section card">
  <div class="sectionhead"><h2>Centre de contrôle · TradePilot</h2><div style="display:flex;align-items:center;gap:9px"><span id="opsUpdated" class="hint">Statut non vérifié</span><button class="btn" id="opsRefresh" type="button">Actualiser le robot</button></div></div>
  <div class="ops-grid">
@@ -294,7 +337,7 @@ main.wrap>.foot{order:42}
  <div id="assistantMeta" class="assistant-meta">En attente de la première analyse synchronisée. Aucun ordre n'est envoyé depuis cet assistant.</div>
 </section>
 
-<section class="reading-guide" aria-label="Comment lire TradePilot">
+<section class="reading-guide" id="readingGuide" aria-label="Comment lire TradePilot">
  <div class="guide-item"><div class="guide-num">01</div><div><strong>Commencez par la synthèse</strong><span>Elle résume l'état du marché, la direction multi-unités et la fiabilité des données disponibles.</span></div></div>
  <div class="guide-item"><div class="guide-num">02</div><div><strong>Vérifiez les confirmations</strong><span>Une tendance, une cassure ou un retournement doit être confirmé par la structure et les unités supérieures.</span></div></div>
  <div class="guide-item"><div class="guide-num">03</div><div><strong>Contrôlez le contexte</strong><span>La volatilité, les annonces économiques et les niveaux d'invalidation aident à repérer les situations à risque.</span></div></div>
@@ -303,17 +346,6 @@ main.wrap>.foot{order:42}
 <article class="card"><div class="eyebrow">Cours de l'or · XAUUSD</div><div id="price" class="price">—</div><div id="priceMeta" class="priceMeta">Attente des données réelles…</div><div class="metrics"><div class="metric"><label>Bid</label><strong id="bid">—</strong></div><div class="metric"><label>Ask</label><strong id="ask">—</strong></div><div class="metric"><label>Spread</label><strong id="spread">—</strong></div></div></article>
 <article class="card"><div class="eyebrow">Diagnostic dominant</div><div id="bias" class="bigstate neutral">INDÉTERMINÉ</div><div id="regime" class="muted">Régime en cours de calcul</div><div class="metrics"><div class="metric"><label>Force ADX</label><strong id="strength">—</strong></div><div class="metric"><label>Score technique</label><strong id="score">—</strong></div><div class="metric"><label>Cohérence</label><strong id="confidence">—</strong></div></div><div class="hint" style="margin-top:9px">Score technique descriptif, jamais une probabilité de réussite.</div></article>
 <article class="card"><div class="eyebrow">Qualité des données</div><div id="dataState" class="bigstate neutral">EN ATTENTE</div><div id="dataInfo" class="muted">Horodatages et continuité en cours de vérification.</div><div class="metrics"><div class="metric"><label>Unités disponibles</label><strong id="available">—</strong></div><div class="metric"><label>Source</label><strong id="source">—</strong></div><div class="metric"><label>Analyse</label><strong id="updated">—</strong></div></div></article>
-</section>
-<section id="scalp-command" class="section card scalp-command" aria-label="Centre de commandement scalping">
- <div class="scalp-head"><div><div class="exec-kicker">TRADEPILOT EDGE · XAUUSD</div><div class="scalp-title">Centre de commandement scalping</div><div class="hint">Synthèse opérationnelle des données live et des analyses multi-unités — sans exécution d'ordre.</div></div><span id="scalpState" class="scalp-state warn">SYNCHRONISATION…</span></div>
- <div class="scalp-grid">
-  <div class="scalp-cell"><label>Biais de travail</label><strong id="scalpBias">—</strong><div id="scalpBiasMeta" class="scalp-detail">En attente des données.</div></div>
-  <div class="scalp-cell"><label>Confluence acheteurs / vendeurs</label><strong id="scalpScores">—</strong><div id="scalpScoresMeta" class="scalp-detail">Scores descriptifs, non probabilistes.</div></div>
-  <div class="scalp-cell"><label>Déclencheur structurel</label><strong id="scalpTrigger">—</strong><div id="scalpTriggerMeta" class="scalp-detail">BOS · CHOCH · balayage · retest</div></div>
-  <div class="scalp-cell"><label>Risque immédiat</label><strong id="scalpRisk">—</strong><div id="scalpRiskMeta" class="scalp-detail">Volatilité · calendrier · spread</div></div>
- </div>
- <div class="scalp-foot"><div class="scalp-note"><strong>Lecture du moteur</strong><div id="scalpRead">TradePilot assemble les unités courtes et le contexte supérieur.</div></div><div class="scalp-note"><strong>Ce qui manque pour agir</strong><div id="scalpBlock">Validation des données en cours.</div></div></div>
- <div class="hint" style="margin-top:10px">Ce panneau hiérarchise les éléments déjà calculés. Il ne transforme pas un score en probabilité et ne constitue pas à lui seul un signal d'entrée.</div>
 </section>
 <section id="timeframe-view" class="section"><div class="sectionhead"><h2>Lecture multi-timeframe</h2><span class="hint">M1 · M5 · M15 · H1 · H4 · D1</span></div><div id="timeframes" class="grid tfgrid"><div class="card muted">Chargement…</div></div></section>
 
@@ -333,11 +365,11 @@ main.wrap>.foot{order:42}
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
-<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a><a href="#operations">Robot</a></nav>
+<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.10.8";
+const UI_VERSION="2026.11.10.9";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15",chartWindow=90,chartLevelsOn=true,chartRangeOn=true,chartHoverIndex=null,chartGeometry=null;
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -886,6 +918,14 @@ if(assistantForm){
 document.querySelectorAll("[data-question]").forEach(button=>{
  button.addEventListener("click",()=>assistantSubmit(button.getAttribute("data-question")||""));
 });
+const focusToggle=$("focusToggle");
+if(focusToggle){
+ focusToggle.addEventListener("click",()=>{
+  const active=document.body.classList.toggle("focus-mode");
+  focusToggle.setAttribute("aria-pressed",String(active));
+  focusToggle.textContent=active?"▦ Vue complète":"◈ Vue cockpit";
+ });
+}
 $("opsRefresh")?.addEventListener("click",refreshOperations);refreshOperations();setInterval(refreshOperations,60000);$("refresh").addEventListener("click",refresh);
 $("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});
 const redrawChart=()=>{const x=snapshot?.timeframes?.find(v=>v.timeframe===selected&&v.ok);if(x)drawChart(x.analysis.candles||[],x.analysis,snapshot?.market?.open===true&&x.analysis.dataQuality?.ok===true);};
