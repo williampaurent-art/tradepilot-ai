@@ -250,6 +250,12 @@ main.wrap>.foot{order:42}
  .mobile-dock a:focus-visible,.mobile-dock a:hover,.mobile-dock a.active{color:var(--gold);background:rgba(244,199,106,.11);outline:none}.mobile-dock a.active{box-shadow:inset 0 0 0 1px rgba(244,199,106,.18)}
  .mobile-dock a:first-child{color:var(--gold);background:rgba(244,199,106,.07)}
 }
+
+/* Scalping command centre */
+.scalp-command{position:relative;overflow:hidden;border:1px solid rgba(243,200,107,.34);background:linear-gradient(125deg,rgba(26,39,59,.98),rgba(10,19,32,.98) 72%,rgba(45,34,20,.55));box-shadow:0 18px 48px rgba(0,0,0,.22)}
+.scalp-command:before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:linear-gradient(180deg,#f3c86b,#42d6a0);opacity:.9}
+.scalp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}.scalp-title{font-size:18px;font-weight:900;letter-spacing:-.4px;margin:3px 0}.scalp-state{border:1px solid var(--line);border-radius:99px;padding:7px 10px;font-size:10px;font-weight:900;letter-spacing:.6px;background:#0b1422}.scalp-state.good{color:var(--green);border-color:rgba(66,214,160,.4)}.scalp-state.warn{color:var(--gold);border-color:rgba(243,200,107,.4)}.scalp-state.bad{color:var(--red);border-color:rgba(255,113,133,.4)}.scalp-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:15px}.scalp-cell{background:rgba(5,12,22,.55);border:1px solid rgba(145,161,185,.16);border-radius:11px;padding:11px;min-width:0}.scalp-cell label{display:block;color:var(--muted);font-size:9px;font-weight:850;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}.scalp-cell strong{display:block;font-size:14px;overflow-wrap:anywhere}.scalp-detail{font-size:10px;color:var(--muted);margin-top:5px;line-height:1.5}.scalp-foot{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:11px}.scalp-note{background:rgba(5,12,22,.35);border:1px solid rgba(145,161,185,.13);border-radius:10px;padding:10px;font-size:11px;color:#bdc9d9;line-height:1.6}.scalp-note strong{color:var(--text)}
+@media(max-width:760px){.scalp-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.scalp-foot{grid-template-columns:1fr}.scalp-title{font-size:16px}}
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
@@ -306,6 +312,17 @@ main.wrap>.foot{order:42}
 <article class="card"><div class="eyebrow">Cours de l'or · XAUUSD</div><div id="price" class="price">—</div><div id="priceMeta" class="priceMeta">Attente des données réelles…</div><div class="metrics"><div class="metric"><label>Bid</label><strong id="bid">—</strong></div><div class="metric"><label>Ask</label><strong id="ask">—</strong></div><div class="metric"><label>Spread</label><strong id="spread">—</strong></div></div></article>
 <article class="card"><div class="eyebrow">Diagnostic dominant</div><div id="bias" class="bigstate neutral">INDÉTERMINÉ</div><div id="regime" class="muted">Régime en cours de calcul</div><div class="metrics"><div class="metric"><label>Force ADX</label><strong id="strength">—</strong></div><div class="metric"><label>Score technique</label><strong id="score">—</strong></div><div class="metric"><label>Cohérence</label><strong id="confidence">—</strong></div></div><div class="hint" style="margin-top:9px">Score technique descriptif, jamais une probabilité de réussite.</div></article>
 <article class="card"><div class="eyebrow">Qualité des données</div><div id="dataState" class="bigstate neutral">EN ATTENTE</div><div id="dataInfo" class="muted">Horodatages et continuité en cours de vérification.</div><div class="metrics"><div class="metric"><label>Unités disponibles</label><strong id="available">—</strong></div><div class="metric"><label>Source</label><strong id="source">—</strong></div><div class="metric"><label>Analyse</label><strong id="updated">—</strong></div></div></article>
+</section>
+<section id="scalp-command" class="section card scalp-command" aria-label="Centre de commandement scalping">
+ <div class="scalp-head"><div><div class="exec-kicker">TRADEPILOT EDGE · XAUUSD</div><div class="scalp-title">Centre de commandement scalping</div><div class="hint">Synthèse opérationnelle des données live et des analyses multi-unités — sans exécution d'ordre.</div></div><span id="scalpState" class="scalp-state warn">SYNCHRONISATION…</span></div>
+ <div class="scalp-grid">
+  <div class="scalp-cell"><label>Biais de travail</label><strong id="scalpBias">—</strong><div id="scalpBiasMeta" class="scalp-detail">En attente des données.</div></div>
+  <div class="scalp-cell"><label>Confluence acheteurs / vendeurs</label><strong id="scalpScores">—</strong><div id="scalpScoresMeta" class="scalp-detail">Scores descriptifs, non probabilistes.</div></div>
+  <div class="scalp-cell"><label>Déclencheur structurel</label><strong id="scalpTrigger">—</strong><div id="scalpTriggerMeta" class="scalp-detail">BOS · CHOCH · balayage · retest</div></div>
+  <div class="scalp-cell"><label>Risque immédiat</label><strong id="scalpRisk">—</strong><div id="scalpRiskMeta" class="scalp-detail">Volatilité · calendrier · spread</div></div>
+ </div>
+ <div class="scalp-foot"><div class="scalp-note"><strong>Lecture du moteur</strong><div id="scalpRead">TradePilot assemble les unités courtes et le contexte supérieur.</div></div><div class="scalp-note"><strong>Ce qui manque pour agir</strong><div id="scalpBlock">Validation des données en cours.</div></div></div>
+ <div class="hint" style="margin-top:10px">Ce panneau hiérarchise les éléments déjà calculés. Il ne transforme pas un score en probabilité et ne constitue pas à lui seul un signal d'entrée.</div>
 </section>
 <section id="timeframe-view" class="section"><div class="sectionhead"><h2>Lecture multi-timeframe</h2><span class="hint">M1 · M5 · M15 · H1 · H4 · D1</span></div><div id="timeframes" class="grid tfgrid"><div class="card muted">Chargement…</div></div></section>
 
@@ -382,7 +399,51 @@ function renderReversalMultiTimeframe(d){
  }).join(""):'<div class="muted">Données live non validées ou couverture indisponible.</div>';
  put("reversalMtfExplanation",live?(c.explanation||"Diagnostic multi-timeframe indisponible.")+(c.againstTrendCount?(" "+c.againstTrendCount+" retournement(s) vont contre la tendance de leur unité."):(" "+(c.withTrendCount||0)+" signal(aux) suivent la tendance de leur unité."))+" Confluence complète sur unités supérieures : "+(c.higherTripleBullish||0)+" haussière(s), "+(c.higherTripleBearish||0)+" baissière(s).":"Les diagnostics historiques ne sont pas présentés comme une concordance actuelle.");
 }
-function renderTop(d){const m=d.market||{},frames=d.timeframes||[],ok=frames.filter(x=>x.ok),a=(ok.find(x=>x.timeframe==="M15")||ok[0]||{}).analysis;renderRegimeMatrix(d);renderReversalMultiTimeframe(d);renderOpportunityRadar(d);renderConfluence(d);renderSetupConfluence(d);renderVolatility(d);renderLiquidity(d);renderSmartMoney(d);
+
+function renderScalpCommand(d){
+ const m=d.market||{},frames=d.timeframes||[],c=d.setupConfluence||{},cal=d.economicCalendar||{};
+ const byTf=Object.fromEntries(frames.filter(x=>x.ok).map(x=>[x.timeframe,x.analysis||{}]));
+ const live=m.open===true&&["M1","M5","M15"].every(tf=>byTf[tf]?.dataQuality?.ok===true);
+ const m1=byTf.M1||{},m5=byTf.M5||{},m15=byTf.M15||{};
+ const bull=Number(c.bullish?.score),bear=Number(c.bearish?.score),scoresOk=Number.isFinite(bull)&&Number.isFinite(bear);
+ const bias=!scoresOk?"INDÉTERMINÉ":bull>bear?"ACHETEUR":bear>bull?"VENDEUR":"ÉQUILIBRÉ";
+ const gap=scoresOk?Math.abs(bull-bear):0;
+ const st=m1.structure||{},reg=m1.regime||{},liq=m1.liquidity||{};
+ const breakEvent=st.breakEvent&&st.breakEvent!=="AUCUN"?st.breakEvent:null;
+ const sweep=liq.sweep&&liq.sweep!=="AUCUN"?liq.sweep:null;
+ const retest=reg.retestUp?"RETEST HAUSSIER":reg.retestDown?"RETEST BAISSIER":null;
+ const breakout=reg.breakoutState==="CONFIRMEE"?"CASSURE "+(reg.breakoutDirection||"CONFIRMÉE"):null;
+ const trigger=breakEvent||sweep||breakout||retest;
+ const eventRisk=cal.riskLevel==="FENETRE_ANNONCE"&&!cal.stale;
+ const extreme=[m1.volatility?.status,m5.volatility?.status].includes("EXTREME");
+ const fastVol=[m1.volatility?.status,m5.volatility?.status].includes("ACCELERATION");
+ const spread=Number.isFinite(Number(m.bid))&&Number.isFinite(Number(m.ask))?Number(m.ask)-Number(m.bid):null;
+ const riskParts=[];if(eventRisk)riskParts.push("ANNONCE MAJEURE");if(extreme)riskParts.push("VOLATILITÉ EXTRÊME");else if(fastVol)riskParts.push("VOLATILITÉ EN ACCÉLÉRATION");if(spread!==null)riskParts.push("spread "+fmt(spread,3));
+ const state=$("scalpState");
+ let stateText="LECTURE NON VALIDÉE",stateClass="bad";
+ if(live){if(eventRisk||extreme){stateText="PRUDENCE · RISQUE ÉLEVÉ";stateClass="bad";}else if(scoresOk&&gap>=12&&trigger){stateText="CONTEXTE STRUCTURÉ";stateClass="good";}else{stateText="SURVEILLANCE ACTIVE";stateClass="warn";}}
+ if(state){state.textContent=stateText;state.className="scalp-state "+stateClass;}
+ put("scalpBias",live?bias:"NON CONFIRMÉ");$("scalpBias").className=live?(bias==="ACHETEUR"?"up":bias==="VENDEUR"?"down":"neutral"):"neutral";
+ put("scalpBiasMeta",live?"M1 "+(m1.trend?.direction||"—")+" · M5 "+(m5.trend?.direction||"—")+" · M15 "+(m15.trend?.direction||"—"):"Marché ouvert et fraîcheur M1/M5/M15 requis.");
+ put("scalpScores",scoresOk?Math.round(bull)+" / "+Math.round(bear):"—");
+ put("scalpScoresMeta",scoresOk?"Acheteurs / vendeurs · écart "+Math.round(gap)+" points":"Confluence indisponible.");
+ put("scalpTrigger",live?(trigger||"AUCUN CONFIRMÉ"):"—");
+ put("scalpTriggerMeta",live?(breakEvent?"Structure M1 confirmée":sweep?"Balayage de liquidité M1 détecté":breakout?"Cassure de range confirmée":retest?"Retest M1 détecté":"Pas de déclencheur structurel détecté"):"En attente de données live validées.");
+ put("scalpRisk",live?(riskParts.length?riskParts.join(" · "):"PAS D'ALERTE MAJEURE"):"NON ÉVALUÉ");
+ put("scalpRiskMeta",live?(eventRisk?"Fenêtre économique active.":extreme?"Éviter de poursuivre une bougie anormale.":"Contrôler le spread du courtier avant toute décision."):"Le risque live ne peut pas être qualifié.");
+ const factors=(bias==="ACHETEUR"?c.bullish?.factors:bias==="VENDEUR"?c.bearish?.factors:[])||[];
+ const positives=factors.filter(x=>Number(x.points)>0).sort((a,b)=>b.points-a.points).slice(0,3).map(x=>x.label);
+ put("scalpRead",live?(positives.length?"Éléments dominants : "+positives.join(" · "):"Les scores ne révèlent pas de facteur directionnel dominant."):"Le panneau attend des données M1, M5 et M15 fraîches et continues.");
+ let blockers=[];
+ if(!live)blockers.push("données live M1/M5/M15 complètes");
+ if(live&&(!scoresOk||gap<12))blockers.push("écart de confluence plus net");
+ if(live&&!trigger)blockers.push("déclencheur structurel (cassure, retest ou balayage rejeté)");
+ if(eventRisk)blockers.push("fin de la fenêtre d'annonce majeure");
+ if(extreme)blockers.push("normalisation de la volatilité extrême");
+ put("scalpBlock",blockers.length?blockers.join(" · "):"Contexte technique mieux structuré ; vérifier le prix d'exécution, le spread et le risque avant toute décision.");
+}
+
+function renderTop(d){const m=d.market||{},frames=d.timeframes||[],ok=frames.filter(x=>x.ok),a=(ok.find(x=>x.timeframe==="M15")||ok[0]||{}).analysis;renderScalpCommand(d);renderRegimeMatrix(d);renderReversalMultiTimeframe(d);renderOpportunityRadar(d);renderConfluence(d);renderSetupConfluence(d);renderVolatility(d);renderLiquidity(d);renderSmartMoney(d);
 put("price",m.price==null?"—":fmt(m.price));put("bid",m.bid==null?"—":fmt(m.bid));put("ask",m.ask==null?"—":fmt(m.ask));put("spread",m.bid!=null&&m.ask!=null?fmt(m.ask-m.bid,3):"—");
 put("priceMeta",m.quoteTimestamp?"Cours live "+(m.source||"")+" · "+dateFmt(m.quoteTimestamp)+" · âge "+(m.quoteAgeSeconds??"?")+" s":m.price!=null?"Dernière clôture OHLC · "+(m.source||"source inconnue"):m.quoteError||"Cours indisponible");
 $("statusDot").className="dot "+(m.open===true?"ok":m.open===false?"bad":"");put("marketStatus",m.status||"INDETERMINE");put("available",ok.length+"/6");put("source",m.source||"—");put("updated",dateFmt(d.generatedAt));
