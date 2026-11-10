@@ -102,3 +102,6 @@ CREATE INDEX IF NOT EXISTS idx_audit_workspace_time ON audit_events(workspace_id
 
 -- One personal workspace per account; protects concurrent first-login requests.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_owner_unique ON workspaces(owner_user_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscriptions_one_active_per_workspace
+  ON subscriptions(workspace_id) WHERE status IN ('trialing','active');
