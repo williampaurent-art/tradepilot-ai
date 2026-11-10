@@ -57,3 +57,9 @@ La qualité des réponses dépend de la fraîcheur et de la couverture des donn�
 TradePilot Edge suit les alertes confirmées et mesure leurs résultats à partir des bougies M1 après l'alerte. Les résultats ambigus (TP et SL touchés dans la même bougie) sont exclus. Cette mesure n'intègre pas les frais, le spread ni le slippage et ne constitue pas une probabilité future.
 
 Le schéma SaaS multi-espace (utilisateurs, workspaces, rôles, abonnements, droits, connexions broker en lecture seule et journal d'audit) est préparé dans `migrations/0001_saas_core.sql`. Il n'est pas encore activé : aucun binding D1 ni fournisseur d'identité/facturation n'a été configuré. La version actuelle ne doit donc pas être présentée comme une plateforme multi-utilisateur isolée prête à vendre. Voir [la feuille de route Edge & SaaS](docs/TRADEPILOT_EDGE_SAAS.md).
+
+### Identité et comptes SaaS
+
+- `GET /api/account` : vérifie un jeton d'accès Supabase (JWKS, ES256/RS256) et provisionne l'utilisateur, son espace personnel et son abonnement Free dans D1.
+- Configuration et commandes d'activation : [guide Supabase Auth + D1](docs/SUPABASE_D1_SETUP.md).
+- Cette fondation n'active pas encore les inscriptions dans l'interface : l'écran de connexion et l'isolation des routes/données historiques restent à réaliser avant toute ouverture publique.
