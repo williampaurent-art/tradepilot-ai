@@ -2528,22 +2528,27 @@ async function handleSignalHistory(request, env) {
 // --------------------------------------------------
 const X10_STATE_KEY = "x10_virtual_state_v1";
 const X10_REFERENCE_CAPITAL = 100;
+const X10_LEVERAGE_REFERENCE = 500;
+const X10_PRIMARY_TP_MOVE = 3;
+const X10_EXTENSION_TP_MOVE = 5;
+const X10_EXTENSION_MIN_SCORE = 70;
+const X10_EXTENSION_TRAIL_GIVEBACK = 1.5;
 const X10_HISTORY_LIMIT = 250;
 
 async function readX10State(env) {
   const raw = await readKV(env, X10_STATE_KEY);
-  if (!raw) return { version: 1, enabled: true, openPosition: null, history: [], updatedAt: null };
+  if (!raw) return { version: 2, enabled: true, openPosition: null, history: [], updatedAt: null };
   try {
     const state = JSON.parse(raw);
     return {
-      version: 1,
+      version: 2,
       enabled: state.enabled !== false,
       openPosition: state.openPosition || null,
       history: Array.isArray(state.history) ? state.history.slice(0, X10_HISTORY_LIMIT) : [],
       updatedAt: state.updatedAt || null
     };
   } catch {
-    return { version: 1, enabled: true, openPosition: null, history: [], updatedAt: null };
+    return { version: 2, enabled: true, openPosition: null, history: [], updatedAt: null };
   }
 }
 
@@ -2557,6 +2562,31 @@ function x10ExecutablePrice(signal, side) {
   if (!quote) return null;
   const value = side === "BUY" ? quote.ask : quote.bid;
   return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+}
+
+function x10Move(position, price) {
+  return position.direction === "BUY"
+    ? price - position.entryPrice
+    : position.entryPrice - price;
+}
+
+async function closeX10Position(env, state, position, exitPrice, reason, now) {
+  const closed = {
+    ...position,
+    status: "CLOSED",
+    exitPrice,
+    exitAt: now,
+    realizedMove: Number(x10Move(position, exitPrice).toFixed(3)),
+    exitReason: reason,
+    execution: "SIMULATION_VIRTUELLE_UNIQUEMENT"
+  };
+  state.history.unshift(closed);
+  state.history = state.history.slice(0, X10_HISTORY_LIMIT);
+  state.openPosition = null;
+  const saved = await saveX10State(env, state);
+  return saved
+    ? { enabled: true, action: "VIRTUAL_CLOSE", position: closed }
+    : { enabled: true, action: "STORAGE_UNAVAILABLE", reason: "FERMETURE_NON_PERSISTEE" };
 }
 
 async function processX10Virtual(env, signal) {
@@ -2575,9 +2605,7 @@ async function processX10Virtual(env, signal) {
     const position = state.openPosition;
     const exitPrice = x10ExecutablePrice(signal, position.direction === "BUY" ? "SELL" : "BUY");
     if (Number.isFinite(exitPrice)) {
-      const signedMove = position.direction === "BUY"
-        ? exitPrice - position.entryPrice
-        : position.entryPrice - exitPrice;
+      const signedMove = x10Move(position, exitPrice);
       position.lastPrice = exitPrice;
       position.unrealizedMove = Number(signedMove.toFixed(3));
       position.maxFavorableMove = Number(Math.max(position.maxFavorableMove || 0, signedMove, 0).toFixed(3));
@@ -2585,25 +2613,36 @@ async function processX10Virtual(env, signal) {
       position.lastCheckedAt = now;
     }
 
-    if (currentDirection && currentDirection !== position.direction && Number.isFinite(exitPrice)) {
-      const closed = {
-        ...position,
-        status: "CLOSED",
-        exitPrice,
-        exitAt: now,
-        realizedMove: Number((position.direction === "BUY"
-          ? exitPrice - position.entryPrice
-          : position.entryPrice - exitPrice).toFixed(3)),
-        exitReason: "SIGNAL_OPPOSE_CONFIRME",
-        execution: "SIMULATION_VIRTUELLE_UNIQUEMENT"
-      };
-      state.history.unshift(closed);
-      state.history = state.history.slice(0, X10_HISTORY_LIMIT);
-      state.openPosition = null;
-      const saved = await saveX10State(env, state);
-      return saved
-        ? { enabled: true, action: "VIRTUAL_CLOSE", position: closed }
-        : { enabled: true, action: "STORAGE_UNAVAILABLE", reason: "FERMETURE_NON_PERSISTEE" };
+    if (!Number.isFinite(exitPrice)) {
+      return { enabled: true, action: "NO_UPDATE", reason: "PRIX_DE_SORTIE_INDISPONIBLE" };
+    }
+
+    if (currentDirection && currentDirection !== position.direction) {
+      return closeX10Position(env, state, position, exitPrice, "SIGNAL_OPPOSE_CONFIRME", now);
+    }
+
+    const favorableMove = x10Move(position, exitPrice);
+    if (favorableMove >= X10_PRIMARY_TP_MOVE && !position.extensionActivated) {
+      const momentumConfirmed = currentDirection === position.direction &&
+        Number(signal.score) >= X10_EXTENSION_MIN_SCORE;
+      if (momentumConfirmed) {
+        position.extensionActivated = true;
+        position.extensionActivatedAt = now;
+        position.activeTargetMove = X10_EXTENSION_TP_MOVE;
+      } else {
+        return closeX10Position(env, state, position, exitPrice, "TP_PRINCIPAL_3_ATTEINT", now);
+      }
+    }
+
+    if (position.extensionActivated) {
+      if (favorableMove >= X10_EXTENSION_TP_MOVE) {
+        return closeX10Position(env, state, position, exitPrice, "TP_EXTENSION_5_ATTEINT", now);
+      }
+      const peak = Number(position.maxFavorableMove || 0);
+      if (peak >= X10_PRIMARY_TP_MOVE &&
+          favorableMove <= peak - X10_EXTENSION_TRAIL_GIVEBACK) {
+        return closeX10Position(env, state, position, exitPrice, "TRAILING_DYNAMIQUE_APRES_TP_3", now);
+      }
     }
 
     const saved = await saveX10State(env, state);
@@ -2623,7 +2662,7 @@ async function processX10Virtual(env, signal) {
 
   state.openPosition = {
     id: "X10-" + Date.now(),
-    engine: "TRADEPILOT_X10_VIRTUAL",
+    engine: "TRADEPILOT_X10_AGGRESSIVE_VIRTUAL",
     instrument: CONFIG.SYMBOL,
     direction: currentDirection,
     status: "OPEN",
@@ -2631,15 +2670,20 @@ async function processX10Virtual(env, signal) {
     entryMid: Number.isFinite(currentMid) ? currentMid : null,
     entryAt: now,
     referenceCapital: X10_REFERENCE_CAPITAL,
+    leverageReference: X10_LEVERAGE_REFERENCE,
     scoreAtEntry: Number(signal.score) || 0,
     entryReason: (signal.reasons || []).slice(0, 6),
     lastPrice: entryPrice,
     unrealizedMove: 0,
     maxFavorableMove: 0,
     maxAdverseMove: 0,
-    exitPolicy: "SORTIE_SUR_SIGNAL_OPPOSE_CONFIRME",
+    primaryTargetMove: X10_PRIMARY_TP_MOVE,
+    extensionTargetMove: X10_EXTENSION_TP_MOVE,
+    extensionMinScore: X10_EXTENSION_MIN_SCORE,
+    extensionActivated: false,
+    activeTargetMove: X10_PRIMARY_TP_MOVE,
+    exitPolicy: "TP_3_ET_EXTENSION_5_SUR_MOMENTUM_CONFIRME_OU_SIGNAL_OPPOSE",
     fixedStopLoss: false,
-    fixedTakeProfit: false,
     monetaryPnl: null,
     sizingStatus: "NON_CALCULE_CONTRAT_XAUUSD_A_VERIFIER",
     execution: "SIMULATION_VIRTUELLE_UNIQUEMENT"
@@ -2657,11 +2701,21 @@ async function handleX10Virtual(env) {
   const losses = closed.filter(item => Number(item.realizedMove) < 0).length;
   return json({
     ok: true,
-    engine: "TRADEPILOT_X10_VIRTUAL",
+    engine: "TRADEPILOT_X10_AGGRESSIVE_VIRTUAL",
     enabled: state.enabled,
     mode: "SIMULATION_SEULE",
     instrument: CONFIG.SYMBOL,
     referenceCapital: X10_REFERENCE_CAPITAL,
+    leverageReference: X10_LEVERAGE_REFERENCE,
+    strategy: {
+      style: "AGRESSIF",
+      primaryTakeProfitMove: X10_PRIMARY_TP_MOVE,
+      extensionTakeProfitMove: X10_EXTENSION_TP_MOVE,
+      extensionRequiresConfirmedSameDirection: true,
+      extensionMinScore: X10_EXTENSION_MIN_SCORE,
+      trailingGivebackAfterPrimaryTarget: X10_EXTENSION_TRAIL_GIVEBACK,
+      fixedStopLoss: false
+    },
     openPosition: state.openPosition,
     stats: {
       closed: closed.length,
@@ -2671,7 +2725,7 @@ async function handleX10Virtual(env) {
       netPriceMove: Number(closed.reduce((sum, item) => sum + (Number(item.realizedMove) || 0), 0).toFixed(3))
     },
     history: state.history.slice(0, 30),
-    riskNotice: "P&L monétaire et seuil de perte de 30 % non calculés : les spécifications contractuelles XAUUSD et le volume de simulation doivent être vérifiés. La surveillance se fait à chaque cron, pas en continu.",
+    riskNotice: "Les TP sont des mouvements du cours XAUUSD, pas des gains en USD. Le P&L monétaire et le risque en dollars restent non calculés tant que le contrat, le volume et les coûts Ultima Markets ne sont pas vérifiés. La surveillance se fait à chaque cron de 3 minutes : gaps, spread et slippage peuvent dépasser les seuils observés.",
     execution: "AUCUN ORDRE REEL"
   });
 }
