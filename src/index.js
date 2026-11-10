@@ -2355,6 +2355,121 @@ async function saveCronStatus(env, status, details = {}) {
 // JOURNAL DES DECISIONS DU MOTEUR
 // --------------------------------------------------
 const SIGNAL_HISTORY_KEY = "signal_history";
+
+const EDGE_HISTORY_LIMIT = 3500;
+const EDGE_OBSERVATION_MINUTES = 60;
+
+async function updateEdgeOutcomes(env) {
+  const raw = await readKV(env, SIGNAL_HISTORY_KEY);
+  let items = [];
+  try { const parsed = raw ? JSON.parse(raw) : []; if (Array.isArray(parsed)) items = parsed; } catch {}
+  const pending = items.filter(item =>
+    item.alertSent === true &&
+    (!item.edgeOutcome || item.edgeOutcome.status === "PENDING") &&
+    Number.isFinite(Number(item.entry)) &&
+    Number.isFinite(Number(item.targetPrice)) &&
+    Number.isFinite(Number(item.stopPrice)) &&
+    ["ACHAT", "VENTE"].includes(item.signal) &&
+    Number.isFinite(Date.parse(item.timestamp))
+  );
+  if (!pending.length) return { checked: 0, updated: 0, error: null };
+  let bars;
+  try { bars = await fetchCandles("M1", 250); }
+  catch (error) { return { checked: pending.length, updated: 0, error: error.message }; }
+
+  let updated = 0;
+  const now = Date.now();
+  for (const item of pending) {
+    const entry = Number(item.entry), target = Number(item.targetPrice), stop = Number(item.stopPrice);
+    const isBuy = item.signal === "ACHAT";
+    const signalTime = Date.parse(item.timestamp);
+    const firstEligibleBar = Math.ceil(signalTime / 60000) * 60000;
+    const observed = bars.filter(bar => bar.time >= firstEligibleBar);
+    if (!observed.length) continue;
+    let mfe = Number(item.edgeOutcome?.mfe || 0), mae = Number(item.edgeOutcome?.mae || 0);
+    let outcome = "PENDING", resolvedAt = null, resolvedPrice = null, barsObserved = 0;
+    for (const bar of observed) {
+      barsObserved++;
+      const favorable = isBuy ? bar.high - entry : entry - bar.low;
+      const adverse = isBuy ? entry - bar.low : bar.high - entry;
+      mfe = Math.max(mfe, favorable, 0);
+      mae = Math.max(mae, adverse, 0);
+      const targetHit = isBuy ? bar.high >= target : bar.low <= target;
+      const stopHit = isBuy ? bar.low <= stop : bar.high >= stop;
+      if (targetHit && stopHit) {
+        outcome = "AMBIGUOUS";
+        resolvedAt = new Date(bar.time).toISOString();
+        break;
+      }
+      if (stopHit) {
+        outcome = "LOSS"; resolvedAt = new Date(bar.time).toISOString(); resolvedPrice = stop; break;
+      }
+      if (targetHit) {
+        outcome = "WIN"; resolvedAt = new Date(bar.time).toISOString(); resolvedPrice = target; break;
+      }
+    }
+    const elapsedMinutes = Math.max(0, (now - signalTime) / 60000);
+    if (outcome === "PENDING" && elapsedMinutes >= EDGE_OBSERVATION_MINUTES) {
+      outcome = "EXPIRED"; resolvedAt = new Date(now).toISOString();
+    }
+    item.edgeOutcome = {
+      status: outcome, evaluatedAt: new Date(now).toISOString(), resolvedAt, resolvedPrice,
+      barsObserved: Number(item.edgeOutcome?.barsObserved || 0) + barsObserved,
+      mfe: Number(mfe.toFixed(3)), mae: Number(mae.toFixed(3)),
+      observationMinutes: Number(elapsedMinutes.toFixed(1)),
+      model: "M1_CLOSED_CANDLES_TP_SL_FIRST_TOUCH",
+      note: outcome === "AMBIGUOUS"
+        ? "TP et SL touchés dans la même bougie M1 : résultat exclu des statistiques."
+        : outcome === "EXPIRED" ? "Aucun TP/SL touché dans la fenêtre de 60 minutes." : null
+    };
+    updated++;
+  }
+  if (updated) await writeKV(env, SIGNAL_HISTORY_KEY, items.slice(0, EDGE_HISTORY_LIMIT), 7 * 86400);
+  return { checked: pending.length, updated, error: null };
+}
+
+function buildEdgeStats(items) {
+  const alerts = items.filter(item => item.alertSent === true);
+  const wins = alerts.filter(item => item.edgeOutcome?.status === "WIN");
+  const losses = alerts.filter(item => item.edgeOutcome?.status === "LOSS");
+  const pending = alerts.filter(item => !item.edgeOutcome || item.edgeOutcome.status === "PENDING");
+  const ambiguous = alerts.filter(item => item.edgeOutcome?.status === "AMBIGUOUS");
+  const expired = alerts.filter(item => item.edgeOutcome?.status === "EXPIRED");
+  const scored = [...wins, ...losses];
+  const rValues = scored.map(item => {
+    const entry = Number(item.entry), target = Number(item.targetPrice), stop = Number(item.stopPrice);
+    const risk = Math.abs(entry - stop);
+    if (!Number.isFinite(risk) || risk <= 0) return null;
+    return item.edgeOutcome.status === "WIN" ? Math.abs(target - entry) / risk : -1;
+  }).filter(Number.isFinite);
+  const averageR = rValues.length ? rValues.reduce((sum, value) => sum + value, 0) / rValues.length : null;
+  const bySide = side => {
+    const group = scored.filter(item => item.signal === side);
+    const groupWins = group.filter(item => item.edgeOutcome.status === "WIN").length;
+    return { sample: group.length, wins: groupWins, losses: group.length - groupWins,
+      winRate: group.length ? Number((groupWins / group.length * 100).toFixed(1)) : null };
+  };
+  return {
+    ok: true, instrument: CONFIG.SYMBOL, generatedAt: new Date().toISOString(),
+    methodology: "Alertes Telegram confirmées uniquement. Première bougie M1 complète après l'alerte. Premier contact TP/SL ; si les deux sont touchés dans la même bougie, résultat ambigu exclu. Spread, slippage et frais non simulés.",
+    sample: scored.length, wins: wins.length, losses: losses.length,
+    winRate: scored.length ? Number((wins.length / scored.length * 100).toFixed(1)) : null,
+    averageR: averageR === null ? null : Number(averageR.toFixed(3)),
+    expectancyR: averageR === null ? null : Number(averageR.toFixed(3)),
+    pending: pending.length, ambiguous: ambiguous.length, expired: expired.length,
+    alertsTracked: alerts.length,
+    bySide: { buy: bySide("ACHAT"), sell: bySide("VENTE") },
+    confidenceLabel: scored.length < 30 ? "ÉCHANTILLON INSUFFISANT" : scored.length < 100 ? "ÉCHANTILLON EN CONSTRUCTION" : "ÉCHANTILLON PLUS ÉTOFFÉ"
+  };
+}
+
+async function handleEdgeStats(env) {
+  const raw = await readKV(env, SIGNAL_HISTORY_KEY);
+  let items = [];
+  try { const parsed = raw ? JSON.parse(raw) : []; if (Array.isArray(parsed)) items = parsed; } catch {}
+  return json(buildEdgeStats(items));
+}
+
 async function appendSignalHistory(env, signal, state) {
   const raw = await readKV(env, SIGNAL_HISTORY_KEY);
   let items = [];
@@ -2378,7 +2493,7 @@ async function appendSignalHistory(env, signal, state) {
     dataQuality: signal.dataQuality || null
   };
   items.unshift(record);
-  await writeKV(env, SIGNAL_HISTORY_KEY, items.slice(0, 500), 7 * 86400);
+  await writeKV(env, SIGNAL_HISTORY_KEY, items.slice(0, EDGE_HISTORY_LIMIT), 7 * 86400);
   return record.id;
 }
 async function updateSignalHistory(env, id, patch) {
@@ -2411,6 +2526,7 @@ async function scheduledCheck(env) {
   await saveCronStatus(env, "RUNNING");
 
   try {
+    const edgeUpdate = await updateEdgeOutcomes(env);
     const dailyState = await getDailyAlertState(env);
     const adaptiveMinScore = getAdaptiveAlertMinScore(dailyState.count);
     const settings = {
@@ -4834,6 +4950,10 @@ export default {
 
       if (path === "/signal-history") {
         return await handleSignalHistory(request, env);
+      }
+
+      if (path === "/edge-stats") {
+        return await handleEdgeStats(env);
       }
 
       if (path === "/dashboard-data") {
