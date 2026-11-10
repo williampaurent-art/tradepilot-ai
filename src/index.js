@@ -2366,6 +2366,9 @@ async function updateEdgeOutcomes(env) {
   const pending = items.filter(item =>
     item.alertSent === true &&
     (!item.edgeOutcome || item.edgeOutcome.status === "PENDING") &&
+    item.entry !== null && item.entry !== undefined &&
+    item.targetPrice !== null && item.targetPrice !== undefined &&
+    item.stopPrice !== null && item.stopPrice !== undefined &&
     Number.isFinite(Number(item.entry)) &&
     Number.isFinite(Number(item.targetPrice)) &&
     Number.isFinite(Number(item.stopPrice)) &&
@@ -2384,10 +2387,12 @@ async function updateEdgeOutcomes(env) {
     const isBuy = item.signal === "ACHAT";
     const signalTime = Date.parse(item.timestamp);
     const firstEligibleBar = Math.ceil(signalTime / 60000) * 60000;
-    const observed = bars.filter(bar => bar.time >= firstEligibleBar);
-    if (!observed.length) continue;
+    const lastProcessedBarTime = Number(item.edgeOutcome?.lastProcessedBarTime || 0);
+    const observed = bars.filter(bar => bar.time >= firstEligibleBar && bar.time > lastProcessedBarTime);
+    const elapsedMinutes = Math.max(0, (now - signalTime) / 60000);
     let mfe = Number(item.edgeOutcome?.mfe || 0), mae = Number(item.edgeOutcome?.mae || 0);
     let outcome = "PENDING", resolvedAt = null, resolvedPrice = null, barsObserved = 0;
+    if (!observed.length && elapsedMinutes < EDGE_OBSERVATION_MINUTES) continue;
     for (const bar of observed) {
       barsObserved++;
       const favorable = isBuy ? bar.high - entry : entry - bar.low;
@@ -2408,13 +2413,13 @@ async function updateEdgeOutcomes(env) {
         outcome = "WIN"; resolvedAt = new Date(bar.time).toISOString(); resolvedPrice = target; break;
       }
     }
-    const elapsedMinutes = Math.max(0, (now - signalTime) / 60000);
     if (outcome === "PENDING" && elapsedMinutes >= EDGE_OBSERVATION_MINUTES) {
       outcome = "EXPIRED"; resolvedAt = new Date(now).toISOString();
     }
     item.edgeOutcome = {
       status: outcome, evaluatedAt: new Date(now).toISOString(), resolvedAt, resolvedPrice,
       barsObserved: Number(item.edgeOutcome?.barsObserved || 0) + barsObserved,
+      lastProcessedBarTime: observed.length ? observed[observed.length - 1].time : lastProcessedBarTime,
       mfe: Number(mfe.toFixed(3)), mae: Number(mae.toFixed(3)),
       observationMinutes: Number(elapsedMinutes.toFixed(1)),
       model: "M1_CLOSED_CANDLES_TP_SL_FIRST_TOUCH",
