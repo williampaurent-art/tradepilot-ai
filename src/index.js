@@ -5016,20 +5016,17 @@ function createId(prefix) {
 async function provisionSaasAccount(user, env) {
   if (!env.DB) throw new Error("Base Cloudflare D1 non configurée (binding DB).");
 
-  const userId = createId("usr");
-  const existingUser = await env.DB.prepare(
-    "SELECT id FROM users WHERE auth_provider = 'supabase' AND auth_subject = ? LIMIT 1"
-  ).bind(user.subject).first();
-
-  const resolvedUserId = existingUser?.id || userId;
-  await env.DB.prepare(`
+  const savedUser = await env.DB.prepare(`
     INSERT INTO users (id, auth_provider, auth_subject, email, email_verified)
     VALUES (?, 'supabase', ?, ?, ?)
     ON CONFLICT(auth_provider, auth_subject) DO UPDATE SET
       email = excluded.email,
       email_verified = excluded.email_verified,
       updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-  `).bind(resolvedUserId, user.subject, user.email, user.emailVerified ? 1 : 0).run();
+    RETURNING id
+  `).bind(createId("usr"), user.subject, user.email, user.emailVerified ? 1 : 0).first();
+  const resolvedUserId = savedUser?.id;
+  if (!resolvedUserId) throw new Error("Impossible de synchroniser le compte utilisateur.");
 
   let workspace = await env.DB.prepare(
     "SELECT id, name, slug FROM workspaces WHERE owner_user_id = ? LIMIT 1"
@@ -5041,7 +5038,7 @@ async function provisionSaasAccount(user, env) {
     await env.DB.prepare(`
       INSERT INTO workspaces (id, name, slug, owner_user_id)
       VALUES (?, ?, ?, ?)
-      ON CONFLICT(slug) DO NOTHING
+      ON CONFLICT(owner_user_id) DO NOTHING
     `).bind(workspaceId, "Mon espace TradePilot", slug, resolvedUserId).run();
     workspace = await env.DB.prepare(
       "SELECT id, name, slug FROM workspaces WHERE owner_user_id = ? LIMIT 1"
