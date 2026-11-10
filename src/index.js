@@ -10,10 +10,10 @@ const CONFIG = {
   TARGET: 5,
   STOP: 5,
   EARLY_SCORE: 45,
-  MIN_SCORE: 60,
+  MIN_SCORE: 55,
 
   MAX_CANDLES: 250,
-  COOLDOWN_MS: 15 * 60 * 1000,
+  COOLDOWN_MS: 6 * 60 * 1000,
 
   FRESHNESS_GRACE_MS: 60_000,
   LIVE_QUOTE_MAX_AGE_SECONDS: 60,
@@ -1152,7 +1152,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     ? effectiveStop / (effectiveTarget + effectiveStop)
     : 1;
   const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
-  const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
+  const spreadOK = spreadToATR !== null && spreadToATR <= 0.30;
   const marketRegime = regimeAnalysis.regime;
   const confirmationBlockers = [];
   if (signal === "ATTENDRE") {
@@ -1177,7 +1177,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     breakEvenWinRate: Number((breakEvenWinRate * 100).toFixed(2)),
     // The break-even rate excludes spread, commissions and slippage.
     spreadToATR: spreadToATR === null ? null : Number(spreadToATR.toFixed(3)),
-    maxSpreadToATR: 0.20,
+    maxSpreadToATR: 0.30,
     spreadOK,
     marketRegime,
     marketPhase: regimeAnalysis.phase,
@@ -2300,8 +2300,8 @@ async function getDailyAlertState(env) {
 }
 
 function getAdaptiveAlertMinScore(alertCount, timestamp = Date.now()) {
-  // Objectif indicatif : 10 à 15 alertes/jour. Le seuil ne descend
-  // que si le bot est en retard sur le rythme quotidien, et jamais sous 55.
+  // Objectif indicatif : 10 à 15 alertes/jour. Seuil technique accessible à 55/100 ;
+  // les validations de données, de déclencheur et de structure restent obligatoires.
   const expectedByNow = 15 * (getParisMinutesOfDay(timestamp) / 1440);
   if (alertCount < expectedByNow - 3) return 55;
   if (alertCount < expectedByNow) return 57;
