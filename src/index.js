@@ -1698,6 +1698,26 @@ async function getSignal(settings, env, recordStatistics = false) {
   // Le moteur Telegram réutilise désormais les mêmes diagnostics avancés
   // que le tableau de bord : H1/H4/D1, structure, retournements, ranges,
   // liquidité et anticipation multi-unités.
+  // Lancer les contextes externes en parallèle des unités supérieures :
+  // aucune validation supplémentaire n'est ajoutée au parcours du signal.
+  const economicContextPromise = getEconomicContext(env);
+  const macroContextPromise = (async () => {
+    try {
+      const macroCachedRaw = await readKV(env,"gold_macro_context_cache");
+      const macroCached = macroCachedRaw ? JSON.parse(macroCachedRaw) : null;
+      if (macroCached && Date.now()-Number(macroCached.cachedAt||0)<10*60*1000) {
+        return macroCached.value;
+      }
+      const value = await fetchGoldMacroContext();
+      await writeKV(env,"gold_macro_context_cache",{
+        cachedAt:Date.now(),value
+      },3600);
+      return value;
+    } catch(error) {
+      return {status:"INDISPONIBLE",bias:"NON_EVALUE",errors:[error.message]};
+    }
+  })();
+
   const higherFrames = ["H1","H4","D1"];
   const higherResults = await Promise.all(higherFrames.map(async timeframe=>{
     try {
@@ -1714,22 +1734,10 @@ async function getSignal(settings, env, recordStatistics = false) {
     ...higherResults
   ];
   const marketOpen = Boolean(liveQuote && liveQuote.mid > 0);
-  const economicContext = await getEconomicContext(env);
-  let macroCrossAsset = null;
-  try {
-    const macroCachedRaw = await readKV(env,"gold_macro_context_cache");
-    const macroCached = macroCachedRaw ? JSON.parse(macroCachedRaw) : null;
-    if (macroCached && Date.now()-Number(macroCached.cachedAt||0)<10*60*1000) {
-      macroCrossAsset = macroCached.value;
-    } else {
-      macroCrossAsset = await fetchGoldMacroContext();
-      await writeKV(env,"gold_macro_context_cache",{
-        cachedAt:Date.now(),value:macroCrossAsset
-      },3600);
-    }
-  } catch(error) {
-    macroCrossAsset = {status:"INDISPONIBLE",bias:"NON_EVALUE",errors:[error.message]};
-  }
+  const [economicContext, macroCrossAsset] = await Promise.all([
+    economicContextPromise,
+    macroContextPromise
+  ]);
   const anticipation = analyzeMarketAnticipation(frameResults,marketOpen,economicContext);
   const reversal = analyzeReversalMultiTimeframe(frameResults,marketOpen);
   const confluence = analyzeSetupConfluence(frameResults,marketOpen);
