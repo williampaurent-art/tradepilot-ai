@@ -558,10 +558,8 @@ function drawChart(bars,analysis=null,live=false){
  if(!valid.length){ctx.fillStyle="#91a1b9";ctx.fillText("Données OHLC invalides",12,24);return;}
  const levels=analysis?.levels||{},regime=analysis?.regime||{},ind=analysis?.indicators||{};
  const overlays=[
-  {label:"Résistance",value:levels.resistance,color:"#ffb454",dash:[5,4]},
-  {label:"Support",value:levels.support,color:"#48cfa4",dash:[5,4]},
-  {label:"Range haut",value:regime.rangeHigh,color:"#e6bd68",dash:[2,4]},
-  {label:"Range bas",value:regime.rangeLow,color:"#78a8ff",dash:[2,4]}
+  ...(chartLevelsOn?[{label:"Résistance",value:levels.resistance,color:"#ffb454",dash:[5,4]},{label:"Support",value:levels.support,color:"#48cfa4",dash:[5,4]}]:[]),
+  ...(chartRangeOn?[{label:"Range haut",value:regime.rangeHigh,color:"#e6bd68",dash:[2,4]},{label:"Range bas",value:regime.rangeLow,color:"#78a8ff",dash:[2,4]}]:[])
  ].filter(x=>Number.isFinite(Number(x.value))&&Number(x.value)>0);
  const values=valid.flatMap(b=>[Number(b.high),Number(b.low)]).concat(overlays.map(x=>Number(x.value)));
  let lo=Math.min(...values),hi=Math.max(...values);if(hi===lo){hi+=1;lo-=1;}
