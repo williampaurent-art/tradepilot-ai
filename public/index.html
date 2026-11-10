@@ -226,7 +226,6 @@ main.wrap>#market-view{order:4}
 main.wrap>#timeframe-view{order:5}
 main.wrap>#assistantPanel{order:6}
 main.wrap>#operations{order:7}
-main.wrap>#edge-performance-panel{order:8}
 main.wrap>.reading-guide{order:9}
 main.wrap>#deep-analysis{order:10}
 main.wrap>section.section:not([id]){order:11}
@@ -285,20 +284,6 @@ main.wrap>.foot{order:42}
  <div id="opsError" class="hint" role="status" style="margin-top:10px"></div>
  <div class="hint" style="margin-top:9px">Les statistiques sont des évaluations OHLC approximatives, pas des résultats d'exécution MT5. Les états affichés proviennent des endpoints du Worker.</div>
 </section>
-<section id="edge-performance-panel" class="section card">
- <div class="sectionhead"><div><h2>Performance des signaux</h2><span class="hint">Mesure statistique des alertes Telegram confirmées · sans journal détaillé</span></div></div>
- <div class="edge-performance" style="margin-top:12px;padding:14px;border:1px solid rgba(243,200,107,.24);border-radius:14px;background:linear-gradient(130deg,rgba(23,34,51,.8),rgba(9,17,29,.85))">
-  <div class="sectionhead"><div><div class="exec-kicker">TRADEPILOT EDGE · PERFORMANCE MESURÉE</div><h3 style="margin:4px 0">Ce que valent réellement les alertes</h3><span id="edgeConfidence" class="hint">Échantillon en cours de constitution.</span></div><span id="edgeStatus" class="scalp-state warn">CALCUL EN ATTENTE</span></div>
-  <div class="ops-stats" style="margin-top:12px">
-   <span>Win rate observé <strong id="edgeWinRate">—</strong></span><span>Espérance moyenne <strong id="edgeExpectancy">—</strong></span><span>Résultats TP / SL <strong id="edgeSample">—</strong></span><span>Alertes à suivre <strong id="edgePending">—</strong></span>
-  </div>
-  <div class="ops-stats" style="margin-top:8px">
-   <span>ACHATS <strong id="edgeBuy">—</strong></span><span>VENTES <strong id="edgeSell">—</strong></span><span>Ambigus exclus <strong id="edgeAmbiguous">—</strong></span><span>Expirés 60 min <strong id="edgeExpired">—</strong></span>
-  </div>
-  <div id="edgeMethod" class="hint" style="margin-top:10px">Méthode de mesure chargée depuis le moteur.</div>
- </div>
-</section>
-
 <section id="marketAlert" class="market-alert" data-level="calm" role="status" aria-live="polite"><div class="market-alert-head"><span class="market-alert-pulse"></span><span class="market-alert-kicker">SURVEILLANCE ÉVÉNEMENTIELLE · XAUUSD</span><span class="pill">INITIALISATION</span></div><div class="market-alert-title" id="marketAlertTitle">Surveillance du marché en cours</div><div class="market-alert-copy" id="marketAlertCopy">TradePilot vérifie les annonces majeures, la volatilité et les confirmations de retournement.</div><div class="market-alert-meta" id="marketAlertMeta"></div></section>
 
 <section id="assistantPanel" class="assistant-panel" aria-label="Assistant de marché TradePilot">
@@ -830,28 +815,6 @@ async function assistantSubmit(question){
 }
 function opsSet(id,value,state){const el=$(id);if(!el)return;el.textContent=value;el.className=state?state:"";}
 function opsDate(value){if(!value)return"Date indisponible";const d=new Date(value);return Number.isNaN(d.getTime())?"Date invalide":d.toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"medium"});}
-async function refreshEdgeStats(){
- try{
-  const response=await fetch(API+"/edge-stats?t="+Date.now(),{cache:"no-store"});
-  const data=await response.json();
-  if(!response.ok||data?.ok!==true)throw new Error(data?.error||"Mesure Edge indisponible");
-  const enough=Number(data.sample||0);
-  opsSet("edgeWinRate",data.winRate===null?"—":data.winRate+"%");
-  opsSet("edgeExpectancy",data.expectancyR===null?"—":(data.expectancyR>0?"+":"")+data.expectancyR+" R");
-  opsSet("edgeSample",data.wins+" / "+data.losses);
-  opsSet("edgePending",data.pending);
-  opsSet("edgeBuy",data.bySide?.buy?.sample?data.bySide.buy.winRate+"% ("+data.bySide.buy.sample+")":"—");
-  opsSet("edgeSell",data.bySide?.sell?.sample?data.bySide.sell.winRate+"% ("+data.bySide.sell.sample+")":"—");
-  opsSet("edgeAmbiguous",data.ambiguous);
-  opsSet("edgeExpired",data.expired);
-  opsSet("edgeConfidence",data.confidenceLabel+" · "+enough+" résultat(s) classé(s)");
-  opsSet("edgeStatus",enough>=30?"MESURE DISPONIBLE":"ÉCHANTILLON LIMITÉ",enough>=30?"scalp-state good":"scalp-state warn");
-  const method=$("edgeMethod");if(method)method.textContent=(data.methodology||"Méthode non précisée")+" Les données sont issues des alertes Telegram confirmées de TradePilot.";
- }catch(error){
-  opsSet("edgeStatus","MESURE INDISPONIBLE","scalp-state bad");
-  opsSet("edgeConfidence",error?.message||"Erreur réseau");
- }
-}
 async function refreshOperations(){
  const button=$("opsRefresh"),error=$("opsError");if(button){button.disabled=true;button.textContent="Vérification…";}if(error)error.textContent="";
  try{
@@ -884,7 +847,7 @@ async function refreshOperations(){
   opsSet("opsTimeouts",stats?.timeouts??"—");
   $("opsUpdated").textContent="Vérifié à "+new Date().toLocaleTimeString("fr-FR");
   if(error&&(!statsRes.ok||stats?.ok!==true))error.textContent="Statistiques d'apprentissage indisponibles ; les états du Worker et du Cron sont chargés.";
-  await refreshEdgeStats();
+  
  }catch(e){
   opsSet("opsWorker","INDISPONIBLE","ops-bad");
   if(error)error.textContent="Diagnostic incomplet : "+(e?.message||"erreur réseau");
