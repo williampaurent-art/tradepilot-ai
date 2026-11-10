@@ -1165,7 +1165,7 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     }
   } else {
     if (score < settings.minScore) confirmationBlockers.push("Score " + score + "/100 inférieur au seuil de confirmation " + settings.minScore + "/100.");
-    if (!spreadOK) confirmationBlockers.push("Spread trop élevé par rapport à l'ATR M1 (maximum 0,20).");
+    if (!spreadOK) confirmationBlockers.push("Spread trop élevé par rapport à l'ATR M1 (maximum 0,30).");
     if (!entryTriggerConfirmed) confirmationBlockers.push("Déclencheur M1 non confirmé : bougie directionnelle ou retest requis.");
     if (!tradePlan.confirmed) confirmationBlockers.push("Plan de trade non validé : " + (tradePlan.reason || "structure insuffisante."));
   }
@@ -2400,18 +2400,21 @@ async function recordDailyAlert(env, previousState) {
 }
 
 async function shouldSendAlert(env, signal) {
-  const previousRaw = await readKV(env, "last_alert");
-
-  if (!previousRaw) {
-    return true;
-  }
+  // Cooldown indépendant par direction : une alerte opposée ne réinitialise
+  // pas le délai de répétition de l'achat ou de la vente précédente.
+  const direction = signal.signal === "ACHAT" ? "ACHAT" :
+    signal.signal === "VENTE" ? "VENTE" : null;
+  if (!direction) return false;
+  const key = "last_alert_direction_" + direction;
+  const previousRaw = await readKV(env, key);
+  if (!previousRaw) return true;
 
   try {
     const previous = JSON.parse(previousRaw);
+    const cooldownMs = Math.max(CONFIG.COOLDOWN_MS, 15 * 60 * 1000);
     const sameSignal = previous.key === getAlertKey(signal);
-    const recent =
-      Date.now() - previous.time < CONFIG.COOLDOWN_MS;
-
+    const recent = Number.isFinite(Number(previous.time)) &&
+      Date.now() - Number(previous.time) < cooldownMs;
     return !(sameSignal && recent);
   } catch {
     return true;
@@ -2901,13 +2904,16 @@ async function scheduledCheck(env) {
     await sendTelegram(env, buildAlertMessage(signal));
     await updateSignalHistory(env, historyId, { state: "ALERTE_ENVOYEE", alertSent: true });
 
-    await writeKV(env, "last_alert", {
+    const alertRecord = {
       key: getAlertKey(signal),
       signal: signal.signal,
       alertLevel: signal.alertLevel || "CONFIRMED",
       entry: signal.entry,
+      score: signal.score,
       time: Date.now()
-    }, 7 * 86400);
+    };
+    await writeKV(env, "last_alert", alertRecord, 7 * 86400);
+    await writeKV(env, "last_alert_direction_" + signal.signal, alertRecord, 7 * 86400);
 
     const updatedDailyState = await recordDailyAlert(env, dailyState);
     await saveCronStatus(env, "ALERT_SENT", {
