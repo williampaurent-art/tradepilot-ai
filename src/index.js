@@ -1938,76 +1938,34 @@ async function sendTelegram(env, textMessage) {
 }
 
 function buildAlertMessage(signal) {
-  const intelligence = signal.advancedIntelligence || {};
-  const anticipation = intelligence.anticipation || {};
-  const reversal = intelligence.reversal || {};
-  const eventMonitoring = intelligence.eventMonitoring || {};
-  const reasons = signal.reasons
-    .map(reason => `• ${reason}`)
-    .join("\n");
-  const confirmed = signal.alertLevel === "CONFIRMED";
   const action = signal.signal === "ACHAT" ? "ACHAT" : "VENTE";
   const entrySide = signal.signal === "ACHAT" ? "ASK" : "BID";
-
+  const trend = [signal.market?.trendM1, signal.market?.trendM5, signal.market?.trendM15]
+    .filter(Boolean)
+    .join(" / ") || "NON DISPONIBLE";
+  const trigger = signal.entryQuality?.trigger || "NON DISPONIBLE";
+  const triggerWarning = trigger === "DECLENCHEUR_INSUFFISANT"
+    ? "⚠️ Déclencheur M1 insuffisant : prudence avant toute entrée."
+    : "";
+  const calendarWarning = signal.economicCalendarWarning
+    ? "⚠️ Calendrier économique non confirmé : vérifie les annonces."
+    : "";
+  const reasons = (Array.isArray(signal.reasons) ? signal.reasons : [])
+    .slice(0, 2)
+    .map(reason => `• ${reason}`);
+  
   return [
-    `🚨 TRADEPILOT AI — ${signal.instrument}`,
-    "",
-    confirmed
-      ? `📊 DECISION : ${action} MAINTENANT`
-      : `📊 SIGNAL : ${action} — À SURVEILLER, PAS D'ENTRÉE`,
-    `🎯 Score technique : ${signal.score}/100`,
-    `🧩 Déclencheur M1 : ${signal.entryQuality?.trigger || "NON DISPONIBLE"}`,
-    `📐 Qualité bougie : corps ${signal.entryQuality?.bodyRatio ?? "—"} | clôture ${signal.entryQuality?.closePosition ?? "—"}`,
-    "",
-    `💰 Prix de référence ${entrySide} à l'alerte : ${signal.entry}`,
-    `📡 Bid : ${signal.liveQuote.bid} | Ask : ${signal.liveQuote.ask}`,
-    `🎯 Take Profit fixe : +${signal.targetMove}$ dans ton sens depuis TON prix d'entrée MT5`,
-    `🛑 Stop Loss fixe : -${signal.stopMove}$ contre ta position depuis TON prix d'entrée MT5`,
-    `📏 Repère structurel M1 : ${signal.tradePlan?.invalidationLevel ?? "indisponible"}`,
-    `⚠️ Niveaux affichés calculés depuis le prix de l'alerte : recalcule TP/SL depuis le prix réel d'exécution MT5.`,
-    `🕒 Âge du cours reçu : ${signal.liveQuote.quoteAgeSeconds}s`,
-    `🕓 Horodatage du cours : ${signal.liveQuote.timestamp}`,
-    `✅ Take Profit calculé : ${signal.targetPrice}`,
-    `🛑 Stop Loss calculé : ${signal.stopPrice}`,
-    "",
-    `📦 Taille indicative : ${signal.lotSize} lot`,
-    `💵 Capital de référence : ${signal.capital} USD`,
-    `⚙️ Levier indicatif : x${signal.leverage}`,
-    `⚖️ Ratio gain/risque : ${signal.riskReward}`,
-    `📊 Point mort théorique hors frais : ${signal.riskChecks.breakEvenWinRate}%`,
-    `🧪 Validation historique : ${signal.statisticalValidation?.winRate ?? "en constitution"}% (${signal.statisticalValidation?.resolved ?? 0}/100 trades résolus)`,
-    signal.learningAdjustment?.applied
-      ? `🧠 Auto-calibration : score ${signal.learningAdjustment.originalScore} → ${signal.learningAdjustment.adjustedScore} (${signal.learningAdjustment.adjustment > 0 ? "+" : ""}${signal.learningAdjustment.adjustment}) après ${signal.learningAdjustment.resolved} résultats.`
-      : "🧠 Auto-calibration : collecte et vérification des résultats historiques.",
-    `🛡️ Régime : ${signal.market.marketRegime || "INDÉTERMINÉ"}`,
-    signal.economicCalendarWarning ? `⚠️ ${signal.economicCalendarWarning}` : "📰 Calendrier économique vérifié.",
-    "",
-    "📈 Tendances :",
-    `M1 : ${signal.market.trendM1}`,
-    `M5 : ${signal.market.trendM5}`,
-    `M15 : ${signal.market.trendM15}`,
-    "",
-    "🧠 Intelligence multi-unités :",
-    `Anticipation : ${anticipation.phase || "NON EVALUÉE"} — ${anticipation.direction || "INDETERMINE"} (${anticipation.confluenceIndex ?? "—"}/100)`,
-    `Retournement : ${reversal.status || "NON EVALUÉ"} — ${reversal.bias || "NEUTRE"}`,
-    `Contexte DXY/taux : ${intelligence.macroCrossAsset?.bias || "NON ÉVALUÉ"}`,
-    eventMonitoring.recentSurprises?.length
-      ? `Dernière surprise : ${eventMonitoring.recentSurprises[0].name} — ${eventMonitoring.recentSurprises[0].actual} vs consensus ${eventMonitoring.recentSurprises[0].consensus} — ${eventMonitoring.recentSurprises[0].goldBias}`
-      : "Surprise économique récente : aucune donnée actual/consensus vérifiée.",
-    `Unités analysées : ${(intelligence.availableTimeframes || []).join(", ") || "M1/M5/M15"}`,
-    eventMonitoring.active
-      ? `📰 Fenêtre annonce active : ${eventMonitoring.activeEvent || "publication majeure"} — entrée suspendue pendant la fenêtre de sécurité.`
-      : eventMonitoring.nextEvent
-        ? `📰 Prochaine annonce : ${eventMonitoring.nextEvent.name} dans ${eventMonitoring.nextEvent.minutesUntil} min.`
-        : "📰 Calendrier : aucune annonce majeure imminente détectée.",
-    "",
-    "Motifs :",
-    reasons,
-    "",
-    confirmed
-      ? "⚠️ Signal basé sur un cours live BiQuote. Vérifie le prix affiché sur MT5 avant toute entrée manuelle. Aucun ordre réel exécuté."
-      : "⚠️ Score sous le seuil de confirmation : ne pas entrer sur ce signal. Aucun ordre réel exécuté."
-  ].join("\n");
+    `🚨 TRADEPILOT — ${signal.instrument || "XAUUSD"}`,
+    `🔴 ${action} MAINTENANT`,
+    `💰 Entrée ${entrySide} : ${signal.entry}`,
+    `🎯 TP : ${signal.targetPrice} | 🛑 SL : ${signal.stopPrice}`,
+    `📊 Score : ${signal.score}/100 | Tendance M1/M5/M15 : ${trend}`,
+    triggerWarning,
+    calendarWarning,
+    ...reasons,
+    "⚠️ Vérifie le prix MT5 et recalcule TP/SL depuis ton exécution.",
+    "Aucun ordre réel exécuté."
+  ].filter(Boolean).join("\\n");
 }
 
 // --------------------------------------------------
