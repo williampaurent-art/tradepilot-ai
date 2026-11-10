@@ -2600,12 +2600,16 @@ async function processX10Virtual(env, signal) {
       state.history.unshift(closed);
       state.history = state.history.slice(0, X10_HISTORY_LIMIT);
       state.openPosition = null;
-      await saveX10State(env, state);
-      return { enabled: true, action: "VIRTUAL_CLOSE", position: closed };
+      const saved = await saveX10State(env, state);
+      return saved
+        ? { enabled: true, action: "VIRTUAL_CLOSE", position: closed }
+        : { enabled: true, action: "STORAGE_UNAVAILABLE", reason: "FERMETURE_NON_PERSISTEE" };
     }
 
-    await saveX10State(env, state);
-    return { enabled: true, action: "POSITION_MONITORED", openPosition: state.openPosition };
+    const saved = await saveX10State(env, state);
+    return saved
+      ? { enabled: true, action: "POSITION_MONITORED", openPosition: state.openPosition }
+      : { enabled: true, action: "STORAGE_UNAVAILABLE", reason: "SUIVI_NON_PERSISTE" };
   }
 
   if (!currentDirection) {
@@ -2640,8 +2644,10 @@ async function processX10Virtual(env, signal) {
     sizingStatus: "NON_CALCULE_CONTRAT_XAUUSD_A_VERIFIER",
     execution: "SIMULATION_VIRTUELLE_UNIQUEMENT"
   };
-  await saveX10State(env, state);
-  return { enabled: true, action: "VIRTUAL_OPEN", openPosition: state.openPosition };
+  const saved = await saveX10State(env, state);
+  return saved
+    ? { enabled: true, action: "VIRTUAL_OPEN", openPosition: state.openPosition }
+    : { enabled: true, action: "STORAGE_UNAVAILABLE", reason: "OUVERTURE_NON_PERSISTEE" };
 }
 
 async function handleX10Virtual(env) {
