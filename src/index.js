@@ -1829,13 +1829,21 @@ async function getSignal(settings, env, recordStatistics = false) {
 // --------------------------------------------------
 
 function telegramConfigured(env) {
-  return Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID);
+  return Boolean(
+    env.TELEGRAM_BOT_TOKEN &&
+    (env.TELEGRAM_GROUP_CHAT_ID || env.TELEGRAM_CHAT_ID)
+  );
 }
 
 async function sendTelegram(env, textMessage) {
   if (!telegramConfigured(env)) {
     throw new Error("Configuration Telegram absente.");
   }
+
+  // Le groupe commun est prioritaire ; l'ancien chat privé reste un fallback.
+  const targetChatId = String(
+    env.TELEGRAM_GROUP_CHAT_ID || env.TELEGRAM_CHAT_ID
+  ).trim();
 
   const url =
     `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -1844,7 +1852,7 @@ async function sendTelegram(env, textMessage) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      chat_id: env.TELEGRAM_CHAT_ID,
+      chat_id: targetChatId,
       text: textMessage,
       disable_web_page_preview: true
     }),
@@ -4443,6 +4451,7 @@ async function handleStatus(env) {
     service: CONFIG.SERVICE,
     kvConfigured: Boolean(env.TP_STATE),
     telegramConfigured: telegramConfigured(env),
+    telegramGroupConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_GROUP_CHAT_ID),
     aiConfigured: Boolean(env.AI && typeof env.AI.run === "function"),
     cron,
     lastSignal,
@@ -5100,6 +5109,7 @@ async function handleHealth(env) {
     instrument: CONFIG.SYMBOL,
     kvConfigured: Boolean(env.TP_STATE),
     telegramConfigured: telegramConfigured(env),
+    telegramGroupConfigured: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_GROUP_CHAT_ID),
     aiConfigured: Boolean(env.AI && typeof env.AI.run === "function"),
     cronExpected: "*/3 * * * *",
     liveTrading: false,
