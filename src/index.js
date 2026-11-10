@@ -1700,7 +1700,19 @@ async function getSignal(settings, env, recordStatistics = false) {
   // liquidité et anticipation multi-unités.
   // Lancer les contextes externes en parallèle des unités supérieures :
   // aucune validation supplémentaire n'est ajoutée au parcours du signal.
-  const economicContextPromise = getEconomicContext(env);
+  // Le calendrier n'est plus interrogé pendant le cycle de signal :
+  // il ne peut donc ni retarder ni bloquer une alerte XAUUSD.
+  // La route /calendar reste disponible pour une consultation manuelle.
+  const economicContextPromise = Promise.resolve({
+    configured: false,
+    status: "DISABLED_FOR_SIGNAL_ENGINE",
+    source: "Finance Calendar",
+    blackout: false,
+    safeToTrade: false,
+    activeEvent: null,
+    recentSurprises: [],
+    message: "Calendrier exclu du déclenchement des alertes."
+  });
   const macroContextPromise = (async () => {
     try {
       const macroCachedRaw = await readKV(env,"gold_macro_context_cache");
