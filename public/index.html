@@ -247,7 +247,7 @@ main.wrap>.foot{order:42}
  .mobile-dock a:nth-child(3):before{content:"✧"}
  .mobile-dock a:nth-child(4):before{content:"▤"}
  .mobile-dock a:nth-child(5):before{content:"⚙"}
- .mobile-dock a:focus-visible,.mobile-dock a:hover{color:var(--gold);background:rgba(244,199,106,.09);outline:none}
+ .mobile-dock a:focus-visible,.mobile-dock a:hover,.mobile-dock a.active{color:var(--gold);background:rgba(244,199,106,.11);outline:none}.mobile-dock a.active{box-shadow:inset 0 0 0 1px rgba(244,199,106,.18)}
  .mobile-dock a:first-child{color:var(--gold);background:rgba(244,199,106,.07)}
 }
 </style></head>
@@ -320,10 +320,10 @@ main.wrap>.foot{order:42}
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#signal-journal">Signaux</a><a href="#operations">Robot</a></nav>
-<footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.1</span> · Horodatages affichés selon disponibilité réelle.</footer>
+<footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.10.1";
+const UI_VERSION="2026.11.10.2";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15";
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -776,6 +776,27 @@ async function refreshOperations(){
  }finally{if(button){button.disabled=false;button.textContent="Actualiser le robot";}}
 }
 async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;const assistantMeta=$("assistantMeta");if(assistantMeta)assistantMeta.textContent="Analyse synchronisée · "+dateFmt(d.generatedAt)+" · "+(d.market?.open===true?"flux live confirmé":"flux live non confirmé")+".";renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
+
+/* Mobile dock scroll tracking: active destination follows the visible section. */
+(()=>{
+ const dock=$("mobileDock");if(!dock)return;
+ const links=[...dock.querySelectorAll("a[href^='#']")];
+ const setActive=id=>links.forEach(link=>{
+  const active=link.getAttribute("href")==="#"+id;
+  link.classList.toggle("active",active);
+  if(active)link.setAttribute("aria-current","location");else link.removeAttribute("aria-current");
+ });
+ links.forEach(link=>link.addEventListener("click",()=>setActive(link.getAttribute("href").slice(1))));
+ if("IntersectionObserver" in window){
+  const observer=new IntersectionObserver(entries=>{
+   const visible=entries.filter(entry=>entry.isIntersecting).sort((a,b)=>b.intersectionRatio-a.intersectionRatio);
+   if(visible[0])setActive(visible[0].target.id);
+  },{rootMargin:"-14% 0px -66% 0px",threshold:[0,.15,.35,.6]});
+  links.forEach(link=>{const section=$(link.getAttribute("href").slice(1));if(section)observer.observe(section);});
+ }
+ setActive("market-view");
+})();
+
 const assistantForm=$("assistantForm");
 if(assistantForm){
  assistantForm.addEventListener("submit",event=>{
