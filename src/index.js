@@ -2527,6 +2527,7 @@ async function scheduledCheck(env) {
 
   try {
     const edgeUpdate = await updateEdgeOutcomes(env);
+    await saveCronStatus(env, "RUNNING", { edgeOutcomeUpdates: edgeUpdate.updated, edgeOutcomeError: edgeUpdate.error });
     const dailyState = await getDailyAlertState(env);
     const adaptiveMinScore = getAdaptiveAlertMinScore(dailyState.count);
     const settings = {
