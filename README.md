@@ -47,3 +47,13 @@ L'assistant utilise le binding Cloudflare Workers AI `AI` et le modèle `@cf/met
 Le quota gratuit Workers AI publié par Cloudflare est limité à 10 000 Neurons par jour ; les requêtes peuvent échouer lorsque le quota quotidien est épuisé sur l'offre Free. Vérifier la consommation dans le tableau de bord Cloudflare. L'assistant n'est pas un moteur d'exécution et ne transmet aucun ordre au broker.
 
 La qualité des réponses dépend de la fraîcheur et de la couverture des données OHLC et du calendrier. L'assistant doit signaler les informations manquantes et ne doit jamais transformer un scénario anticipatif en signal confirmé.
+
+
+## TradePilot Edge & SaaS
+
+- `GET /signal-history` : journal des décisions et alertes du Cron.
+- `GET /edge-stats` : résultats observés des alertes Telegram confirmées (TP/SL M1, win rate, expectancy R, ventilation achat/vente).
+
+TradePilot Edge suit les alertes confirmées et mesure leurs résultats à partir des bougies M1 après l'alerte. Les résultats ambigus (TP et SL touchés dans la même bougie) sont exclus. Cette mesure n'intègre pas les frais, le spread ni le slippage et ne constitue pas une probabilité future.
+
+Le schéma SaaS multi-espace (utilisateurs, workspaces, rôles, abonnements, droits, connexions broker en lecture seule et journal d'audit) est préparé dans `migrations/0001_saas_core.sql`. Il n'est pas encore activé : aucun binding D1 ni fournisseur d'identité/facturation n'a été configuré. La version actuelle ne doit donc pas être présentée comme une plateforme multi-utilisateur isolée prête à vendre. Voir [la feuille de route Edge & SaaS](docs/TRADEPILOT_EDGE_SAAS.md).
