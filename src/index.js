@@ -1853,16 +1853,8 @@ async function getSignal(settings, env, recordStatistics = false) {
       result.score=Math.max(0,result.score-3);
       reasons.push("Contexte inter-marchés DXY/taux opposé au scénario (pondération légère).");
     }
-    const latestSurprise=(economicContext.recentSurprises||[])[0];
-    if (latestSurprise && latestSurprise.goldBias==="SOUTIEN_POTENTIEL_OR") {
-      const points=side==="HAUSSIER"?2:-2;
-      result.score=Math.max(0,Math.min(100,result.score+points));
-      reasons.push("Dernière surprise économique : soutien potentiel à l'or, pondération légère.");
-    } else if (latestSurprise && latestSurprise.goldBias==="PRESSION_POTENTIELLE_OR") {
-      const points=side==="BAISSIER"?2:-2;
-      result.score=Math.max(0,Math.min(100,result.score+points));
-      reasons.push("Dernière surprise économique : pression potentielle sur l'or, pondération légère.");
-    }
+    // Les surprises économiques USD/EUR ne modifient plus le score
+    // ni le déclenchement des alertes : seule l'analyse technique décide.
   }
   result.reasons=[...(result.reasons||[]),...reasons];
   result.score=Math.round(result.score);
@@ -1890,7 +1882,8 @@ async function getSignal(settings, env, recordStatistics = false) {
     activeEvent:economicContext.activeEvent?.name||null,
     nextEvent:economicContext.nextEvent||null,
     recentSurprises:economicContext.recentSurprises||[],
-    policy:"Analyse maintenue pendant les annonces ; les nouvelles entrées restent suspendues dans la fenêtre de sécurité."
+    policy:"Contexte économique informatif uniquement ; aucune annonce ne bloque ou ne modifie les alertes techniques.", 
+    canBlockAlert:false
   };
 
   const filtered=applyEconomicFilter(result,economicContext);
@@ -2280,39 +2273,29 @@ async function getEconomicContext(env) {
 }
 
 function applyEconomicFilter(signal, context) {
+  // Le calendrier économique est désormais informatif uniquement :
+  // aucune annonce USD/EUR, fenêtre de blackout ou panne API ne bloque,
+  // ne rétrograde ou ne retarde un signal technique confirmé.
   signal.economicCalendar = {
     configured: context.configured,
     status: context.status,
     paymentRequired: context.paymentRequired === true ||
       context.status === "PAYMENT_REQUIRED" ||
       context.status === "PAYMENT_REQUIRED_USING_STALE_CACHE",
-    blackout: context.blackout,
+    blackout: context.blackout === true,
     safeToTrade: context.safeToTrade,
     activeEvent: context.activeEvent || null,
     source: context.source || "Finance Calendar",
-    sourceUrl: context.sourceUrl || "https://www.financecalendar.com"
+    sourceUrl: context.sourceUrl || "https://www.financecalendar.com",
+    role: "INFORMATION_ONLY",
+    canBlockAlert: false
   };
-
-  if (context.blackout) {
-    signal.technicalSignal = signal.signal;
-    signal.technicalScore = signal.score;
-    signal.signal = "ATTENDRE";
-    signal.alertLevel = "NONE";
-    signal.blockedByEconomicCalendar = true;
-    signal.reasons = [
-      "Entrée suspendue : annonce économique majeure dans la fenêtre de sécurité de 15 minutes.",
-      ...(signal.reasons || [])
-    ];
-  } else {
-    // Une panne ou une absence du calendrier ne doit pas rendre le robot
-    // muet toute la journée. Les validations techniques restent obligatoires ;
-    // l'alerte précise que le calendrier n'a pas pu être vérifié.
-    signal.blockedByEconomicCalendar = false;
-    signal.economicCalendarWarning = context.safeToTrade
+  signal.blockedByEconomicCalendar = false;
+  signal.economicCalendarWarning = context.activeEvent
+    ? "Annonce économique en cours ou proche : vigilance sur la volatilité, sans blocage du signal technique."
+    : context.safeToTrade
       ? null
-      : "Calendrier économique indisponible/non vérifié : vérifier les annonces avant toute décision manuelle.";
-  }
-
+      : "Calendrier économique indisponible/non vérifié : les alertes techniques restent actives.";
   return signal;
 }
 
