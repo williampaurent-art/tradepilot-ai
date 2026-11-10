@@ -289,6 +289,16 @@ main.wrap>.foot{order:42}
 <section id="signal-journal" class="section card">
  <div class="sectionhead"><div><h2>Journal des signaux XAUUSD</h2><span class="hint">Historique des analyses automatiques · 3 minutes</span></div><button class="btn" id="historyRefresh" type="button">Actualiser</button></div>
  <div class="ops-stats"><span>Analyses enregistrées <strong id="historyCount">—</strong></span><span>Alertes envoyées <strong id="historySent">—</strong></span><span>En attente / refusées <strong id="historyWait">—</strong></span><span>Erreurs données <strong id="historyErrors">—</strong></span></div>
+ <div class="edge-performance" style="margin-top:16px;padding:14px;border:1px solid rgba(243,200,107,.24);border-radius:14px;background:linear-gradient(130deg,rgba(23,34,51,.8),rgba(9,17,29,.85))">
+  <div class="sectionhead"><div><div class="exec-kicker">TRADEPILOT EDGE · PERFORMANCE MESURÉE</div><h3 style="margin:4px 0">Ce que valent réellement les alertes</h3><span id="edgeConfidence" class="hint">Échantillon en cours de constitution.</span></div><span id="edgeStatus" class="scalp-state warn">CALCUL EN ATTENTE</span></div>
+  <div class="ops-stats" style="margin-top:12px">
+   <span>Win rate observé <strong id="edgeWinRate">—</strong></span><span>Espérance moyenne <strong id="edgeExpectancy">—</strong></span><span>Résultats TP / SL <strong id="edgeSample">—</strong></span><span>Alertes à suivre <strong id="edgePending">—</strong></span>
+  </div>
+  <div class="ops-stats" style="margin-top:8px">
+   <span>ACHATS <strong id="edgeBuy">—</strong></span><span>VENTES <strong id="edgeSell">—</strong></span><span>Ambigus exclus <strong id="edgeAmbiguous">—</strong></span><span>Expirés 60 min <strong id="edgeExpired">—</strong></span>
+  </div>
+  <div id="edgeMethod" class="hint" style="margin-top:10px">Méthode de mesure chargée depuis le moteur.</div>
+ </div>
  <div id="signalHistoryList" style="margin-top:12px"><div class="muted">Chargement du journal…</div></div>
  <div id="signalHistoryMeta" class="hint" style="margin-top:9px">Les anciennes analyses ne sont pas recréées rétroactivement : le journal commence après le déploiement de cette version.</div>
 </section>
@@ -346,7 +356,7 @@ main.wrap>.foot{order:42}
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
-const UI_VERSION="2026.11.10.7";
+const UI_VERSION="2026.11.10.8";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15",chartWindow=90,chartLevelsOn=true,chartRangeOn=true,chartHoverIndex=null,chartGeometry=null;
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
@@ -824,6 +834,28 @@ async function assistantSubmit(question){
 }
 function opsSet(id,value,state){const el=$(id);if(!el)return;el.textContent=value;el.className=state?state:"";}
 function opsDate(value){if(!value)return"Date indisponible";const d=new Date(value);return Number.isNaN(d.getTime())?"Date invalide":d.toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"medium"});}
+async function refreshEdgeStats(){
+ try{
+  const response=await fetch(API+"/edge-stats?t="+Date.now(),{cache:"no-store"});
+  const data=await response.json();
+  if(!response.ok||data?.ok!==true)throw new Error(data?.error||"Mesure Edge indisponible");
+  const enough=Number(data.sample||0);
+  opsSet("edgeWinRate",data.winRate===null?"—":data.winRate+"%");
+  opsSet("edgeExpectancy",data.expectancyR===null?"—":(data.expectancyR>0?"+":"")+data.expectancyR+" R");
+  opsSet("edgeSample",data.wins+" / "+data.losses);
+  opsSet("edgePending",data.pending);
+  opsSet("edgeBuy",data.bySide?.buy?.sample?data.bySide.buy.winRate+"% ("+data.bySide.buy.sample+")":"—");
+  opsSet("edgeSell",data.bySide?.sell?.sample?data.bySide.sell.winRate+"% ("+data.bySide.sell.sample+")":"—");
+  opsSet("edgeAmbiguous",data.ambiguous);
+  opsSet("edgeExpired",data.expired);
+  opsSet("edgeConfidence",data.confidenceLabel+" · "+enough+" résultat(s) classé(s)");
+  opsSet("edgeStatus",enough>=30?"MESURE DISPONIBLE":"ÉCHANTILLON LIMITÉ",enough>=30?"scalp-state good":"scalp-state warn");
+  const method=$("edgeMethod");if(method)method.textContent=(data.methodology||"Méthode non précisée")+" Les données sont issues des alertes Telegram confirmées de TradePilot.";
+ }catch(error){
+  opsSet("edgeStatus","MESURE INDISPONIBLE","scalp-state bad");
+  opsSet("edgeConfidence",error?.message||"Erreur réseau");
+ }
+}
 async function refreshSignalHistory(){
  const root=$("signalHistoryList");if(!root)return;
  try{
@@ -838,7 +870,7 @@ async function refreshSignalHistory(){
   opsSet("historySent",sent);
   opsSet("historyWait",waiting);
   opsSet("historyErrors",errors);
-  if(!items.length){root.innerHTML='<div class="muted">Aucune analyse enregistrée pour le moment. Le journal se remplira au prochain passage du Cron.</div>';return;}
+  await refreshEdgeStats();\n  if(!items.length){root.innerHTML='<div class="muted">Aucune analyse enregistrée pour le moment. Le journal se remplira au prochain passage du Cron.</div>';return;}
   const labels={ALERTE_ENVOYEE:"ALERTE TELEGRAM ENVOYÉE",ATTENDRE:"ATTENDRE · PAS DE SETUP",NON_CONFIRME:"SIGNAL NON CONFIRMÉ",CONFIRME_EN_ATTENTE:"CONFIRMATION EN ATTENTE",DOUBLON_RECENT:"DOUBLON ÉVITÉ",DATA_ERROR:"ERREUR DE DONNÉES"};
   root.innerHTML=items.map(item=>{
    const side=item.signal==="ACHAT"?"up":item.signal==="VENTE"?"down":"";
@@ -850,9 +882,12 @@ async function refreshSignalHistory(){
    const checks=["Spread "+(risk.spreadOK===true?"OK":risk.spreadOK===false?"refusé":"—"),"Déclencheur "+(risk.entryTriggerConfirmed===true?"OK":risk.entryTriggerConfirmed===false?"refusé":"—"),"Plan "+(risk.structuralPlanConfirmed===true?"OK":risk.structuralPlanConfirmed===false?"refusé":"—")].join(" · ");
    const scoreLine=Number.isFinite(Number(scores.buy))&&Number.isFinite(Number(scores.sell))?"Scores achat/vente : "+scores.buy+"/"+scores.sell+" · seuil initial "+(scores.earlyThreshold??45)+" · confirmation "+(scores.confirmationThreshold??"—"):"";
    const diagnosis=[...blockers,scoreLine,item.tradePlanReason||""].filter(Boolean).join(" · ");
-   return '<div class="history-row"><time>'+esc(time)+'</time><div><strong class="'+side+'">'+esc(item.signal||"—")+' · '+esc(String(item.score??"—"))+'/100</strong><small>'+esc(labels[item.state]||item.state||"ÉTAT INCONNU")+' · '+esc(item.alertLevel||"—")+'</small><div class="history-reasons">'+esc(diagnosis||reason||checks)+'</div></div><span class="history-state '+(item.alertSent?"ops-good":"")+'">'+(item.alertSent?"ENVOYÉ":"NON ENVOYÉ")+'</span></div>';
+   const edge=item.edgeOutcome||{};
+   const edgeLabel={WIN:"TP TOUCHÉ · GAGNANT",LOSS:"SL TOUCHÉ · PERDANT",PENDING:"RÉSULTAT EN SUIVI",AMBIGUOUS:"TP/SL DANS LA MÊME BOUGIE",EXPIRED:"EXPIRÉ · 60 MIN"}[edge.status]||"PAS ENCORE ÉVALUÉ";
+   const edgeLine=item.alertSent?'<div class="history-reasons">EDGE : '+esc(edgeLabel)+(edge.mfe!==undefined?' · MFE '+esc(String(edge.mfe))+' · MAE '+esc(String(edge.mae)):'')+'</div>':'';
+   return '<div class="history-row"><time>'+esc(time)+'</time><div><strong class="'+side+'">'+esc(item.signal||"—")+' · '+esc(String(item.score??"—"))+'/100</strong><small>'+esc(labels[item.state]||item.state||"ÉTAT INCONNU")+' · '+esc(item.alertLevel||"—")+'</small><div class="history-reasons">'+esc(diagnosis||reason||checks)+'</div>'+edgeLine+'</div><span class="history-state '+(item.alertSent?"ops-good":"")+'">'+(item.alertSent?"ENVOYÉ":"NON ENVOYÉ")+'</span></div>';
   }).join("");
-  $("signalHistoryMeta").textContent="Affichage des "+items.length+" dernières analyses. Conservation serveur : jusqu'à 500 décisions / 7 jours.";
+  $("signalHistoryMeta").textContent="Affichage des "+items.length+" dernières analyses. Conservation serveur : jusqu'à 3 500 décisions / 7 jours. Les résultats Edge ne sont calculés que pour les alertes Telegram confirmées.";
  }catch(error){root.innerHTML='<div class="muted">Journal non disponible : '+esc(error?.message||"erreur réseau")+'. Vérifie que la dernière version du Worker est déployée.</div>';}
 }
 async function refreshOperations(){
