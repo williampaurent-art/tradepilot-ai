@@ -36,6 +36,7 @@ run_worker_first = [
   "/calendar",
   "/calendar-key-check",
   "/sniper-stats",
+  "/edge-stats",
   "/telegram-test"
 ]
 
