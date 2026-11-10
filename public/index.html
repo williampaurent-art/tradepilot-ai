@@ -215,7 +215,7 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
  *,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 
-</style></head>
+.ops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.ops-item,.ops-block{min-width:0;padding:13px;border:1px solid rgba(137,169,209,.14);border-radius:11px;background:rgba(5,13,24,.58)}.ops-label{display:block;color:var(--muted);font-size:9px;letter-spacing:1.1px;text-transform:uppercase;font-weight:800}.ops-item strong{display:block;margin-top:6px;font-size:14px;overflow-wrap:anywhere}.ops-item small{display:block;color:var(--muted);font-size:10px;margin-top:4px}.ops-columns{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:10px}.ops-main{font-size:17px;font-weight:850;margin:7px 0;overflow-wrap:anywhere}.ops-stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.ops-stats span{padding:7px 10px;border:1px solid rgba(137,169,209,.14);border-radius:8px;background:rgba(5,13,24,.45);font-size:10px;color:var(--muted)}.ops-stats strong{color:var(--text);margin-left:4px}.ops-good{color:var(--green)!important}.ops-bad{color:var(--red)!important}.ops-warn{color:var(--gold)!important}@media(max-width:700px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.ops-columns{grid-template-columns:1fr}.ops-main{font-size:15px}}</style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
 <nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d'ensemble</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a></nav>
@@ -228,6 +228,22 @@ button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(-
   <div class="exec-kpi"><label>Couverture des données</label><strong id="execCoverage">—</strong><small id="execCoverageMeta">Fraîcheur et continuité</small></div>
  </div>
  <div class="exec-foot"><span class="exec-tag">Macro : <strong id="execMacro">—</strong></span><span class="exec-tag">Configuration : <strong id="execSetup">—</strong></span><span class="exec-tag">Exécution : <strong>Analyse uniquement · aucun ordre réel</strong></span></div>
+</section>
+<section id="operations" class="section card">
+ <div class="sectionhead"><h2>Centre de contrôle · TradePilot</h2><div style="display:flex;align-items:center;gap:9px"><span id="opsUpdated" class="hint">Statut non vérifié</span><button class="btn" id="opsRefresh" type="button">Actualiser le robot</button></div></div>
+ <div class="ops-grid">
+  <div class="ops-item"><span class="ops-label">Worker Cloudflare</span><strong id="opsWorker">Vérification…</strong><small id="opsWorkerMeta">Disponibilité du service</small></div>
+  <div class="ops-item"><span class="ops-label">Telegram</span><strong id="opsTelegram">—</strong><small id="opsTelegramMeta">Configuration du canal</small></div>
+  <div class="ops-item"><span class="ops-label">Cron automatique</span><strong id="opsCron">—</strong><small id="opsCronMeta">Fréquence attendue : 3 minutes</small></div>
+  <div class="ops-item"><span class="ops-label">Exécution réelle</span><strong class="up">DÉSACTIVÉE</strong><small>Aucun ordre transmis au broker</small></div>
+ </div>
+ <div class="ops-columns">
+  <div class="ops-block"><div class="eyebrow">Dernière décision du moteur</div><div id="opsLastSignal" class="ops-main">En attente du statut serveur…</div><div id="opsSignalMeta" class="hint">Les données seront chargées depuis /status.</div></div>
+  <div class="ops-block"><div class="eyebrow">Dernière notification Telegram</div><div id="opsLastAlert" class="ops-main">Aucune donnée disponible</div><div id="opsAlertMeta" class="hint">Historique de notification du serveur.</div></div>
+ </div>
+ <div class="ops-stats"><span>Échantillons suivis <strong id="opsSamples">—</strong></span><span>En observation <strong id="opsPending">—</strong></span><span>Résultats résolus <strong id="opsResolved">—</strong></span><span>Expirés <strong id="opsTimeouts">—</strong></span></div>
+ <div id="opsError" class="hint" role="status" style="margin-top:10px"></div>
+ <div class="hint" style="margin-top:9px">Les statistiques sont des évaluations OHLC approximatives, pas des résultats d'exécution MT5. Les états affichés proviennent des endpoints du Worker.</div>
 </section>
 <section id="marketAlert" class="market-alert" data-level="calm" role="status" aria-live="polite"><div class="market-alert-head"><span class="market-alert-pulse"></span><span class="market-alert-kicker">SURVEILLANCE ÉVÉNEMENTIELLE · XAUUSD</span><span class="pill">INITIALISATION</span></div><div class="market-alert-title" id="marketAlertTitle">Surveillance du marché en cours</div><div class="market-alert-copy" id="marketAlertCopy">TradePilot vérifie les annonces majeures, la volatilité et les confirmations de retournement.</div><div class="market-alert-meta" id="marketAlertMeta"></div></section>
 
@@ -644,6 +660,46 @@ async function assistantSubmit(question){
   if(submit){submit.disabled=false;submit.textContent="Envoyer";}
  }
 }
+function opsSet(id,value,state){const el=$(id);if(!el)return;el.textContent=value;el.className=state?state:"";}
+function opsDate(value){if(!value)return"Date indisponible";const d=new Date(value);return Number.isNaN(d.getTime())?"Date invalide":d.toLocaleString("fr-FR",{dateStyle:"short",timeStyle:"medium"});}
+async function refreshOperations(){
+ const button=$("opsRefresh"),error=$("opsError");if(button){button.disabled=true;button.textContent="Vérification…";}if(error)error.textContent="";
+ try{
+  const [healthRes,statusRes,statsRes]=await Promise.all([
+   fetch(API+"/health?t="+Date.now(),{cache:"no-store"}),
+   fetch(API+"/status?t="+Date.now(),{cache:"no-store"}),
+   fetch(API+"/sniper-stats?t="+Date.now(),{cache:"no-store"})
+  ]);
+  const [health,status,stats]=await Promise.all([healthRes.json(),statusRes.json(),statsRes.json()]);
+  if(!healthRes.ok||health?.ok!==true)throw new Error(health?.error||"Le Worker ne confirme pas son état.");
+  if(!statusRes.ok||status?.ok!==true)throw new Error(status?.error||"Le statut du robot est indisponible.");
+  opsSet("opsWorker","EN LIGNE · "+(health.service||"TradePilot"),"ops-good");
+  $("opsWorkerMeta").textContent="KV "+(health.kvConfigured?"configuré":"indisponible")+" · IA "+(health.aiConfigured?"configurée":"non configurée");
+  opsSet("opsTelegram",health.telegramConfigured?"CONFIGURÉ":"NON CONFIGURÉ",health.telegramConfigured?"ops-good":"ops-warn");
+  $("opsTelegramMeta").textContent="Configuration du bot Telegram côté serveur";
+  const cron=status.cron||{};
+  const cronLabel=cron.status==="ALERT_SENT"?"ALERTE ENVOYÉE":cron.status==="COMPLETED"?"ANALYSE TERMINÉE":cron.status==="RUNNING"?"EN COURS":cron.status==="ERROR"||cron.status==="DATA_ERROR"?"ERREUR":cron.status||"PAS ENCORE EXÉCUTÉ";
+  opsSet("opsCron",cronLabel,["ERROR","DATA_ERROR"].includes(cron.status)?"ops-bad":cron.status==="ALERT_SENT"?"ops-good":"ops-warn");
+  $("opsCronMeta").textContent="Cadence attendue "+(health.cronExpected||"*/3 * * * *")+" · dernière exécution "+opsDate(cron.updatedAt);
+  const signal=status.lastSignal||{};
+  const direction=signal.signal||"AUCUNE DÉCISION";
+  opsSet("opsLastSignal",direction,direction==="ACHAT"?"ops-good":direction==="VENTE"?"ops-bad":"ops-warn");
+  $("opsSignalMeta").textContent="Score "+(signal.score??"—")+"/100 · "+(signal.alertLevel||"niveau non défini")+" · "+opsDate(signal.timestamp||signal.generatedAt||cron.updatedAt);
+  const alert=status.lastAlert||null;
+  opsSet("opsLastAlert",alert?(alert.signal||"Signal"):"AUCUNE ALERTE ENREGISTRÉE",alert?"ops-good":"");
+  $("opsAlertMeta").textContent=alert?"Envoyée le "+opsDate(alert.time)+" · entrée "+(alert.entry??"—"):"Le serveur n'a pas encore enregistré de notification.";
+  opsSet("opsSamples",stats?.totalSamples??"—");
+  opsSet("opsPending",stats?.pending??"—");
+  opsSet("opsResolved",stats?.resolved??"—");
+  opsSet("opsTimeouts",stats?.timeouts??"—");
+  $("opsUpdated").textContent="Vérifié à "+new Date().toLocaleTimeString("fr-FR");
+  if(error&&(!statsRes.ok||stats?.ok!==true))error.textContent="Statistiques d'apprentissage indisponibles ; les états du Worker et du Cron sont chargés.";
+ }catch(e){
+  opsSet("opsWorker","INDISPONIBLE","ops-bad");
+  if(error)error.textContent="Diagnostic incomplet : "+(e?.message||"erreur réseau");
+  $("opsUpdated").textContent="Vérification échouée";
+ }finally{if(button){button.disabled=false;button.textContent="Actualiser le robot";}}
+}
 async function refresh(){const btn=$("refresh"),errorBox=$("error");if(!btn||!errorBox)return;btn.disabled=true;btn.textContent="Analyse…";errorBox.classList.add("hide");try{const res=await fetch(API+"/dashboard-data?ui="+encodeURIComponent(UI_VERSION)+"&t="+Date.now(),{cache:"no-store",headers:{"accept":"application/json"}});const raw=await res.text();let d;try{d=JSON.parse(raw);}catch{throw new Error("Réponse serveur non JSON (HTTP "+res.status+"). Vérifie le déploiement Cloudflare.");}if(!res.ok||!d||d.ok!==true)throw new Error(d?.error||("Réponse API invalide (HTTP "+res.status+")."));snapshot=d;const assistantMeta=$("assistantMeta");if(assistantMeta)assistantMeta.textContent="Analyse synchronisée · "+dateFmt(d.generatedAt)+" · "+(d.market?.open===true?"flux live confirmé":"flux live non confirmé")+".";renderTop(d);renderInvestorSummary(d);renderMarketAlert(d);renderFrames(d);renderSelected();renderCalendar(d.economicCalendar);renderMacroCrossAsset(d.macroCrossAsset);if(d.market?.quoteError){errorBox.textContent="Cours live indisponible : "+d.market.quoteError+". La dernière clôture OHLC est affichée si disponible.";errorBox.classList.remove("hide");}}catch(e){const message=e&&typeof e.message==="string"&&e.message.trim()?e.message:"Erreur inconnue pendant le chargement.";errorBox.textContent="Impossible de charger l'analyse : "+message+" · Interface "+UI_VERSION;errorBox.classList.remove("hide");put("dataState","INDISPONIBLE");}finally{btn.disabled=false;btn.textContent="↻ Actualiser";}}
 const assistantForm=$("assistantForm");
 if(assistantForm){
@@ -655,5 +711,5 @@ if(assistantForm){
 document.querySelectorAll("[data-question]").forEach(button=>{
  button.addEventListener("click",()=>assistantSubmit(button.getAttribute("data-question")||""));
 });
-$("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
+$("opsRefresh")?.addEventListener("click",refreshOperations);refreshOperations();$("refresh").addEventListener("click",refresh);$("tfSelect").addEventListener("change",e=>{selected=e.target.value;renderSelected();if(snapshot)renderLiquidity(snapshot);});refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
 </script></body></html>
