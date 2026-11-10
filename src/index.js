@@ -2524,6 +2524,153 @@ async function handleSignalHistory(request, env) {
 }
 
 // --------------------------------------------------
+// TRADEPILOT X10 — POSITIONS VIRTUELLES (AUCUNE EXECUTION)
+// --------------------------------------------------
+const X10_STATE_KEY = "x10_virtual_state_v1";
+const X10_REFERENCE_CAPITAL = 100;
+const X10_HISTORY_LIMIT = 250;
+
+async function readX10State(env) {
+  const raw = await readKV(env, X10_STATE_KEY);
+  if (!raw) return { version: 1, enabled: true, openPosition: null, history: [], updatedAt: null };
+  try {
+    const state = JSON.parse(raw);
+    return {
+      version: 1,
+      enabled: state.enabled !== false,
+      openPosition: state.openPosition || null,
+      history: Array.isArray(state.history) ? state.history.slice(0, X10_HISTORY_LIMIT) : [],
+      updatedAt: state.updatedAt || null
+    };
+  } catch {
+    return { version: 1, enabled: true, openPosition: null, history: [], updatedAt: null };
+  }
+}
+
+async function saveX10State(env, state) {
+  state.updatedAt = new Date().toISOString();
+  return writeKV(env, X10_STATE_KEY, state, 90 * 86400);
+}
+
+function x10ExecutablePrice(signal, side) {
+  const quote = signal?.liveQuote;
+  if (!quote) return null;
+  const value = side === "BUY" ? quote.ask : quote.bid;
+  return Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : null;
+}
+
+async function processX10Virtual(env, signal) {
+  const state = await readX10State(env);
+  if (!state.enabled || !signal?.ok || !signal.liveQuote) {
+    return { enabled: state.enabled, action: "NO_UPDATE", reason: "ANALYSE_OU_COURS_INDISPONIBLE" };
+  }
+
+  const now = new Date().toISOString();
+  const currentMid = Number(signal.liveQuote.mid);
+  const currentDirection = signal.alertLevel === "CONFIRMED"
+    ? (signal.signal === "ACHAT" ? "BUY" : signal.signal === "VENTE" ? "SELL" : null)
+    : null;
+
+  if (state.openPosition) {
+    const position = state.openPosition;
+    const exitPrice = x10ExecutablePrice(signal, position.direction === "BUY" ? "SELL" : "BUY");
+    if (Number.isFinite(exitPrice)) {
+      const signedMove = position.direction === "BUY"
+        ? exitPrice - position.entryPrice
+        : position.entryPrice - exitPrice;
+      position.lastPrice = exitPrice;
+      position.unrealizedMove = Number(signedMove.toFixed(3));
+      position.maxFavorableMove = Number(Math.max(position.maxFavorableMove || 0, signedMove, 0).toFixed(3));
+      position.maxAdverseMove = Number(Math.max(position.maxAdverseMove || 0, -signedMove, 0).toFixed(3));
+      position.lastCheckedAt = now;
+    }
+
+    if (currentDirection && currentDirection !== position.direction && Number.isFinite(exitPrice)) {
+      const closed = {
+        ...position,
+        status: "CLOSED",
+        exitPrice,
+        exitAt: now,
+        realizedMove: Number((position.direction === "BUY"
+          ? exitPrice - position.entryPrice
+          : position.entryPrice - exitPrice).toFixed(3)),
+        exitReason: "SIGNAL_OPPOSE_CONFIRME",
+        execution: "SIMULATION_VIRTUELLE_UNIQUEMENT"
+      };
+      state.history.unshift(closed);
+      state.history = state.history.slice(0, X10_HISTORY_LIMIT);
+      state.openPosition = null;
+      await saveX10State(env, state);
+      return { enabled: true, action: "VIRTUAL_CLOSE", position: closed };
+    }
+
+    await saveX10State(env, state);
+    return { enabled: true, action: "POSITION_MONITORED", openPosition: state.openPosition };
+  }
+
+  if (!currentDirection) {
+    return { enabled: true, action: "NO_ENTRY", reason: "PAS_DE_SIGNAL_CONFIRME" };
+  }
+
+  const entryPrice = x10ExecutablePrice(signal, currentDirection);
+  if (!Number.isFinite(entryPrice)) {
+    return { enabled: true, action: "NO_ENTRY", reason: "COTATION_EXECUTABLE_INDISPONIBLE" };
+  }
+
+  state.openPosition = {
+    id: "X10-" + Date.now(),
+    engine: "TRADEPILOT_X10_VIRTUAL",
+    instrument: CONFIG.SYMBOL,
+    direction: currentDirection,
+    status: "OPEN",
+    entryPrice,
+    entryMid: Number.isFinite(currentMid) ? currentMid : null,
+    entryAt: now,
+    referenceCapital: X10_REFERENCE_CAPITAL,
+    scoreAtEntry: Number(signal.score) || 0,
+    entryReason: (signal.reasons || []).slice(0, 6),
+    lastPrice: entryPrice,
+    unrealizedMove: 0,
+    maxFavorableMove: 0,
+    maxAdverseMove: 0,
+    exitPolicy: "SORTIE_SUR_SIGNAL_OPPOSE_CONFIRME",
+    fixedStopLoss: false,
+    fixedTakeProfit: false,
+    monetaryPnl: null,
+    sizingStatus: "NON_CALCULE_CONTRAT_XAUUSD_A_VERIFIER",
+    execution: "SIMULATION_VIRTUELLE_UNIQUEMENT"
+  };
+  await saveX10State(env, state);
+  return { enabled: true, action: "VIRTUAL_OPEN", openPosition: state.openPosition };
+}
+
+async function handleX10Virtual(env) {
+  const state = await readX10State(env);
+  const closed = state.history.filter(item => item.status === "CLOSED");
+  const wins = closed.filter(item => Number(item.realizedMove) > 0).length;
+  const losses = closed.filter(item => Number(item.realizedMove) < 0).length;
+  return json({
+    ok: true,
+    engine: "TRADEPILOT_X10_VIRTUAL",
+    enabled: state.enabled,
+    mode: "SIMULATION_SEULE",
+    instrument: CONFIG.SYMBOL,
+    referenceCapital: X10_REFERENCE_CAPITAL,
+    openPosition: state.openPosition,
+    stats: {
+      closed: closed.length,
+      wins,
+      losses,
+      winRate: closed.length ? Number((wins / closed.length * 100).toFixed(1)) : null,
+      netPriceMove: Number(closed.reduce((sum, item) => sum + (Number(item.realizedMove) || 0), 0).toFixed(3))
+    },
+    history: state.history.slice(0, 30),
+    riskNotice: "P&L monétaire et seuil de perte de 30 % non calculés : les spécifications contractuelles XAUUSD et le volume de simulation doivent être vérifiés. La surveillance se fait à chaque cron, pas en continu.",
+    execution: "AUCUN ORDRE REEL"
+  });
+}
+
+// --------------------------------------------------
 // EXECUTION AUTOMATIQUE
 // --------------------------------------------------
 
@@ -2544,6 +2691,7 @@ async function scheduledCheck(env) {
     };
 
     const signal = await getSignal(settings, env, true);
+    const x10Virtual = await processX10Virtual(env, signal);
     signal.dailyAlertControl = {
       countBeforeSignal: dailyState.count,
       targetMin: 10,
@@ -2552,6 +2700,7 @@ async function scheduledCheck(env) {
       timezone: "Europe/Paris"
     };
 
+    signal.x10Virtual = x10Virtual;
     await writeKV(env, "last_signal", signal, 7 * 86400);
     const historyState = !signal.ok ? "DATA_ERROR" :
       signal.signal === "ATTENDRE" ? "ATTENDRE" :
@@ -5137,6 +5286,10 @@ export default {
 
       if (path === "/api/account") {
         return await handleSaasAccount(request, env);
+      }
+
+      if (path === "/x10") {
+        return await handleX10Virtual(env);
       }
 
       if (path === "/signal-history") {
