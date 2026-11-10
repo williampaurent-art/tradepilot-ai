@@ -4915,6 +4915,190 @@ async function handleGold(request) {
 }
 
 // --------------------------------------------------
+// SAAS IDENTITY — SUPABASE AUTH + CLOUDFLARE D1
+// --------------------------------------------------
+
+let SUPABASE_JWKS_CACHE = null;
+
+function base64UrlBytes(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - normalized.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, char => char.charCodeAt(0));
+}
+
+function decodeJwtPart(value) {
+  return JSON.parse(new TextDecoder().decode(base64UrlBytes(value)));
+}
+
+async function getSupabaseJwks(env) {
+  const projectUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
+  if (!projectUrl) throw new Error("SUPABASE_URL manquant.");
+  const now = Date.now();
+  if (SUPABASE_JWKS_CACHE && SUPABASE_JWKS_CACHE.url === projectUrl &&
+      SUPABASE_JWKS_CACHE.expiresAt > now) {
+    return SUPABASE_JWKS_CACHE.keys;
+  }
+  const response = await fetch(projectUrl + "/auth/v1/.well-known/jwks.json", {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(8000)
+  });
+  if (!response.ok) throw new Error("Impossible de récupérer les clés publiques Supabase.");
+  const payload = await response.json();
+  if (!Array.isArray(payload.keys) || !payload.keys.length) {
+    throw new Error("Jeu de clés Supabase invalide.");
+  }
+  SUPABASE_JWKS_CACHE = { url: projectUrl, keys: payload.keys, expiresAt: now + 10 * 60 * 1000 };
+  return payload.keys;
+}
+
+async function verifySupabaseAccessToken(request, env) {
+  const authorization = request.headers.get("authorization") || "";
+  const match = authorization.match(/^Bearer\s+([A-Za-z0-9._-]+)$/i);
+  if (!match) return { ok: false, status: 401, error: "Jeton Bearer requis." };
+
+  const parts = match[1].split(".");
+  if (parts.length !== 3) return { ok: false, status: 401, error: "Jeton invalide." };
+
+  try {
+    const header = decodeJwtPart(parts[0]);
+    const claims = decodeJwtPart(parts[1]);
+    if (!["ES256", "RS256"].includes(header.alg) || !header.kid) {
+      return { ok: false, status: 401, error: "Algorithme ou clé JWT non autorisé." };
+    }
+
+    const keys = await getSupabaseJwks(env);
+    const jwk = keys.find(key => key.kid === header.kid && key.alg === header.alg);
+    if (!jwk) return { ok: false, status: 401, error: "Clé JWT inconnue." };
+
+    const importAlgorithm = header.alg === "ES256"
+      ? { name: "ECDSA", namedCurve: "P-256" }
+      : { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" };
+    const verifyAlgorithm = header.alg === "ES256"
+      ? { name: "ECDSA", hash: "SHA-256" }
+      : { name: "RSASSA-PKCS1-v1_5" };
+    const publicKey = await crypto.subtle.importKey(
+      "jwk", jwk, importAlgorithm, false, ["verify"]
+    );
+    const signingInput = new TextEncoder().encode(parts[0] + "." + parts[1]);
+    const signature = base64UrlBytes(parts[2]);
+    const validSignature = await crypto.subtle.verify(
+      verifyAlgorithm, publicKey, signature, signingInput
+    );
+    if (!validSignature) return { ok: false, status: 401, error: "Signature JWT invalide." };
+
+    const projectUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
+    const now = Math.floor(Date.now() / 1000);
+    if (claims.iss !== projectUrl + "/auth/v1" ||
+        !(claims.aud === "authenticated" || (Array.isArray(claims.aud) && claims.aud.includes("authenticated"))) ||
+        !claims.sub || !Number.isFinite(claims.exp) || claims.exp <= now ||
+        (claims.nbf && claims.nbf > now + 30)) {
+      return { ok: false, status: 401, error: "Émetteur, audience ou validité du jeton incorrects." };
+    }
+
+    return {
+      ok: true,
+      user: {
+        subject: String(claims.sub),
+        email: typeof claims.email === "string" ? claims.email.slice(0, 320) : null,
+        emailVerified: Boolean(claims.email_confirmed_at || claims.email_verified)
+      }
+    };
+  } catch (error) {
+    return { ok: false, status: 401, error: "Authentification Supabase impossible : " + error.message };
+  }
+}
+
+function createId(prefix) {
+  return prefix + "_" + crypto.randomUUID();
+}
+
+async function provisionSaasAccount(user, env) {
+  if (!env.DB) throw new Error("Base Cloudflare D1 non configurée (binding DB).");
+
+  const userId = createId("usr");
+  const existingUser = await env.DB.prepare(
+    "SELECT id FROM users WHERE auth_provider = 'supabase' AND auth_subject = ? LIMIT 1"
+  ).bind(user.subject).first();
+
+  const resolvedUserId = existingUser?.id || userId;
+  await env.DB.prepare(`
+    INSERT INTO users (id, auth_provider, auth_subject, email, email_verified)
+    VALUES (?, 'supabase', ?, ?, ?)
+    ON CONFLICT(auth_provider, auth_subject) DO UPDATE SET
+      email = excluded.email,
+      email_verified = excluded.email_verified,
+      updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+  `).bind(resolvedUserId, user.subject, user.email, user.emailVerified ? 1 : 0).run();
+
+  let workspace = await env.DB.prepare(
+    "SELECT id, name, slug FROM workspaces WHERE owner_user_id = ? LIMIT 1"
+  ).bind(resolvedUserId).first();
+
+  if (!workspace) {
+    const workspaceId = createId("ws");
+    const slug = "workspace-" + crypto.randomUUID().slice(0, 8);
+    await env.DB.prepare(`
+      INSERT INTO workspaces (id, name, slug, owner_user_id)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(slug) DO NOTHING
+    `).bind(workspaceId, "Mon espace TradePilot", slug, resolvedUserId).run();
+    workspace = await env.DB.prepare(
+      "SELECT id, name, slug FROM workspaces WHERE owner_user_id = ? LIMIT 1"
+    ).bind(resolvedUserId).first();
+  }
+
+  if (!workspace) throw new Error("Impossible de créer l'espace de travail.");
+  await env.DB.prepare(`
+    INSERT INTO workspace_members (workspace_id, user_id, role)
+    VALUES (?, ?, 'owner')
+    ON CONFLICT(workspace_id, user_id) DO NOTHING
+  `).bind(workspace.id, resolvedUserId).run();
+
+  await env.DB.prepare(`
+    INSERT INTO subscriptions (id, workspace_id, billing_provider, plan_key, status)
+    SELECT ?, ?, 'internal', 'free', 'active'
+    WHERE NOT EXISTS (
+      SELECT 1 FROM subscriptions
+      WHERE workspace_id = ? AND status IN ('trialing','active')
+    )
+  `).bind(createId("sub"), workspace.id, workspace.id).run();
+
+  const subscription = await env.DB.prepare(`
+    SELECT plan_key, status, current_period_end
+    FROM subscriptions
+    WHERE workspace_id = ?
+    ORDER BY created_at DESC LIMIT 1
+  `).bind(workspace.id).first();
+
+  return {
+    user: {
+      id: resolvedUserId,
+      email: user.email,
+      emailVerified: user.emailVerified
+    },
+    workspace,
+    membership: { role: "owner" },
+    subscription: subscription || { plan_key: "free", status: "active", current_period_end: null },
+    liveTrading: false
+  };
+}
+
+async function handleSaasAccount(request, env) {
+  if (request.method !== "GET") {
+    return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+  }
+  const auth = await verifySupabaseAccessToken(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+  try {
+    const account = await provisionSaasAccount(auth.user, env);
+    return json({ ok: true, provider: "supabase", ...account });
+  } catch (error) {
+    return json({ ok: false, error: error.message }, error.message.includes("non configurée") ? 503 : 500);
+  }
+}
+
+// --------------------------------------------------
 // CLOUDFLARE WORKER
 // --------------------------------------------------
 
@@ -4929,7 +5113,7 @@ export default {
         headers: {
           "access-control-allow-origin": "*",
           "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "content-type, x-test-key, x-telegram-test-key"
+          "access-control-allow-headers": "content-type, authorization, x-test-key, x-telegram-test-key"
         }
       });
     }
@@ -4952,6 +5136,10 @@ export default {
 
       if (path === "/status") {
         return await handleStatus(env);
+      }
+
+      if (path === "/api/account") {
+        return await handleSaasAccount(request, env);
       }
 
       if (path === "/signal-history") {
