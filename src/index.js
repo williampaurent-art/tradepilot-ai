@@ -2322,6 +2322,56 @@ async function saveCronStatus(env, status, details = {}) {
   }, 7 * 86400);
 }
 
+
+// --------------------------------------------------
+// JOURNAL DES DECISIONS DU MOTEUR
+// --------------------------------------------------
+const SIGNAL_HISTORY_KEY = "signal_history";
+async function appendSignalHistory(env, signal, state) {
+  const raw = await readKV(env, SIGNAL_HISTORY_KEY);
+  let items = [];
+  try { const parsed = raw ? JSON.parse(raw) : []; if (Array.isArray(parsed)) items = parsed; } catch {}
+  const record = {
+    id: Date.now() + "-" + Math.random().toString(36).slice(2, 8),
+    timestamp: new Date().toISOString(),
+    signal: signal.signal || "ATTENDRE",
+    score: signal.score ?? 0,
+    alertLevel: signal.alertLevel || "NONE",
+    state,
+    alertSent: false,
+    entry: signal.entry ?? null,
+    targetPrice: signal.targetPrice ?? null,
+    stopPrice: signal.stopPrice ?? null,
+    reasons: Array.isArray(signal.reasons) ? signal.reasons.slice(0, 6) : [],
+    riskChecks: signal.riskChecks || null,
+    dataQuality: signal.dataQuality || null
+  };
+  items.unshift(record);
+  await writeKV(env, SIGNAL_HISTORY_KEY, items.slice(0, 500), 7 * 86400);
+  return record.id;
+}
+async function updateSignalHistory(env, id, patch) {
+  if (!id) return;
+  const raw = await readKV(env, SIGNAL_HISTORY_KEY);
+  try {
+    const items = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(items)) return;
+    const index = items.findIndex(item => item.id === id);
+    if (index >= 0) {
+      items[index] = { ...items[index], ...patch };
+      await writeKV(env, SIGNAL_HISTORY_KEY, items, 7 * 86400);
+    }
+  } catch {}
+}
+async function handleSignalHistory(request, env) {
+  const url = new URL(request.url);
+  const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+  const raw = await readKV(env, SIGNAL_HISTORY_KEY);
+  let items = [];
+  try { const parsed = raw ? JSON.parse(raw) : []; if (Array.isArray(parsed)) items = parsed; } catch {}
+  return json({ ok: true, instrument: CONFIG.SYMBOL, count: items.length, items: items.slice(0, limit) });
+}
+
 // --------------------------------------------------
 // EXECUTION AUTOMATIQUE
 // --------------------------------------------------
@@ -2350,6 +2400,10 @@ async function scheduledCheck(env) {
     };
 
     await writeKV(env, "last_signal", signal, 7 * 86400);
+    const historyState = !signal.ok ? "DATA_ERROR" :
+      signal.signal === "ATTENDRE" ? "ATTENDRE" :
+      signal.alertLevel !== "CONFIRMED" ? "NON_CONFIRME" : "CONFIRME_EN_ATTENTE";
+    const historyId = await appendSignalHistory(env, signal, historyState);
 
     if (!signal.ok) {
       await saveCronStatus(env, "DATA_ERROR", {
@@ -2383,6 +2437,7 @@ async function scheduledCheck(env) {
     }
 
     if (!(await shouldSendAlert(env, signal))) {
+      await updateSignalHistory(env, historyId, { state: "DOUBLON_RECENT" });
       await saveCronStatus(env, "COMPLETED", {
         signal: signal.signal,
         score: signal.score,
@@ -2394,6 +2449,7 @@ async function scheduledCheck(env) {
     }
 
     await sendTelegram(env, buildAlertMessage(signal));
+    await updateSignalHistory(env, historyId, { state: "ALERTE_ENVOYEE", alertSent: true });
 
     await writeKV(env, "last_alert", {
       key: getAlertKey(signal),
@@ -4743,6 +4799,10 @@ export default {
 
       if (path === "/status") {
         return await handleStatus(env);
+      }
+
+      if (path === "/signal-history") {
+        return await handleSignalHistory(request, env);
       }
 
       if (path === "/dashboard-data") {
