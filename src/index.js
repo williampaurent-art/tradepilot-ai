@@ -1083,12 +1083,14 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   }
 
   // En range, aucune entrée immédiate sans rejet de borne et espace suffisant.
+  let rangeRejected = false;
   if (regime === "RANGE") {
     const validRangeBuy = rangeLocation === "BORNE_BASSE" && bullishRejection && buyRoomOK;
     const validRangeSell = rangeLocation === "BORNE_HAUTE" && bearishRejection && sellRoomOK;
     if ((signal === "ACHAT" && !validRangeBuy) ||
         (signal === "VENTE" && !validRangeSell)) {
       signal = "ATTENDRE";
+      rangeRejected = true;
       reasons = [
         "Range détecté : aucune entrée immédiate sans rejet confirmé de la borne et espace suffisant jusqu'à l'objectif.",
         ...reasons
@@ -1152,6 +1154,21 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
   const spreadToATR = i1.atr > 0 ? liveQuote.spread / i1.atr : null;
   const spreadOK = spreadToATR !== null && spreadToATR <= 0.20;
   const marketRegime = regimeAnalysis.regime;
+  const confirmationBlockers = [];
+  if (signal === "ATTENDRE") {
+    if (rangeRejected) {
+      confirmationBlockers.push("Veto de range : rejet de borne et espace jusqu'à l'objectif non réunis.");
+    } else if (Math.max(buyScore, sellScore) < CONFIG.EARLY_SCORE) {
+      confirmationBlockers.push("Score directionnel insuffisant : aucun côté n'atteint le seuil préliminaire de " + CONFIG.EARLY_SCORE + "/100.");
+    } else {
+      confirmationBlockers.push("Aucun avantage directionnel net : les conditions de sélection achat/vente ne sont pas réunies.");
+    }
+  } else {
+    if (score < settings.minScore) confirmationBlockers.push("Score " + score + "/100 inférieur au seuil de confirmation " + settings.minScore + "/100.");
+    if (!spreadOK) confirmationBlockers.push("Spread trop élevé par rapport à l'ATR M1 (maximum 0,20).");
+    if (!entryTriggerConfirmed) confirmationBlockers.push("Déclencheur M1 non confirmé : bougie directionnelle ou retest requis.");
+    if (!tradePlan.confirmed) confirmationBlockers.push("Plan de trade non validé : " + (tradePlan.reason || "structure insuffisante."));
+  }
 
   // A signal can only be labelled CONFIRMED when the technical score
   // and the deterministic risk checks both pass. No broker order is sent.
@@ -1168,7 +1185,11 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     buyRoomOK,
     sellRoomOK,
     entryTriggerConfirmed,
-    structuralPlanConfirmed: tradePlan.confirmed
+    structuralPlanConfirmed: tradePlan.confirmed,
+    scoreRequired: settings.minScore,
+    scorePass: score >= settings.minScore,
+    structuralPlanReason: tradePlan.reason || null,
+    confirmationBlockers
   };
 
   const alertLevel = signal === "ATTENDRE" ? "NONE" :
@@ -1187,6 +1208,13 @@ function analyzeSetup(m1, m5, m15, settings, liveQuote) {
     capital: settings.capital, lotSize: settings.lots, leverage: CONFIG.LEVERAGE,
     riskReward: Number(riskReward.toFixed(3)),
     riskChecks,
+    candidateScores: {
+      buy: buyScore,
+      sell: sellScore,
+      earlyThreshold: CONFIG.EARLY_SCORE,
+      confirmationThreshold: settings.minScore
+    },
+    confirmationBlockers,
     entryQuality: {
       confirmed: entryTriggerConfirmed,
       trigger: triggerDescription,
@@ -2344,6 +2372,9 @@ async function appendSignalHistory(env, signal, state) {
     stopPrice: signal.stopPrice ?? null,
     reasons: Array.isArray(signal.reasons) ? signal.reasons.slice(0, 6) : [],
     riskChecks: signal.riskChecks || null,
+    candidateScores: signal.candidateScores || null,
+    confirmationBlockers: signal.confirmationBlockers || [],
+    tradePlanReason: signal.tradePlan?.reason || null,
     dataQuality: signal.dataQuality || null
   };
   items.unshift(record);
