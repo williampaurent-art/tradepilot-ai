@@ -688,10 +688,14 @@ async function refreshSignalHistory(){
   root.innerHTML=items.map(item=>{
    const side=item.signal==="ACHAT"?"up":item.signal==="VENTE"?"down":"";
    const time=opsDate(item.timestamp);
-   const reason=Array.isArray(item.reasons)?item.reasons.slice(0,3).join(" · "):"";
+   const reason=Array.isArray(item.reasons)?item.reasons.slice(0,2).join(" · "):"";
    const risk=item.riskChecks||{};
+   const scores=item.candidateScores||{};
+   const blockers=Array.isArray(item.confirmationBlockers)?item.confirmationBlockers:[];
    const checks=["Spread "+(risk.spreadOK===true?"OK":risk.spreadOK===false?"refusé":"—"),"Déclencheur "+(risk.entryTriggerConfirmed===true?"OK":risk.entryTriggerConfirmed===false?"refusé":"—"),"Plan "+(risk.structuralPlanConfirmed===true?"OK":risk.structuralPlanConfirmed===false?"refusé":"—")].join(" · ");
-   return '<div class="history-row"><time>'+esc(time)+'</time><div><strong class="'+side+'">'+esc(item.signal||"—")+' · '+esc(String(item.score??"—"))+'/100</strong><small>'+esc(labels[item.state]||item.state||"ÉTAT INCONNU")+' · '+esc(item.alertLevel||"—")+'</small><div class="history-reasons">'+esc(reason||checks)+'</div></div><span class="history-state '+(item.alertSent?"ops-good":"")+'">'+(item.alertSent?"ENVOYÉ":"NON ENVOYÉ")+'</span></div>';
+   const scoreLine=Number.isFinite(Number(scores.buy))&&Number.isFinite(Number(scores.sell))?"Scores achat/vente : "+scores.buy+"/"+scores.sell+" · seuil initial "+(scores.earlyThreshold??45)+" · confirmation "+(scores.confirmationThreshold??"—"):"";
+   const diagnosis=[...blockers,scoreLine,item.tradePlanReason||""].filter(Boolean).join(" · ");
+   return '<div class="history-row"><time>'+esc(time)+'</time><div><strong class="'+side+'">'+esc(item.signal||"—")+' · '+esc(String(item.score??"—"))+'/100</strong><small>'+esc(labels[item.state]||item.state||"ÉTAT INCONNU")+' · '+esc(item.alertLevel||"—")+'</small><div class="history-reasons">'+esc(diagnosis||reason||checks)+'</div></div><span class="history-state '+(item.alertSent?"ops-good":"")+'">'+(item.alertSent?"ENVOYÉ":"NON ENVOYÉ")+'</span></div>';
   }).join("");
   $("signalHistoryMeta").textContent="Affichage des "+items.length+" dernières analyses. Conservation serveur : jusqu'à 500 décisions / 7 jours.";
  }catch(error){root.innerHTML='<div class="muted">Journal non disponible : '+esc(error?.message||"erreur réseau")+'. Vérifie que la dernière version du Worker est déployée.</div>';}
