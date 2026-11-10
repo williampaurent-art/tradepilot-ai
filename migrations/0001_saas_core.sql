@@ -99,3 +99,6 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_workspace ON subscriptions(workspac
 CREATE INDEX IF NOT EXISTS idx_broker_connections_workspace ON broker_connections(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_workspace_signals_time ON workspace_signal_events(workspace_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_workspace_time ON audit_events(workspace_id, created_at DESC);
+
+-- One personal workspace per account; protects concurrent first-login requests.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_owner_unique ON workspaces(owner_user_id);
