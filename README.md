@@ -63,3 +63,18 @@ Le schéma SaaS multi-espace (utilisateurs, workspaces, rôles, abonnements, dro
 - `GET /api/account` : vérifie un jeton d'accès Supabase (JWKS, ES256/RS256) et provisionne l'utilisateur, son espace personnel et son abonnement Free dans D1.
 - Configuration et commandes d'activation : [guide Supabase Auth + D1](docs/SUPABASE_D1_SETUP.md).
 - Cette fondation n'active pas encore les inscriptions dans l'interface : l'écran de connexion et l'isolation des routes/données historiques restent à réaliser avant toute ouverture publique.
+
+
+## TradePilot Strategy Builder
+
+Le Builder permet de décrire une stratégie en français, de générer un brouillon structuré avec Workers AI et de sauvegarder ses propres stratégies dans un espace utilisateur isolé.
+
+- `GET /api/auth-config` : configuration publique du client Supabase Auth.
+- `POST /api/strategy-interpret` : interprétation IA d'une stratégie en règles descriptives.
+- `GET /api/strategies` et `POST /api/strategies` : liste et création de brouillons protégés par JWT Supabase.
+- `DELETE /api/strategies/{id}` : suppression limitée au workspace authentifié.
+- Migration complémentaire : `migrations/0002_strategy_bots.sql`, à appliquer après `0001_saas_core.sql`.
+
+Configuration, migrations et limites : [Guide Strategy Builder](docs/STRATEGY_BUILDER_MVP.md).
+
+Le Builder reste en mode brouillon / alertes uniquement. Il ne génère ni n'exécute de code utilisateur et ne transmet aucun ordre réel.
