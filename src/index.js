@@ -5553,10 +5553,12 @@ async function handleStrategyBots(request, env, path) {
     }
 
     if (request.method === "POST" && path === "/api/strategies") {
-      const declaredLength = Number(request.headers.get("content-length") || 0);
-      if (declaredLength > 16000) return json({ ok: false, error: "Stratégie trop volumineuse." }, 413);
+      const rawBody = await request.text();
+      if (new TextEncoder().encode(rawBody).byteLength > 16000) {
+        return json({ ok: false, error: "Stratégie trop volumineuse." }, 413);
+      }
       let body;
-      try { body = await request.json(); }
+      try { body = JSON.parse(rawBody); }
       catch { return json({ ok: false, error: "Corps JSON invalide." }, 400); }
 
       const name = String(body?.name || "").trim().slice(0, 80);
