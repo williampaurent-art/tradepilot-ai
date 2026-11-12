@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0f17"><title>Créer un bot · TradePilot AI</title>
+<style>
+:root{--bg:#0b0f17;--panel:#121925;--panel2:#182233;--border:#263247;--text:#edf2fa;--muted:#8998ae;--green:#32d69a;--gold:#f5c96a;--blue:#6d9cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:980px;margin:auto;padding:22px}a{color:var(--green);text-decoration:none}.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;gap:12px}.brand{font-weight:800;font-size:20px}.muted,.help{color:var(--muted)}.muted{font-size:12px;margin-top:5px}
+h1{font-size:27px;margin:0 0 8px}.intro{color:var(--muted);line-height:1.6;margin-bottom:22px}.layout{display:grid;grid-template-columns:1.2fr .8fr;gap:18px}.card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;min-width:0}.card h2{font-size:16px;margin:0 0 18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field label{display:block;color:var(--muted);font-size:12px;margin-bottom:7px}input,select{width:100%;padding:12px;background:#0c121d;color:var(--text);border:1px solid var(--border);border-radius:9px;font:inherit}input:focus,select:focus{outline:1px solid var(--blue)}.help{font-size:11px;line-height:1.5;margin-top:6px}.wide{grid-column:1/-1}.checks{display:grid;grid-template-columns:1fr 1fr;gap:10px}.check{background:var(--panel2);padding:11px;border-radius:9px;color:var(--text);font-size:13px}.check input{width:auto;margin-right:7px;accent-color:var(--green)}
+button{border:0;border-radius:10px;padding:13px 17px;font-weight:750;cursor:pointer}.primary{background:var(--green);color:#07120e}.secondary{background:var(--panel2);border:1px solid var(--border);color:var(--text)}.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.summary{position:sticky;top:14px;height:max-content}.pill{display:inline-block;background:#12352d;color:var(--green);padding:7px 10px;border-radius:20px;font-size:11px;font-weight:700}.item{display:flex;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}.item span{color:var(--muted)}.item strong{text-align:right}.notice{margin-top:16px;padding:12px;border:1px solid #66532b;background:#241f14;color:#e7d7a7;border-radius:10px;font-size:12px;line-height:1.6}.message{font-size:12px;color:var(--green);margin-top:12px;min-height:18px}
+@media(max-width:760px){main{padding:15px}.layout{grid-template-columns:1fr}.summary{position:static}.grid{grid-template-columns:1fr}.wide{grid-column:auto}.top{align-items:flex-start}}
+</style></head>
+<body><main>
+<div class="top"><div><div class="brand">◈ TradePilot AI</div><div class="muted">Studio de création de stratégies</div></div><a href="/">← Retour au tableau de bord</a></div>
+<h1>Crée ton propre bot</h1>
+<p class="intro">Configure une stratégie en quelques étapes. Tu choisis le marché, le style, les indicateurs et le risque. TradePilot prépare ensuite une fiche de configuration que tu pourras tester avant toute connexion à un compte.</p>
+<div class="layout">
+<section class="card"><h2>1 · Identité et marché</h2><div class="grid">
+<div class="field"><label for="name">Nom du bot</label><input id="name" maxlength="40" value="Mon Gold Scalper" placeholder="Ex. Gold Scalper"></div>
+<div class="field"><label for="symbol">Marché</label><select id="symbol"><option>XAUUSD</option><option>EURUSD</option><option>GBPUSD</option><option>USDJPY</option><option>BTCUSD</option></select></div>
+<div class="field"><label for="style">Style de trading</label><select id="style"><option value="scalping">Scalping</option><option value="day">Day trading</option><option value="swing">Swing trading</option></select></div>
+<div class="field"><label for="timeframe">Unité d'entrée</label><select id="timeframe"><option>M1</option><option selected>M5</option><option>M15</option><option>H1</option><option>H4</option></select></div>
+</div>
+<h2 style="margin-top:25px">2 · Indicateurs de la stratégie</h2><div class="checks">
+<label class="check"><input type="checkbox" name="ind" value="EMA 9/21" checked> EMA 9 / 21</label>
+<label class="check"><input type="checkbox" name="ind" value="RSI 14" checked> RSI 14</label>
+<label class="check"><input type="checkbox" name="ind" value="MACD" checked> MACD</label>
+<label class="check"><input type="checkbox" name="ind" value="Bandes de Bollinger"> Bandes de Bollinger</label>
+<label class="check"><input type="checkbox" name="ind" value="ATR 14" checked> ATR 14</label>
+<label class="check"><input type="checkbox" name="ind" value="Structure / liquidité"> Structure / liquidité</label>
+</div>
+<h2 style="margin-top:25px">3 · Gestion du risque</h2><div class="grid">
+<div class="field"><label for="capital">Capital de référence ($)</label><input id="capital" type="number" min="1" value="1000"></div>
+<div class="field"><label for="risk">Risque par trade (%)</label><input id="risk" type="number" min="0.1" max="2" step="0.1" value="0.5"></div>
+<div class="field"><label for="maxpos">Positions simultanées max.</label><select id="maxpos"><option>1</option><option selected>2</option><option>3</option></select></div>
+<div class="field"><label for="daily">Perte journalière max. (%)</label><input id="daily" type="number" min="0.5" max="5" step="0.5" value="2"></div>
+<div class="field"><label for="mode">Mode de fonctionnement</label><select id="mode"><option value="signals">Signaux uniquement</option><option value="demo">Exécution démo (à connecter)</option></select><div class="help">Aucun ordre réel n'est envoyé depuis cette page.</div></div>
+<div class="field"><label for="direction">Sens autorisés</label><select id="direction"><option>Achats et ventes</option><option>Achats uniquement</option><option>Ventes uniquement</option></select></div>
+</div>
+<div class="actions"><button class="primary" id="generate">Générer ma configuration</button><button class="secondary" id="reset" type="button">Réinitialiser</button></div><div class="message" id="message" role="status"></div>
+</section>
+<aside class="card summary"><span class="pill">APERÇU DU BOT</span><h2 style="margin-top:15px" id="previewName">Mon Gold Scalper</h2>
+<div class="item"><span>Marché</span><strong id="pSymbol">XAUUSD</strong></div><div class="item"><span>Style / unité</span><strong id="pStyle">Scalping · M5</strong></div><div class="item"><span>Risque par trade</span><strong id="pRisk">5,00 $</strong></div><div class="item"><span>Positions max.</span><strong id="pMax">2</strong></div><div class="item"><span>Perte journalière</span><strong id="pDaily">20,00 $</strong></div><div class="item"><span>Indicateurs</span><strong id="pIndicators">5 sélectionnés</strong></div><div class="item"><span>Mode</span><strong id="pMode">Signaux uniquement</strong></div>
+<div class="notice">Les bots sont enregistrés dans Cloudflare KV sans inscription. Cette étape crée une stratégie structurée, pas encore un EA MT5 compilé. Aucun broker n’est connecté et aucun ordre réel n’est envoyé.</div>
+<div class="actions"><button class="secondary" id="download" type="button">Télécharger la configuration JSON</button></div></aside>
+</div></main>
+<script>
+const $=id=>document.getElementById(id);let config=null;
+function build(){const indicators=[...document.querySelectorAll('input[name="ind"]:checked')].map(x=>x.value);const capital=Number($('capital').value),risk=Number($('risk').value),daily=Number($('daily').value);
+if(!$('name').value.trim()||capital<=0||risk<0.1||risk>2||daily<0.5||daily>5||!indicators.length)throw Error('Vérifie le nom, le capital, les limites de risque et sélectionne au moins un indicateur.');
+return {name:$('name').value.trim(),symbol:$('symbol').value,style:$('style').value,timeframe:$('timeframe').value,indicators,capital,riskPercent:risk,riskAmount:Number((capital*risk/100).toFixed(2)),maxPositions:Number($('maxpos').value),dailyLossPercent:daily,dailyLossAmount:Number((capital*daily/100).toFixed(2)),mode:$('mode').value,direction:$('direction').value,liveTrading:false,createdAt:new Date().toISOString(),schemaVersion:1};}
+function render(){try{const c=build();$('previewName').textContent=c.name;$('pSymbol').textContent=c.symbol;$('pStyle').textContent=({scalping:'Scalping','day':'Day trading',swing:'Swing trading'})[c.style]+' · '+c.timeframe;$('pRisk').textContent=c.riskAmount.toFixed(2)+' $';$('pMax').textContent=c.maxPositions;$('pDaily').textContent=c.dailyLossAmount.toFixed(2)+' $';$('pIndicators').textContent=c.indicators.length+' sélectionnés';$('pMode').textContent=c.mode==='signals'?'Signaux uniquement':'Démo à connecter';return c}catch(e){return null}}
+document.querySelectorAll('input,select').forEach(x=>x.addEventListener('input',render));
+$('generate').onclick=async()=>{try{config=build();$('generate').disabled=true;$('message').textContent='Enregistrement du bot…';const response=await fetch('/api/bots',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(config)});const result=await response.json();if(!response.ok||!result.ok)throw new Error(result.error||'Création impossible.');config=result.bot;localStorage.setItem('tradepilot_custom_bot_v1',JSON.stringify(config));$('message').textContent='Bot créé dans TradePilot ! ID : '+config.id+' · Aucun ordre réel.';}catch(e){$('message').textContent=e.message;}finally{$('generate').disabled=false;}};
+$('download').onclick=()=>{config=render();if(!config){$('message').textContent='Corrige les paramètres avant le téléchargement.';return}const blob=new Blob([JSON.stringify(config,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='tradepilot-'+config.name.toLowerCase().replace(/[^a-z0-9]+/g,'-')+'.json';a.click();URL.revokeObjectURL(url);};
+$('reset').onclick=()=>{localStorage.removeItem('tradepilot_custom_bot_v1');location.reload()};
+try{const saved=JSON.parse(localStorage.getItem('tradepilot_custom_bot_v1')||'null');if(saved){$('name').value=saved.name;$('symbol').value=saved.symbol;$('style').value=saved.style;$('timeframe').value=saved.timeframe;$('capital').value=saved.capital;$('risk').value=saved.riskPercent;$('maxpos').value=String(saved.maxPositions);$('daily').value=saved.dailyLossPercent;$('mode').value=saved.mode;$('direction').value=saved.direction;document.querySelectorAll('input[name="ind"]').forEach(x=>x.checked=saved.indicators.includes(x.value));}}catch(e){}render();
+</script></body></html>
