@@ -382,6 +382,15 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
 <section id="strategyBuilder" class="strategy-builder section" aria-labelledby="builderTitle">
  <div class="sectionhead"><div><div class="exec-kicker">TRADEPILOT BUILDER</div><h2 id="builderTitle" style="font-size:22px;margin:4px 0">Crée ton robot avec tes mots</h2><div class="hint">Décris ta méthode en français. L'IA la transforme en règles structurées que tu peux relire avant de sauvegarder.</div></div><span class="exec-state closed">BROUILLON · SANS ORDRE RÉEL</span></div>
+ <div class="builder-panel" style="margin-bottom:14px">
+  <div class="sectionhead"><div><h2 style="font-size:14px;margin:0">Mon compte TradePilot</h2><div id="builderAuthStatus" class="hint">Vérification de la configuration Supabase…</div></div><span id="builderAuthBadge" class="exec-state closed">NON CONNECTÉ</span></div>
+  <div class="builder-grid" style="grid-template-columns:1fr 1fr;gap:9px">
+   <div class="builder-field"><label for="builderEmail">Adresse e-mail</label><input id="builderEmail" type="email" autocomplete="email" placeholder="toi@exemple.com"></div>
+   <div class="builder-field"><label for="builderPassword">Mot de passe</label><input id="builderPassword" type="password" autocomplete="current-password" minlength="8" placeholder="8 caractères minimum"></div>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="builderSignIn" type="button">Se connecter</button><button class="btn" id="builderSignUp" type="button">Créer un compte</button><button class="btn" id="builderSignOut" type="button" hidden>Se déconnecter</button></div>
+  <div class="hint" style="margin-top:8px">Les comptes utilisent Supabase Auth. Si la confirmation e-mail est activée, valide le lien reçu avant de te connecter.</div>
+ </div>
  <div class="builder-grid">
   <div class="builder-panel">
    <div class="builder-field"><label for="builderIdea">Décris ta stratégie</label><textarea id="builderIdea" maxlength="5000" placeholder="Exemple : Je veux trader le Gold en M5. Acheter quand le RSI passe sous 25 puis remonte, avec un croisement MACD haussier et une tendance M15 haussière. Vendre avec les conditions inverses. Sortir au signal opposé ou avec un stop loss."></textarea></div>
@@ -412,6 +421,7 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const UI_VERSION="2026.11.10.9";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15",chartWindow=90,chartLevelsOn=true,chartRangeOn=true,chartHoverIndex=null,chartGeometry=null;
@@ -1070,4 +1080,67 @@ $("builderReset")?.addEventListener("click",()=>{
  builderMessage("Formulaire réinitialisé.");
 });
 loadBuilderStrategies();
+
+let builderSupabaseReady=false;
+function setBuilderAuthState(session){
+ const signedIn=Boolean(session?.access_token);
+ const badge=$("builderAuthBadge"),status=$("builderAuthStatus"),out=$("builderSignOut");
+ if(badge){badge.textContent=signedIn?"CONNECTÉ":"NON CONNECTÉ";badge.classList.toggle("live",signedIn);badge.classList.toggle("closed",!signedIn);}
+ if(status)status.textContent=signedIn?"Session sécurisée active · "+(session.user?.email||"compte TradePilot"):"Connecte-toi pour sauvegarder tes stratégies dans ton espace personnel.";
+ if(out)out.hidden=!signedIn;
+ const signIn=$("builderSignIn"),signUp=$("builderSignUp");
+ if(signIn)signIn.disabled=signedIn;if(signUp)signUp.disabled=signedIn;
+ loadBuilderStrategies();
+}
+async function initBuilderAuth(){
+ try{
+  const configResponse=await fetch(API+"/api/auth-config");
+  const config=await configResponse.json();
+  if(!configResponse.ok||!config.ok)throw new Error(config.error||"Configuration Supabase indisponible.");
+  if(!window.supabase?.createClient)throw new Error("La bibliothèque Supabase n'a pas pu être chargée. Recharge la page.");
+  window.supabaseClient=window.supabase.createClient(config.supabaseUrl,config.anonKey,{
+   auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}
+  });
+  window.tradepilotAuth={getAccessToken:async()=>{
+   const result=await window.supabaseClient.auth.getSession();
+   return result?.data?.session?.access_token||null;
+  }};
+  builderSupabaseReady=true;
+  const current=await window.supabaseClient.auth.getSession();
+  setBuilderAuthState(current?.data?.session||null);
+  window.supabaseClient.auth.onAuthStateChange((_event,session)=>setBuilderAuthState(session));
+ }catch(error){
+  const status=$("builderAuthStatus");if(status)status.textContent=error.message||"Connexion indisponible.";
+  builderMessage("Configuration du compte à terminer : "+(error.message||"Supabase indisponible."),true);
+ }
+}
+async function builderAuthAction(action){
+ if(!builderSupabaseReady||!window.supabaseClient){builderMessage("La connexion Supabase n'est pas encore configurée.",true);return;}
+ const email=$("builderEmail").value.trim(),password=$("builderPassword").value;
+ if(!email||!password){builderMessage("Renseigne ton e-mail et ton mot de passe.",true);return;}
+ if(password.length<8){builderMessage("Le mot de passe doit contenir au moins 8 caractères.",true);return;}
+ const button=$(action==="signup"?"builderSignUp":"builderSignIn");button.disabled=true;
+ try{
+  const result=action==="signup"
+   ?await window.supabaseClient.auth.signUp({email,password})
+   :await window.supabaseClient.auth.signInWithPassword({email,password});
+  if(result.error)throw result.error;
+  if(action==="signup"&&!result.data?.session){
+   const status=$("builderAuthStatus");if(status)status.textContent="Compte créé. Vérifie ta boîte e-mail pour confirmer ton adresse, puis connecte-toi.";
+   builderMessage("Inscription créée. Un e-mail de confirmation peut être nécessaire avant la première connexion.");
+  }else{
+   setBuilderAuthState(result.data?.session||null);
+   builderMessage(action==="signup"?"Compte TradePilot créé.":"Connexion réussie.");
+  }
+ }catch(error){builderMessage(error.message||"Authentification impossible.",true);}
+ finally{button.disabled=false;}
+}
+$("builderSignIn")?.addEventListener("click",()=>builderAuthAction("signin"));
+$("builderSignUp")?.addEventListener("click",()=>builderAuthAction("signup"));
+$("builderSignOut")?.addEventListener("click",async()=>{
+ if(window.supabaseClient)await window.supabaseClient.auth.signOut();
+ setBuilderAuthState(null);builderMessage("Tu es déconnecté de TradePilot.");
+});
+initBuilderAuth();
+
 </script></body></html>
