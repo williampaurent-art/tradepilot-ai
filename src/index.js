@@ -5438,6 +5438,122 @@ async function provisionSaasAccount(user, env) {
   };
 }
 
+// --------------------------------------------------
+// STRATEGY BUILDER — DRAFTS ISOLATED BY AUTHENTICATED WORKSPACE
+// --------------------------------------------------
+
+async function handleStrategyBots(request, env, path) {
+  if (!env.DB) return json({ ok: false, error: "Base D1 non configurée." }, 503);
+  const auth = await verifySupabaseAccessToken(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+
+  try {
+    const account = await provisionSaasAccount(auth.user, env);
+    const workspaceId = account.workspace.id;
+
+    if (request.method === "GET" && path === "/api/strategies") {
+      const result = await env.DB.prepare(`
+        SELECT id, name, description, instrument, timeframe, config_json,
+               status, execution_mode, created_at, updated_at
+        FROM strategy_bots
+        WHERE workspace_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 100
+      `).bind(workspaceId).all();
+      return json({
+        ok: true,
+        strategies: (result.results || []).map(row => ({
+          id: row.id, name: row.name, description: row.description,
+          instrument: row.instrument, timeframe: row.timeframe,
+          config: JSON.parse(row.config_json), status: row.status,
+          executionMode: row.execution_mode,
+          createdAt: row.created_at, updatedAt: row.updated_at
+        }))
+      });
+    }
+
+    if (request.method === "POST" && path === "/api/strategies") {
+      const declaredLength = Number(request.headers.get("content-length") || 0);
+      if (declaredLength > 16000) return json({ ok: false, error: "Stratégie trop volumineuse." }, 413);
+      let body;
+      try { body = await request.json(); }
+      catch { return json({ ok: false, error: "Corps JSON invalide." }, 400); }
+
+      const name = String(body?.name || "").trim().slice(0, 80);
+      const description = String(body?.description || "").trim().slice(0, 2000);
+      const instrument = String(body?.instrument || "").toUpperCase();
+      const timeframe = String(body?.timeframe || "").toUpperCase();
+      const allowedInstruments = ["XAUUSD", "EURUSD", "GBPUSD", "BTCUSD"];
+      const allowedTimeframes = ["M1", "M5", "M15", "H1", "H4", "D1"];
+      if (!name || !description || !allowedInstruments.includes(instrument) ||
+          !allowedTimeframes.includes(timeframe)) {
+        return json({ ok: false, error: "Nom, description, instrument ou timeframe invalide." }, 400);
+      }
+
+      const inputConfig = body?.config && typeof body.config === "object" &&
+        !Array.isArray(body.config) ? body.config : {};
+      const entryConditions = Array.isArray(inputConfig.entryConditions)
+        ? inputConfig.entryConditions.slice(0, 12).map(v => String(v).slice(0, 240)) : [];
+      const exitConditions = Array.isArray(inputConfig.exitConditions)
+        ? inputConfig.exitConditions.slice(0, 12).map(v => String(v).slice(0, 240)) : [];
+      if (!entryConditions.length) {
+        return json({ ok: false, error: "Ajoute au moins une condition d'entrée." }, 400);
+      }
+      const rawRisk = Number(inputConfig.riskPercent);
+      const riskPercent = Number.isFinite(rawRisk) ? Math.min(5, Math.max(0.25, rawRisk)) : 1;
+      const config = {
+        schemaVersion: 1,
+        generatedBy: "TRADEPILOT_STRATEGY_BUILDER",
+        entryConditions,
+        exitConditions,
+        riskPercent,
+        stopLossEnabled: inputConfig.stopLossEnabled !== false,
+        execution: "ALERTS_ONLY",
+        liveTrading: false
+      };
+      const configJson = JSON.stringify(config);
+      if (configJson.length > 12000) return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
+
+      const id = createId("bot");
+      await env.DB.prepare(`
+        INSERT INTO strategy_bots
+          (id, workspace_id, name, description, instrument, timeframe, config_json, status, execution_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', 'ALERTS_ONLY')
+      `).bind(id, workspaceId, name, description, instrument, timeframe, configJson).run();
+
+      await env.DB.prepare(`
+        INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type, target_ref, metadata_json)
+        VALUES (?, ?, ?, 'STRATEGY_DRAFT_CREATED', ?, ?)
+      `).bind(createId("evt"), workspaceId, account.user.id, id,
+        JSON.stringify({ instrument, timeframe, execution: "ALERTS_ONLY" })).run();
+
+      return json({ ok: true, strategy: {
+        id, name, description, instrument, timeframe, config,
+        status: "DRAFT", executionMode: "ALERTS_ONLY", liveTrading: false
+      } }, 201);
+    }
+
+    const deleteMatch = path.match(/^\/api\/strategies\/([a-zA-Z0-9_-]{1,100})$/);
+    if (request.method === "DELETE" && deleteMatch) {
+      const id = deleteMatch[1];
+      const result = await env.DB.prepare(
+        "DELETE FROM strategy_bots WHERE id = ? AND workspace_id = ?"
+      ).bind(id, workspaceId).run();
+      if (!result.meta?.changes) return json({ ok: false, error: "Stratégie introuvable." }, 404);
+      await env.DB.prepare(`
+        INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type, target_ref)
+        VALUES (?, ?, ?, 'STRATEGY_DRAFT_DELETED', ?)
+      `).bind(createId("evt"), workspaceId, account.user.id, id).run();
+      return json({ ok: true, deleted: id });
+    }
+
+    return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+  } catch (error) {
+    const message = error?.message || "Erreur interne.";
+    return json({ ok: false, error: message }, message.includes("no such table") ? 503 : 500);
+  }
+}
+
 async function handleSaasAccount(request, env) {
   if (request.method !== "GET") {
     return json({ ok: false, error: "Méthode non prise en charge." }, 405);
@@ -5466,16 +5582,18 @@ export default {
         status: 204,
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
           "access-control-allow-headers": "content-type, authorization, x-test-key, x-telegram-test-key"
         }
       });
     }
 
+    const strategyDelete = /^\/api\/strategies\/[a-zA-Z0-9_-]{1,100}$/.test(path);
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat"))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/strategies")) &&
+      !(request.method === "DELETE" && strategyDelete)
     ) {
       return json({
         ok: false,
@@ -5494,6 +5612,10 @@ export default {
 
       if (path === "/api/account") {
         return await handleSaasAccount(request, env);
+      }
+
+      if (path === "/api/strategies" || /^\/api\/strategies\//.test(path)) {
+        return await handleStrategyBots(request, env, path);
       }
 
       if (path === "/x10") {
