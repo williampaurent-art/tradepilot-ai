@@ -5226,6 +5226,47 @@ async function handleCalendarKeyCheck(env) {
   }
 }
 
+// BOT BUILDER: public, no-signup strategy drafts stored in Cloudflare KV.
+function validateBotConfig(input) {
+  const symbols=["XAUUSD","EURUSD","GBPUSD","USDJPY","BTCUSD"];
+  const tfs=["M1","M5","M15","H1","H4"];
+  const styles=["scalping","day","swing"];
+  const allowed=["EMA 9/21","RSI 14","MACD","Bandes de Bollinger","ATR 14","Structure / liquidité"];
+  if(!input||typeof input!=="object"||Array.isArray(input)) throw new Error("Configuration JSON invalide.");
+  const c={name:String(input.name||"").trim().slice(0,40),symbol:String(input.symbol||"").toUpperCase(),timeframe:String(input.timeframe||"").toUpperCase(),style:String(input.style||""),capital:Number(input.capital),riskPercent:Number(input.riskPercent),dailyLossPercent:Number(input.dailyLossPercent),maxPositions:Number(input.maxPositions),indicators:Array.isArray(input.indicators)?input.indicators.filter(x=>allowed.includes(x)):[],mode:input.mode==="demo"?"demo":"signals",direction:["Achats uniquement","Ventes uniquement"].includes(input.direction)?input.direction:"Achats et ventes"};
+  if(!c.name||!symbols.includes(c.symbol)||!tfs.includes(c.timeframe)||!styles.includes(c.style)) throw new Error("Nom, marché, style ou timeframe invalide.");
+  if(!Number.isFinite(c.capital)||c.capital<1||c.capital>100000000) throw new Error("Capital invalide.");
+  if(!Number.isFinite(c.riskPercent)||c.riskPercent<0.1||c.riskPercent>2) throw new Error("Risque par trade invalide (0,1 à 2 %).");
+  if(!Number.isFinite(c.dailyLossPercent)||c.dailyLossPercent<0.5||c.dailyLossPercent>5) throw new Error("Perte journalière invalide (0,5 à 5 %).");
+  if(![1,2,3].includes(c.maxPositions)||!c.indicators.length) throw new Error("Choisis 1 à 3 positions maximum et au moins un indicateur.");
+  c.riskAmount=Number((c.capital*c.riskPercent/100).toFixed(2));
+  c.dailyLossAmount=Number((c.capital*c.dailyLossPercent/100).toFixed(2));
+  c.liveTrading=false;
+  return c;
+}
+function buildBotDraft(c,id) {
+  const trend=c.indicators.includes("EMA 9/21");
+  const momentum=c.indicators.includes("RSI 14")||c.indicators.includes("MACD");
+  const structure=c.indicators.includes("Structure / liquidité");
+  return {id,...c,status:"draft",engine:"TRADEPILOT_CUSTOM_STRATEGY_V1",
+    entryLogic:{buy:[...(trend?["Biais haussier EMA 9/21"]:[]),...(momentum?["Momentum acheteur à confirmer"]:[]),...(structure?["Structure/liquidité favorable"]:[]),"Validation sur bougie clôturée"],sell:[...(trend?["Biais baissier EMA 9/21"]:[]),...(momentum?["Momentum vendeur à confirmer"]:[]),...(structure?["Structure/liquidité favorable"]:[]),"Validation sur bougie clôturée"]},
+    riskRules:{riskPerTradePercent:c.riskPercent,riskAmount:c.riskAmount,maxOpenPositions:c.maxPositions,dailyLossLimit:c.dailyLossAmount,martingale:false,grid:false,liveTrading:false},
+    backtest:{status:"not_started",required:true},execution:"AUCUN ORDRE REEL",createdAt:new Date().toISOString()};
+}
+async function handleCreateBot(request,env) {
+  if(!env.TP_STATE) return json({ok:false,error:"Stockage KV indisponible."},503);
+  let input; try{input=await request.json();}catch{return json({ok:false,error:"JSON illisible."},400);}
+  try {
+    const c=validateBotConfig(input),id="bot_"+crypto.randomUUID(),bot=buildBotDraft(c,id);
+    await writeKV(env,"custom_bot:"+id,bot,30*86400);
+    let index=[]; try{const raw=await readKV(env,"custom_bots_index_v1");index=raw?JSON.parse(raw):[];}catch{}
+    if(!Array.isArray(index)) index=[];
+    index.unshift({id,name:c.name,symbol:c.symbol,createdAt:bot.createdAt});
+    await writeKV(env,"custom_bots_index_v1",index.slice(0,50),30*86400);
+    return json({ok:true,bot,storage:"cloudflare_kv",liveTrading:false});
+  } catch(e){return json({ok:false,error:e.message},400);}
+}
+
 async function handleHealth(env) {
   return json({
     ok: true,
@@ -5475,7 +5516,7 @@ export default {
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat"))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots"))
     ) {
       return json({
         ok: false,
@@ -5490,6 +5531,10 @@ export default {
 
       if (path === "/status") {
         return await handleStatus(env);
+      }
+
+      if (path === "/api/bots" && request.method === "POST") {
+        return await handleCreateBot(request, env);
       }
 
       if (path === "/api/account") {
