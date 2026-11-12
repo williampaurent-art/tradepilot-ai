@@ -285,10 +285,25 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
  body.focus-mode .mainnav a[href="#macro-view"]{display:none}
 }
 
+
+/* Strategy Builder MVP */
+.strategy-builder{position:relative;overflow:hidden;border:1px solid rgba(105,217,237,.28);border-radius:19px;padding:clamp(16px,2.2vw,24px);background:linear-gradient(145deg,rgba(15,31,50,.98),rgba(7,15,27,.99));box-shadow:0 18px 54px rgba(0,0,0,.24)}
+.strategy-builder .builder-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:14px}
+.builder-field{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.builder-field label{font-size:11px;color:#a8bbd1;font-weight:800}
+.builder-field input,.builder-field select,.builder-field textarea{width:100%;min-width:0;background:#071321;color:var(--text);border:1px solid rgba(137,169,209,.24);border-radius:10px;padding:11px;font:inherit;font-size:12px}
+.builder-field textarea{min-height:150px;resize:vertical;line-height:1.6}
+.builder-panel{border:1px solid rgba(137,169,209,.15);border-radius:13px;padding:14px;background:rgba(2,8,16,.32);min-width:0}
+.builder-condition{padding:9px 10px;margin:7px 0;border:1px solid rgba(105,217,237,.14);border-radius:9px;background:rgba(105,217,237,.045);font-size:12px;line-height:1.55}
+.builder-status{padding:10px 12px;border-radius:10px;background:rgba(105,217,237,.08);border:1px solid rgba(105,217,237,.18);font-size:11px;color:#c4d8e8;line-height:1.55}
+.builder-status.error{background:rgba(255,113,140,.08);border-color:rgba(255,113,140,.28);color:#ffc3ce}
+.builder-list-item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid rgba(137,169,209,.12);font-size:12px}
+.builder-list-item:last-child{border-bottom:0}
+@media(max-width:760px){.strategy-builder .builder-grid{grid-template-columns:1fr}.builder-field textarea{min-height:125px}}
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn" id="focusToggle" type="button" aria-pressed="false">◈ Vue cockpit</button><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
-<nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d’ensemble</a><a href="#marketAlert">Alertes marché</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Centre de contrôle</a></nav>
+<nav class="mainnav" aria-label="Navigation principale"><a href="#market-view">Vue d’ensemble</a><a href="#marketAlert">Alertes marché</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a><a href="#assistantPanel">Assistant IA</a><a href="#strategyBuilder">Créer mon bot</a><a href="#operations">Centre de contrôle</a></nav>
 <section class="executive" aria-label="Synthèse exécutive">
  <div class="exec-head"><div><div class="exec-kicker">XAUUSD · Gold market intelligence</div><div class="exec-title" id="execHeadline">Lecture du marché en cours</div><div class="exec-copy" id="execNarrative">TradePilot rassemble les données de marché, la structure technique et le contexte macro pour présenter une lecture claire. Chargement des dernières informations…</div></div><div id="execState" class="exec-state">ANALYSE EN ATTENTE</div></div>
  <div class="exec-grid">
@@ -365,6 +380,35 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
+<section id="strategyBuilder" class="strategy-builder section" aria-labelledby="builderTitle">
+ <div class="sectionhead"><div><div class="exec-kicker">TRADEPILOT BUILDER</div><h2 id="builderTitle" style="font-size:22px;margin:4px 0">Crée ton robot avec tes mots</h2><div class="hint">Décris ta méthode en français. L'IA la transforme en règles structurées que tu peux relire avant de sauvegarder.</div></div><span class="exec-state closed">BROUILLON · SANS ORDRE RÉEL</span></div>
+ <div class="builder-grid">
+  <div class="builder-panel">
+   <div class="builder-field"><label for="builderIdea">Décris ta stratégie</label><textarea id="builderIdea" maxlength="5000" placeholder="Exemple : Je veux trader le Gold en M5. Acheter quand le RSI passe sous 25 puis remonte, avec un croisement MACD haussier et une tendance M15 haussière. Vendre avec les conditions inverses. Sortir au signal opposé ou avec un stop loss."></textarea></div>
+   <div class="builder-grid" style="grid-template-columns:1fr 1fr;gap:9px">
+    <div class="builder-field"><label for="builderInstrument">Instrument</label><select id="builderInstrument"><option value="XAUUSD">XAUUSD · Gold</option><option value="EURUSD">EURUSD</option><option value="GBPUSD">GBPUSD</option><option value="BTCUSD">BTCUSD</option></select></div>
+    <div class="builder-field"><label for="builderTimeframe">Unité principale</label><select id="builderTimeframe"><option>M1</option><option selected>M5</option><option>M15</option><option>H1</option><option>H4</option><option>D1</option></select></div>
+   </div>
+   <div class="builder-grid" style="grid-template-columns:1fr 1fr;gap:9px">
+    <div class="builder-field"><label for="builderRisk">Risque par position (%)</label><input id="builderRisk" type="number" min=".25" max="5" step=".25" value="1"></div>
+    <div class="builder-field"><label for="builderStop">Stop Loss</label><select id="builderStop"><option value="true" selected>Activé</option><option value="false">Désactivé (risque élevé)</option></select></div>
+   </div>
+   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px"><button class="btn primary" id="builderAnalyze" type="button">✦ Construire avec l'IA</button><button class="btn" id="builderReset" type="button">Réinitialiser</button></div>
+   <div id="builderMessage" class="builder-status" role="status" style="margin-top:12px">L'analyse IA produit un brouillon. Elle ne lance aucun backtest et ne passe aucun ordre.</div>
+  </div>
+  <div class="builder-panel">
+   <div class="sectionhead"><h2 style="font-size:14px;margin:0">Prévisualisation du robot</h2><span id="builderPreviewState" class="hint">EN ATTENTE</span></div>
+   <div id="builderPreview" class="muted">Écris ta stratégie puis sélectionne « Construire avec l'IA ». Les conditions d'entrée, de sortie et les questions à clarifier apparaîtront ici.</div>
+   <button class="btn primary" id="builderSave" type="button" disabled style="width:100%;margin-top:14px">Enregistrer dans mon espace</button>
+   <div class="hint" style="margin-top:9px">Sauvegarde personnelle protégée par connexion. Les brouillons sont isolés par espace utilisateur.</div>
+  </div>
+ </div>
+ <div class="builder-panel" style="margin-top:14px">
+  <div class="sectionhead"><h2 style="font-size:14px;margin:0">Mes stratégies enregistrées</h2><button class="btn" id="builderReload" type="button">Actualiser</button></div>
+  <div id="builderSavedList" class="muted">La liste nécessite une session utilisateur connectée.</div>
+ </div>
+ <div class="hint" style="margin-top:12px">Sécurité : règles descriptives uniquement, aucun code utilisateur exécuté. Mode actuel : alertes / simulation uniquement, exécution réelle désactivée.</div>
+</section>
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
@@ -945,4 +989,85 @@ chartCanvas?.addEventListener("pointermove",e=>{
 });
 chartCanvas?.addEventListener("pointerleave",clearChartReadout);
 refresh();setInterval(refresh,60000);window.addEventListener("resize",()=>snapshot&&renderSelected());
+
+/* TRADEPILOT STRATEGY BUILDER */
+let builderDraft=null;
+const builderMessage=(message,isError=false)=>{const el=$("builderMessage");if(!el)return;el.textContent=message;el.classList.toggle("error",isError);};
+async function builderAccessToken(){
+ try{
+  if(typeof window.tradepilotAuth?.getAccessToken==="function")return await window.tradepilotAuth.getAccessToken();
+  if(typeof window.supabaseClient?.auth?.getSession==="function"){
+   const result=await window.supabaseClient.auth.getSession();
+   return result?.data?.session?.access_token||null;
+  }
+ }catch(error){console.warn("Session TradePilot indisponible",error);}
+ return null;
+}
+function renderBuilderDraft(d){
+ const root=$("builderPreview");if(!root)return;
+ const list=(title,items)=>'<div style="font-size:11px;font-weight:850;color:#9eb5ce;margin:12px 0 5px">'+title+'</div>'+
+  (items?.length?items.map(item=>'<div class="builder-condition">'+esc(item)+'</div>').join(""):'<div class="hint">Aucune règle proposée.</div>');
+ root.innerHTML='<div style="font-size:16px;font-weight:850;margin-bottom:5px">'+esc(d.name||"Ma stratégie")+'</div>'+
+  '<div class="hint">'+esc(d.summary||"Règles générées à partir de ta description.")+'</div>'+
+  list("CONDITIONS D’ENTRÉE",d.entryConditions)+
+  list("CONDITIONS DE SORTIE",d.exitConditions)+
+  (d.questions?.length?list("À PRÉCISER AVANT VALIDATION",d.questions):"")+
+  '<div class="builder-status" style="margin-top:10px">Risque indicatif : '+esc(d.riskPercent)+' % · Stop Loss : '+(d.stopLossEnabled?"activé":"désactivé")+' · Exécution : alertes uniquement</div>';
+ $("builderPreviewState").textContent="BROUILLON PRÊT";
+ $("builderSave").disabled=false;
+}
+$("builderAnalyze")?.addEventListener("click",async()=>{
+ const idea=$("builderIdea").value.trim();
+ if(idea.length<12){builderMessage("Décris ta stratégie plus précisément (12 caractères minimum).",true);return;}
+ const button=$("builderAnalyze");button.disabled=true;button.textContent="Analyse en cours…";builderMessage("TradePilot transforme ta description en règles structurées…");
+ try{
+  const response=await fetch(API+"/api/strategy-interpret",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({idea})});
+  const data=await response.json();
+  if(!response.ok||!data.ok)throw new Error(data.error||"L'analyse IA a échoué.");
+  builderDraft=data.strategy;
+  $("builderRisk").value=String(Math.max(.25,Math.min(5,Number(builderDraft.riskPercent)||1)));
+  $("builderStop").value=builderDraft.stopLossEnabled?"true":"false";
+  renderBuilderDraft(builderDraft);
+  builderMessage("Brouillon généré. Relis les conditions et les questions avant de l'enregistrer.");
+ }catch(error){builderMessage(error.message||"Erreur pendant la génération.",true);}
+ finally{button.disabled=false;button.textContent="✦ Construire avec l'IA";}
+});
+$("builderSave")?.addEventListener("click",async()=>{
+ if(!builderDraft){builderMessage("Génère d'abord une prévisualisation.",true);return;}
+ const token=await builderAccessToken();
+ if(!token){builderMessage("Connexion requise : l'API de sauvegarde est prête, mais cette interface n'a pas encore de session Supabase connectée. Aucun brouillon n'a été envoyé.",true);return;}
+ const button=$("builderSave");button.disabled=true;builderMessage("Enregistrement sécurisé dans ton espace…");
+ try{
+  const risk=Number($("builderRisk").value);
+  if(!Number.isFinite(risk)||risk<.25||risk>5)throw new Error("Le risque doit être compris entre 0,25 % et 5 %.");
+  const config={entryConditions:builderDraft.entryConditions,exitConditions:builderDraft.exitConditions,
+   riskPercent:risk,stopLossEnabled:$("builderStop").value==="true"};
+  const response=await fetch(API+"/api/strategies",{method:"POST",headers:{"content-type":"application/json","authorization":"Bearer "+token},
+   body:JSON.stringify({name:builderDraft.name||"Ma stratégie",description:$("builderIdea").value.trim(),
+    instrument:$("builderInstrument").value,timeframe:$("builderTimeframe").value,config})});
+  const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||"Sauvegarde impossible.");
+  builderMessage("Stratégie enregistrée dans ton espace. Elle reste en brouillon et n'envoie aucun ordre.");
+  await loadBuilderStrategies();
+ }catch(error){builderMessage(error.message||"Erreur de sauvegarde.",true);}
+ finally{button.disabled=false;}
+});
+async function loadBuilderStrategies(){
+ const root=$("builderSavedList");if(!root)return;
+ const token=await builderAccessToken();
+ if(!token){root.textContent="Connecte-toi à ton compte TradePilot pour retrouver tes stratégies sauvegardées.";return;}
+ try{
+  const response=await fetch(API+"/api/strategies",{headers:{"authorization":"Bearer "+token}});
+  const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||"Chargement impossible.");
+  if(!data.strategies?.length){root.textContent="Aucune stratégie enregistrée pour le moment.";return;}
+  root.innerHTML=data.strategies.map(item=>'<div class="builder-list-item"><div><strong>'+esc(item.name)+'</strong><div class="hint">'+esc(item.instrument)+' · '+esc(item.timeframe)+' · '+esc(item.status)+'</div></div><span class="hint">BROUILLON</span></div>').join("");
+ }catch(error){root.textContent=error.message||"Impossible de charger les stratégies.";}
+}
+$("builderReload")?.addEventListener("click",loadBuilderStrategies);
+$("builderReset")?.addEventListener("click",()=>{
+ $("builderIdea").value="";$("builderRisk").value="1";$("builderStop").value="true";
+ builderDraft=null;$("builderPreview").textContent="Écris ta stratégie puis sélectionne « Construire avec l'IA ».";
+ $("builderPreviewState").textContent="EN ATTENTE";$("builderSave").disabled=true;
+ builderMessage("Formulaire réinitialisé.");
+});
+loadBuilderStrategies();
 </script></body></html>
