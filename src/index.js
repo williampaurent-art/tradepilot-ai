@@ -5438,6 +5438,204 @@ async function provisionSaasAccount(user, env) {
   };
 }
 
+// --------------------------------------------------
+// STRATEGY BUILDER — DRAFTS ISOLATED BY AUTHENTICATED WORKSPACE
+// --------------------------------------------------
+
+function handleAuthConfig(env) {
+  const supabaseUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const anonKey = String(env.SUPABASE_ANON_KEY || "");
+  if (!supabaseUrl || !anonKey) {
+    return json({ ok: false, error: "Configuration Supabase incomplète : SUPABASE_URL et SUPABASE_ANON_KEY sont requis." }, 503);
+  }
+  return json({ ok: true, supabaseUrl, anonKey });
+}
+
+async function handleStrategyInterpret(request, env) {
+  if (!env.AI || typeof env.AI.run !== "function") {
+    return json({ ok: false, code: "AI_BINDING_MISSING", error: "Workers AI n'est pas disponible." }, 503);
+  }
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > 6000) {
+    return json({ ok: false, error: "Description trop longue (maximum 5 000 caractères)." }, 413);
+  }
+  let body;
+  try { body = JSON.parse(raw); } catch { return json({ ok: false, error: "JSON invalide." }, 400); }
+  const idea = String(body?.idea || "").trim();
+  if (idea.length < 12 || idea.length > 5000) {
+    return json({ ok: false, error: "Décris ta stratégie en 12 à 5 000 caractères." }, 400);
+  }
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  const ipHash = Array.from(new Uint8Array(digest)).slice(0, 12).map(x => x.toString(16).padStart(2, "0")).join("");
+  const rateKey = "strategy_builder_rate_" + ipHash;
+  if (env.TP_STATE) {
+    const previous = Number(await readKV(env, rateKey) || 0);
+    if (previous >= 8) return json({ ok: false, error: "Limite de création atteinte. Réessaie dans quelques minutes." }, 429);
+    await writeKV(env, rateKey, previous + 1, 600);
+  }
+
+  const system = `Tu es le compilateur de stratégies de TradePilot. Transforme la demande en règles de trading descriptives et vérifiables. Ne fournis jamais de code, script, expression exécutable, promesse de rendement ou levier. N'invente pas les paramètres absents : signale-les dans "questions". Réponds uniquement avec un objet JSON valide ayant exactement ces champs : {"name":string,"summary":string,"entryConditions":string[],"exitConditions":string[],"riskPercent":number,"stopLossEnabled":boolean,"questions":string[]}. Les conditions doivent être simples, testables sur bougies clôturées; précise les unités et seuils. Si l'utilisateur demande une stratégie dangereuse ou sans stop, conserve son intention mais indique clairement dans questions que le risque doit être confirmé. riskPercent doit être compris entre 0.25 et 5, défaut 1. Aucun ordre réel.`;
+  try {
+    const result = await env.AI.run("@cf/zai-org/glm-4.7-flash", {
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: idea }
+      ],
+      max_completion_tokens: 700,
+      temperature: 0.1,
+      reasoning_effort: "low",
+      chat_template_kwargs: { enable_thinking: false }
+    });
+    const choice = Array.isArray(result?.choices) ? result.choices[0] : null;
+    const rawAnswer = choice?.message?.content ?? choice?.text ??
+      result?.response ?? result?.output_text ?? result?.result?.response ?? "";
+    const answer = typeof rawAnswer === "string" ? rawAnswer :
+      Array.isArray(rawAnswer) ? rawAnswer.map(part => part?.text || "").join("") : "";
+    const jsonMatch = answer.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Le modèle n'a pas renvoyé de JSON exploitable.");
+    const parsed = JSON.parse(jsonMatch[0]);
+    const cleanList = value => Array.isArray(value)
+      ? value.slice(0, 10).map(item => String(item).replace(/[<>]/g, "").slice(0, 220)).filter(Boolean) : [];
+    const entryConditions = cleanList(parsed.entryConditions);
+    if (!entryConditions.length) throw new Error("Aucune condition d'entrée exploitable n'a été générée.");
+    const risk = Number(parsed.riskPercent);
+    return json({
+      ok: true,
+      strategy: {
+        name: String(parsed.name || "Ma stratégie IA").replace(/[<>]/g, "").slice(0, 80),
+        summary: String(parsed.summary || "").replace(/[<>]/g, "").slice(0, 500),
+        entryConditions,
+        exitConditions: cleanList(parsed.exitConditions),
+        riskPercent: Number.isFinite(risk) ? Math.min(5, Math.max(0.25, risk)) : 1,
+        stopLossEnabled: parsed.stopLossEnabled !== false,
+        questions: cleanList(parsed.questions),
+        status: "DRAFT",
+        execution: "ALERTS_ONLY",
+        liveTrading: false
+      },
+      model: "@cf/zai-org/glm-4.7-flash"
+    });
+  } catch (error) {
+    return json({ ok: false, code: "STRATEGY_INTERPRET_FAILED",
+      error: "Impossible de structurer la stratégie : " + assistantCleanText(error?.message || String(error), 180) }, 502);
+  }
+}
+
+async function handleStrategyBots(request, env, path) {
+  if (!env.DB) return json({ ok: false, error: "Base D1 non configurée." }, 503);
+  const auth = await verifySupabaseAccessToken(request, env);
+  if (!auth.ok) return json({ ok: false, error: auth.error }, auth.status);
+
+  try {
+    const account = await provisionSaasAccount(auth.user, env);
+    const workspaceId = account.workspace.id;
+
+    if (request.method === "GET" && path === "/api/strategies") {
+      const result = await env.DB.prepare(`
+        SELECT id, name, description, instrument, timeframe, config_json,
+               status, execution_mode, created_at, updated_at
+        FROM strategy_bots
+        WHERE workspace_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 100
+      `).bind(workspaceId).all();
+      return json({
+        ok: true,
+        strategies: (result.results || []).map(row => ({
+          id: row.id, name: row.name, description: row.description,
+          instrument: row.instrument, timeframe: row.timeframe,
+          config: JSON.parse(row.config_json), status: row.status,
+          executionMode: row.execution_mode,
+          createdAt: row.created_at, updatedAt: row.updated_at
+        }))
+      });
+    }
+
+    if (request.method === "POST" && path === "/api/strategies") {
+      const rawBody = await request.text();
+      if (new TextEncoder().encode(rawBody).byteLength > 16000) {
+        return json({ ok: false, error: "Stratégie trop volumineuse." }, 413);
+      }
+      let body;
+      try { body = JSON.parse(rawBody); }
+      catch { return json({ ok: false, error: "Corps JSON invalide." }, 400); }
+
+      const name = String(body?.name || "").trim().slice(0, 80);
+      const description = String(body?.description || "").trim().slice(0, 2000);
+      const instrument = String(body?.instrument || "").toUpperCase();
+      const timeframe = String(body?.timeframe || "").toUpperCase();
+      const allowedInstruments = ["XAUUSD", "EURUSD", "GBPUSD", "BTCUSD"];
+      const allowedTimeframes = ["M1", "M5", "M15", "H1", "H4", "D1"];
+      if (!name || !description || !allowedInstruments.includes(instrument) ||
+          !allowedTimeframes.includes(timeframe)) {
+        return json({ ok: false, error: "Nom, description, instrument ou timeframe invalide." }, 400);
+      }
+
+      const inputConfig = body?.config && typeof body.config === "object" &&
+        !Array.isArray(body.config) ? body.config : {};
+      const entryConditions = Array.isArray(inputConfig.entryConditions)
+        ? inputConfig.entryConditions.slice(0, 12).map(v => String(v).slice(0, 240)) : [];
+      const exitConditions = Array.isArray(inputConfig.exitConditions)
+        ? inputConfig.exitConditions.slice(0, 12).map(v => String(v).slice(0, 240)) : [];
+      if (!entryConditions.length) {
+        return json({ ok: false, error: "Ajoute au moins une condition d'entrée." }, 400);
+      }
+      const rawRisk = Number(inputConfig.riskPercent);
+      const riskPercent = Number.isFinite(rawRisk) ? Math.min(5, Math.max(0.25, rawRisk)) : 1;
+      const config = {
+        schemaVersion: 1,
+        generatedBy: "TRADEPILOT_STRATEGY_BUILDER",
+        entryConditions,
+        exitConditions,
+        riskPercent,
+        stopLossEnabled: inputConfig.stopLossEnabled !== false,
+        execution: "ALERTS_ONLY",
+        liveTrading: false
+      };
+      const configJson = JSON.stringify(config);
+      if (configJson.length > 12000) return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
+
+      const id = createId("bot");
+      await env.DB.prepare(`
+        INSERT INTO strategy_bots
+          (id, workspace_id, name, description, instrument, timeframe, config_json, status, execution_mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'DRAFT', 'ALERTS_ONLY')
+      `).bind(id, workspaceId, name, description, instrument, timeframe, configJson).run();
+
+      await env.DB.prepare(`
+        INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type, target_ref, metadata_json)
+        VALUES (?, ?, ?, 'STRATEGY_DRAFT_CREATED', ?, ?)
+      `).bind(createId("evt"), workspaceId, account.user.id, id,
+        JSON.stringify({ instrument, timeframe, execution: "ALERTS_ONLY" })).run();
+
+      return json({ ok: true, strategy: {
+        id, name, description, instrument, timeframe, config,
+        status: "DRAFT", executionMode: "ALERTS_ONLY", liveTrading: false
+      } }, 201);
+    }
+
+    const deleteMatch = path.match(/^\/api\/strategies\/([a-zA-Z0-9_-]{1,100})$/);
+    if (request.method === "DELETE" && deleteMatch) {
+      const id = deleteMatch[1];
+      const result = await env.DB.prepare(
+        "DELETE FROM strategy_bots WHERE id = ? AND workspace_id = ?"
+      ).bind(id, workspaceId).run();
+      if (!result.meta?.changes) return json({ ok: false, error: "Stratégie introuvable." }, 404);
+      await env.DB.prepare(`
+        INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type, target_ref)
+        VALUES (?, ?, ?, 'STRATEGY_DRAFT_DELETED', ?)
+      `).bind(createId("evt"), workspaceId, account.user.id, id).run();
+      return json({ ok: true, deleted: id });
+    }
+
+    return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+  } catch (error) {
+    const message = error?.message || "Erreur interne.";
+    return json({ ok: false, error: message }, message.includes("no such table") ? 503 : 500);
+  }
+}
+
 async function handleSaasAccount(request, env) {
   if (request.method !== "GET") {
     return json({ ok: false, error: "Méthode non prise en charge." }, 405);
@@ -5466,16 +5664,18 @@ export default {
         status: 204,
         headers: {
           "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
+          "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
           "access-control-allow-headers": "content-type, authorization, x-test-key, x-telegram-test-key"
         }
       });
     }
 
+    const strategyDelete = /^\/api\/strategies\/[a-zA-Z0-9_-]{1,100}$/.test(path);
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat"))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/strategies" || path === "/api/strategy-interpret")) &&
+      !(request.method === "DELETE" && strategyDelete)
     ) {
       return json({
         ok: false,
@@ -5494,6 +5694,19 @@ export default {
 
       if (path === "/api/account") {
         return await handleSaasAccount(request, env);
+      }
+
+      if (path === "/api/auth-config") {
+        if (request.method !== "GET") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+        return handleAuthConfig(env);
+      }
+
+      if (path === "/api/strategy-interpret") {
+        return await handleStrategyInterpret(request, env);
+      }
+
+      if (path === "/api/strategies" || /^\/api\/strategies\//.test(path)) {
+        return await handleStrategyBots(request, env, path);
       }
 
       if (path === "/x10") {

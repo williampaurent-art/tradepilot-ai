@@ -49,6 +49,12 @@ npx wrangler secret put SUPABASE_URL
 
 Saisir l'URL du projet Supabase, par exemple https://xxxx.supabase.co. Cette valeur est utilisée pour retrouver les clés publiques et vérifier l'émetteur JWT. Aucune clé service_role n'est requise par ce mécanisme.
 
+Pour activer l'écran de connexion du Strategy Builder, définir également la clé anon/publishable (jamais `service_role`) :
+
+```bash
+npx wrangler secret put SUPABASE_ANON_KEY
+```
+
 Puis déployer :
 
 ```bash
@@ -71,5 +77,5 @@ La réponse doit contenir l'utilisateur, son espace, son rôle propriétaire et 
 - Le premier appel crée ou retrouve l'utilisateur, son espace personnel, son rôle owner et son abonnement Free.
 - Le provisioning est conçu pour supporter les appels simultanés.
 - Le tableau de bord historique et les journaux globaux existants ne sont pas encore convertis en données isolées par espace. Ne pas ouvrir l'inscription publique ni commercialiser des espaces partagés avant d'avoir migré toutes les routes privées et les données Edge vers D1 avec contrôle d'appartenance.
-- Le front-end n'a pas encore d'écran d'inscription/connexion : il faut connecter le client Supabase au site et lui faire appeler /api/account avec l'access token.
+- Le Strategy Builder ajoute un premier écran d'inscription/connexion e-mail et utilise l'access token Supabase pour ses API privées. Il requiert aussi la clé publique `SUPABASE_ANON_KEY` côté Worker; voir [le guide Strategy Builder](STRATEGY_BUILDER_MVP.md).
 - Aucun paiement, aucune clé broker et aucun ordre réel ne sont activés.
