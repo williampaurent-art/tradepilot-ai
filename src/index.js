@@ -5442,6 +5442,15 @@ async function provisionSaasAccount(user, env) {
 // STRATEGY BUILDER — DRAFTS ISOLATED BY AUTHENTICATED WORKSPACE
 // --------------------------------------------------
 
+function handleAuthConfig(env) {
+  const supabaseUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const anonKey = String(env.SUPABASE_ANON_KEY || "");
+  if (!supabaseUrl || !anonKey) {
+    return json({ ok: false, error: "Configuration Supabase incomplète : SUPABASE_URL et SUPABASE_ANON_KEY sont requis." }, 503);
+  }
+  return json({ ok: true, supabaseUrl, anonKey });
+}
+
 async function handleStrategyInterpret(request, env) {
   if (!env.AI || typeof env.AI.run !== "function") {
     return json({ ok: false, code: "AI_BINDING_MISSING", error: "Workers AI n'est pas disponible." }, 503);
@@ -5683,6 +5692,11 @@ export default {
 
       if (path === "/api/account") {
         return await handleSaasAccount(request, env);
+      }
+
+      if (path === "/api/auth-config") {
+        if (request.method !== "GET") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+        return handleAuthConfig(env);
       }
 
       if (path === "/api/strategy-interpret") {
