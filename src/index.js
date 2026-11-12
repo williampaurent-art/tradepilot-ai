@@ -5589,6 +5589,12 @@ export default {
         return await handleTelegramTest(request, env);
       }
 
+      // Serve static frontend assets (e.g. /builder.html) through Cloudflare Assets.
+      if (request.method === "GET" && env.ASSETS) {
+        const assetResponse = await env.ASSETS.fetch(request);
+        if (assetResponse.status !== 404) return assetResponse;
+      }
+
       return json({
         ok: false,
         error: "Route inconnue.",
