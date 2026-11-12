@@ -5442,6 +5442,77 @@ async function provisionSaasAccount(user, env) {
 // STRATEGY BUILDER — DRAFTS ISOLATED BY AUTHENTICATED WORKSPACE
 // --------------------------------------------------
 
+async function handleStrategyInterpret(request, env) {
+  if (!env.AI || typeof env.AI.run !== "function") {
+    return json({ ok: false, code: "AI_BINDING_MISSING", error: "Workers AI n'est pas disponible." }, 503);
+  }
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > 6000) {
+    return json({ ok: false, error: "Description trop longue (maximum 5 000 caractères)." }, 413);
+  }
+  let body;
+  try { body = JSON.parse(raw); } catch { return json({ ok: false, error: "JSON invalide." }, 400); }
+  const idea = String(body?.idea || "").trim();
+  if (idea.length < 12 || idea.length > 5000) {
+    return json({ ok: false, error: "Décris ta stratégie en 12 à 5 000 caractères." }, 400);
+  }
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
+  const ipHash = Array.from(new Uint8Array(digest)).slice(0, 12).map(x => x.toString(16).padStart(2, "0")).join("");
+  const rateKey = "strategy_builder_rate_" + ipHash;
+  if (env.TP_STATE) {
+    const previous = Number(await readKV(env, rateKey) || 0);
+    if (previous >= 8) return json({ ok: false, error: "Limite de création atteinte. Réessaie dans quelques minutes." }, 429);
+    await writeKV(env, rateKey, previous + 1, 600);
+  }
+
+  const system = `Tu es le compilateur de stratégies de TradePilot. Transforme la demande en règles de trading descriptives et vérifiables. Ne fournis jamais de code, script, expression exécutable, promesse de rendement ou levier. N'invente pas les paramètres absents : signale-les dans "questions". Réponds uniquement avec un objet JSON valide ayant exactement ces champs : {"name":string,"summary":string,"entryConditions":string[],"exitConditions":string[],"riskPercent":number,"stopLossEnabled":boolean,"questions":string[]}. Les conditions doivent être simples, testables sur bougies clôturées; précise les unités et seuils. Si l'utilisateur demande une stratégie dangereuse ou sans stop, conserve son intention mais indique clairement dans questions que le risque doit être confirmé. riskPercent doit être compris entre 0.25 et 5, défaut 1. Aucun ordre réel.`;
+  try {
+    const result = await env.AI.run("@cf/zai-org/glm-4.7-flash", {
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: idea }
+      ],
+      max_completion_tokens: 700,
+      temperature: 0.1,
+      reasoning_effort: "low",
+      chat_template_kwargs: { enable_thinking: false }
+    });
+    const choice = Array.isArray(result?.choices) ? result.choices[0] : null;
+    const rawAnswer = choice?.message?.content ?? choice?.text ??
+      result?.response ?? result?.output_text ?? result?.result?.response ?? "";
+    const answer = typeof rawAnswer === "string" ? rawAnswer :
+      Array.isArray(rawAnswer) ? rawAnswer.map(part => part?.text || "").join("") : "";
+    const jsonMatch = answer.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("Le modèle n'a pas renvoyé de JSON exploitable.");
+    const parsed = JSON.parse(jsonMatch[0]);
+    const cleanList = value => Array.isArray(value)
+      ? value.slice(0, 10).map(item => String(item).replace(/[<>]/g, "").slice(0, 220)).filter(Boolean) : [];
+    const entryConditions = cleanList(parsed.entryConditions);
+    if (!entryConditions.length) throw new Error("Aucune condition d'entrée exploitable n'a été générée.");
+    const risk = Number(parsed.riskPercent);
+    return json({
+      ok: true,
+      strategy: {
+        name: String(parsed.name || "Ma stratégie IA").replace(/[<>]/g, "").slice(0, 80),
+        summary: String(parsed.summary || "").replace(/[<>]/g, "").slice(0, 500),
+        entryConditions,
+        exitConditions: cleanList(parsed.exitConditions),
+        riskPercent: Number.isFinite(risk) ? Math.min(5, Math.max(0.25, risk)) : 1,
+        stopLossEnabled: parsed.stopLossEnabled !== false,
+        questions: cleanList(parsed.questions),
+        status: "DRAFT",
+        execution: "ALERTS_ONLY",
+        liveTrading: false
+      },
+      model: "@cf/zai-org/glm-4.7-flash"
+    });
+  } catch (error) {
+    return json({ ok: false, code: "STRATEGY_INTERPRET_FAILED",
+      error: "Impossible de structurer la stratégie : " + assistantCleanText(error?.message || String(error), 180) }, 502);
+  }
+}
+
 async function handleStrategyBots(request, env, path) {
   if (!env.DB) return json({ ok: false, error: "Base D1 non configurée." }, 503);
   const auth = await verifySupabaseAccessToken(request, env);
@@ -5592,7 +5663,7 @@ export default {
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/strategies")) &&
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/strategies" || path === "/api/strategy-interpret")) &&
       !(request.method === "DELETE" && strategyDelete)
     ) {
       return json({
@@ -5612,6 +5683,10 @@ export default {
 
       if (path === "/api/account") {
         return await handleSaasAccount(request, env);
+      }
+
+      if (path === "/api/strategy-interpret") {
+        return await handleStrategyInterpret(request, env);
       }
 
       if (path === "/api/strategies" || /^\/api\/strategies\//.test(path)) {
