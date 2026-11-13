@@ -5253,6 +5253,181 @@ function buildBotDraft(c,id) {
     riskRules:{riskPerTradePercent:c.riskPercent,riskAmount:c.riskAmount,maxOpenPositions:c.maxPositions,dailyLossLimit:c.dailyLossAmount,martingale:false,grid:false,liveTrading:false},
     backtest:{status:"not_started",required:true},execution:"AUCUN ORDRE REEL",createdAt:new Date().toISOString()};
 }
+
+function evaluateConfiguredBot(c, bars, quote) {
+  const tf = TIMEFRAMES[c.timeframe];
+  const current = getIndicators(bars);
+  const previous = getIndicators(bars.slice(0, -1));
+  const last = bars[bars.length - 1];
+  const prior = bars[bars.length - 2];
+  const selected = new Set(c.indicators);
+  let buyScore = 0, sellScore = 0;
+  const buyReasons = [], sellReasons = [], neutralReasons = [];
+  const add = (side, points, reason) => {
+    if (side === "BUY") { buyScore += points; buyReasons.push(reason); }
+    else { sellScore += points; sellReasons.push(reason); }
+  };
+
+  if (selected.has("EMA 9/21")) {
+    const crossedUp = previous.ema9 !== null && previous.ema21 !== null &&
+      previous.ema9 <= previous.ema21 && current.ema9 > current.ema21;
+    const crossedDown = previous.ema9 !== null && previous.ema21 !== null &&
+      previous.ema9 >= previous.ema21 && current.ema9 < current.ema21;
+    if (crossedUp && last.close > current.ema9) add("BUY", 38, "Croisement haussier EMA 9/21 confirmé à la clôture.");
+    else if (crossedDown && last.close < current.ema9) add("SELL", 38, "Croisement baissier EMA 9/21 confirmé à la clôture.");
+    else if (current.ema9 > current.ema21 && last.close > current.ema9) add("BUY", 24, "EMA 9 au-dessus de l'EMA 21 et clôture au-dessus de l'EMA 9.");
+    else if (current.ema9 < current.ema21 && last.close < current.ema9) add("SELL", 24, "EMA 9 sous l'EMA 21 et clôture sous l'EMA 9.");
+    else neutralReasons.push("EMA 9/21 : alignement directionnel non confirmé.");
+  }
+
+  if (selected.has("RSI 14")) {
+    if (current.rsi !== null && previous.rsi !== null) {
+      if (current.rsi >= 52 && current.rsi <= 70 && current.rsi > previous.rsi) {
+        add("BUY", 22, "RSI 14 au-dessus de 52 et en progression.");
+      } else if (current.rsi <= 48 && current.rsi >= 30 && current.rsi < previous.rsi) {
+        add("SELL", 22, "RSI 14 sous 48 et en baisse.");
+      } else if (current.rsi > 75) neutralReasons.push("RSI en surachat : achat tardif non confirmé.");
+      else if (current.rsi < 25) neutralReasons.push("RSI en survente : vente tardive non confirmée.");
+      else neutralReasons.push("RSI 14 : momentum directionnel insuffisant.");
+    }
+  }
+
+  if (selected.has("MACD")) {
+    const nowHist = current.macd?.histogram, oldHist = previous.macd?.histogram;
+    const oldPrevious = getIndicators(bars.slice(0, -2)).macd?.histogram;
+    if (Number.isFinite(nowHist) && Number.isFinite(oldHist)) {
+      if (nowHist > 0 && nowHist > oldHist) add("BUY", oldHist <= 0 ? 34 : 24, "Histogramme MACD positif et en progression.");
+      else if (nowHist < 0 && nowHist < oldHist) add("SELL", oldHist >= 0 ? 34 : 24, "Histogramme MACD négatif et en accélération.");
+      else neutralReasons.push("MACD : histogramme sans accélération directionnelle.");
+      if (Number.isFinite(oldPrevious) && nowHist > 0 && oldHist <= 0 && oldPrevious <= 0) {
+        buyReasons.push("Passage du MACD en territoire positif.");
+      }
+      if (Number.isFinite(oldPrevious) && nowHist < 0 && oldHist >= 0 && oldPrevious >= 0) {
+        sellReasons.push("Passage du MACD en territoire négatif.");
+      }
+    }
+  }
+
+  if (selected.has("Bandes de Bollinger")) {
+    const bb = current.bollinger, prevBB = previous.bollinger;
+    if (bb.middle !== null && prevBB.middle !== null) {
+      if (prior.close <= prevBB.middle && last.close > bb.middle && last.close < bb.upper) {
+        add("BUY", 24, "Clôture repassée au-dessus de la médiane de Bollinger.");
+      } else if (prior.close >= prevBB.middle && last.close < bb.middle && last.close > bb.lower) {
+        add("SELL", 24, "Clôture repassée sous la médiane de Bollinger.");
+      } else neutralReasons.push("Bollinger : pas de franchissement confirmé de la médiane.");
+    }
+  }
+
+  if (selected.has("Structure / liquidité")) {
+    const reference = bars.slice(-21, -1);
+    const high = Math.max(...reference.map(x => x.high));
+    const low = Math.min(...reference.map(x => x.low));
+    if (last.close > high && prior.close <= high) add("BUY", 42, "Cassure haussière de la structure des 20 bougies précédentes.");
+    else if (last.close < low && prior.close >= low) add("SELL", 42, "Cassure baissière de la structure des 20 bougies précédentes.");
+    else neutralReasons.push("Structure : aucune cassure des 20 dernières bougies.");
+  }
+
+  const atr = current.atr;
+  const atrPercent = Number.isFinite(atr) && quote.mid > 0 ? atr / quote.mid * 100 : null;
+  const volatilityOK = Number.isFinite(atr) && atr > 0 &&
+    Number.isFinite(atrPercent) && atrPercent >= 0.003 && atrPercent <= 0.35;
+  if (selected.has("ATR 14")) {
+    if (volatilityOK) neutralReasons.push("ATR 14 : volatilité exploitable, utilisé comme filtre et pour le dimensionnement des niveaux.");
+    else neutralReasons.push("ATR 14 : volatilité trop faible, excessive ou indisponible.");
+  }
+  if (!volatilityOK) {
+    buyScore = 0;
+    sellScore = 0;
+  }
+
+  if (c.direction === "Achats uniquement") sellScore = 0;
+  if (c.direction === "Ventes uniquement") buyScore = 0;
+  buyScore = Math.max(0, Math.min(100, Math.round(buyScore)));
+  sellScore = Math.max(0, Math.min(100, Math.round(sellScore)));
+
+  const threshold = 60;
+  let signal = "ATTENDRE", score = Math.max(buyScore, sellScore), side = null;
+  if (buyScore >= threshold && buyScore > sellScore) { signal = "ACHAT"; side = "BUY"; score = buyScore; }
+  else if (sellScore >= threshold && sellScore > buyScore) { signal = "VENTE"; side = "SELL"; score = sellScore; }
+
+  const entry = side === "BUY" ? quote.ask : side === "SELL" ? quote.bid : quote.mid;
+  const stopMultiplier = c.style === "scalping" ? 1.25 : c.style === "day" ? 1.75 : 2.25;
+  const stopDistance = volatilityOK ? Math.max(atr * stopMultiplier, quote.spread * 2) : null;
+  const targetDistance = Number.isFinite(stopDistance) ? stopDistance * 1.8 : null;
+  const stopLoss = side && Number.isFinite(stopDistance)
+    ? Number((side === "BUY" ? entry - stopDistance : entry + stopDistance).toFixed(2)) : null;
+  const takeProfit = side && Number.isFinite(targetDistance)
+    ? Number((side === "BUY" ? entry + targetDistance : entry - targetDistance).toFixed(2)) : null;
+
+  if (side && (!Number.isFinite(stopLoss) || !Number.isFinite(takeProfit))) {
+    signal = "ATTENDRE"; side = null; score = Math.max(buyScore, sellScore);
+  }
+
+  const reasons = signal === "ACHAT" ? buyReasons : signal === "VENTE" ? sellReasons : [
+    "Aucune combinaison des indicateurs sélectionnés n'atteint le seuil de confirmation de 60/100.",
+    ...neutralReasons
+  ];
+  return {
+    ok: true, instrument: CONFIG.SYMBOL, timeframe: c.timeframe,
+    signal, side, score, threshold,
+    entry: Number(entry.toFixed(2)), stopLoss, takeProfit,
+    stopDistance: Number.isFinite(stopDistance) ? Number(stopDistance.toFixed(2)) : null,
+    targetDistance: Number.isFinite(targetDistance) ? Number(targetDistance.toFixed(2)) : null,
+    riskReward: Number.isFinite(targetDistance) && Number.isFinite(stopDistance)
+      ? Number((targetDistance / stopDistance).toFixed(2)) : null,
+    indicators: c.indicators, indicatorValues: {
+      ema9: current.ema9, ema21: current.ema21, rsi14: current.rsi,
+      macdHistogram: current.macd?.histogram, bollinger: current.bollinger,
+      atr14: current.atr, atrPercent: Number.isFinite(atrPercent) ? Number(atrPercent.toFixed(4)) : null
+    },
+    reasons, neutralReasons, market: {
+      bid: quote.bid, ask: quote.ask, spread: quote.spread,
+      quoteTimestamp: quote.timestamp, quoteAgeSeconds: quote.quoteAgeSeconds,
+      lastClosedCandleAt: new Date(last.time + tf.ms).toISOString(),
+      source: quote.source
+    },
+    risk: {
+      capitalReference: c.capital, riskPercent: c.riskPercent,
+      riskAmount: c.riskAmount, dailyLossLimit: c.dailyLossAmount,
+      note: "Le risque monétaire est indicatif. La taille de lot n'est pas calculée sans spécification contractuelle vérifiée du broker."
+    },
+    execution: "SIGNAUX UNIQUEMENT · AUCUN ORDRE REEL",
+    generatedAt: new Date().toISOString()
+  };
+}
+
+async function handleBotAnalyze(request) {
+  if (Number(request.headers.get("content-length") || 0) > 12000) {
+    return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
+  }
+  let input;
+  try { input = await request.json(); }
+  catch { return json({ ok: false, error: "Configuration JSON illisible." }, 400); }
+  let config;
+  try { config = validateBotConfig(input); }
+  catch (error) { return json({ ok: false, error: error.message }, 400); }
+
+  try {
+    const [bars, quote] = await Promise.all([
+      fetchCandles(config.timeframe, 220), fetchLiveQuote()
+    ]);
+    const quality = inspectDataQuality(bars, config.timeframe);
+    if (!quality.ok) {
+      return json({ ok: false, error: "Données de marché insuffisamment fraîches ou continues.", dataQuality: quality }, 503);
+    }
+    const analysis = evaluateConfiguredBot(config, bars, quote);
+    return json({
+      ...analysis,
+      dataQuality: quality,
+      bot: { name: config.name, style: config.style, timeframe: config.timeframe },
+      note: "Signal calculé à partir des indicateurs choisis et de bougies clôturées. Score heuristique, non une probabilité de gain. Validation historique et conditions broker non garanties."
+    });
+  } catch (error) {
+    return json({ ok: false, error: error.message, instrument: CONFIG.SYMBOL }, 503);
+  }
+}
+
 async function handleBotMarket(request) {
   const url = new URL(request.url);
   const timeframe = String(url.searchParams.get("timeframe") || "M5").toUpperCase();
@@ -5609,7 +5784,7 @@ export default {
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots"))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze"))
     ) {
       return json({
         ok: false,
@@ -5626,7 +5801,7 @@ export default {
         return await handleStatus(env);
       }
 
-      if (path === "/api/bot-market" && request.method === "GET") {
+      if (path === "/api/bot-analyze" && request.method === "POST") {\n        return await handleBotAnalyze(request);\n      }\n\n      if (path === "/api/bot-market" && request.method === "GET") {
         return await handleBotMarket(request);
       }
 
