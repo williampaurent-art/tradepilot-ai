@@ -5630,8 +5630,21 @@ export default {
         return await handleBotMarket(request);
       }
 
+      if (path === "/api/public-config" && request.method === "GET") {
+        return await handlePublicConfig(env);
+      }
+
+      if (path === "/api/bots" && request.method === "GET") {
+        return await handleListBots(request, env);
+      }
+
       if (path === "/api/bots" && request.method === "POST") {
         return await handleCreateBot(request, env);
+      }
+
+      const botSignalsMatch = path.match(/^\\/api\\/bots\\/([a-z0-9_-]+)\\/signals$/i);
+      if (botSignalsMatch && request.method === "GET") {
+        return await handleBotSignals(request, env, botSignalsMatch[1]);
       }
 
       if (path === "/api/account") {
