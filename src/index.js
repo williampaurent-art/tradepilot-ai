@@ -5228,7 +5228,7 @@ async function handleCalendarKeyCheck(env) {
 
 // BOT BUILDER: public, no-signup strategy drafts stored in Cloudflare KV.
 function validateBotConfig(input) {
-  const symbols=["XAUUSD","EURUSD","GBPUSD","USDJPY","BTCUSD"];
+  const symbols=["XAUUSD"];
   const tfs=["M1","M5","M15","H1","H4"];
   const styles=["scalping","day","swing"];
   const allowed=["EMA 9/21","RSI 14","MACD","Bandes de Bollinger","ATR 14","Structure / liquidité"];
@@ -5253,11 +5253,28 @@ function buildBotDraft(c,id) {
     riskRules:{riskPerTradePercent:c.riskPercent,riskAmount:c.riskAmount,maxOpenPositions:c.maxPositions,dailyLossLimit:c.dailyLossAmount,martingale:false,grid:false,liveTrading:false},
     backtest:{status:"not_started",required:true},execution:"AUCUN ORDRE REEL",createdAt:new Date().toISOString()};
 }
+async function handleBotMarket(request) {
+  const url = new URL(request.url);
+  const timeframe = String(url.searchParams.get("timeframe") || "M5").toUpperCase();
+  if (!["M1","M5","M15","H1","H4"].includes(timeframe)) return json({ok:false,error:"Unité de temps non prise en charge."},400);
+  try {
+    const [bars,quote] = await Promise.all([fetchCandles(timeframe,200),fetchLiveQuote()]);
+    const quality = inspectDataQuality(bars,timeframe);
+    if (!quality.ok) return json({ok:false,error:"Qualité ou fraîcheur des bougies insuffisante.",dataQuality:quality},503);
+    return json({ok:true,instrument:CONFIG.SYMBOL,timeframe,quote:{bid:quote.bid,ask:quote.ask,mid:quote.mid,spread:quote.spread,timestamp:quote.timestamp,ageSeconds:quote.quoteAgeSeconds,source:quote.source},candles:{count:bars.length,lastClosedAt:new Date(bars[bars.length-1].time).toISOString()},checkedAt:new Date().toISOString()});
+  } catch(error) { return json({ok:false,instrument:CONFIG.SYMBOL,timeframe,error:error.message},503); }
+}
+
 async function handleCreateBot(request,env) {
   if(!env.TP_STATE) return json({ok:false,error:"Stockage KV indisponible."},503);
   let input; try{input=await request.json();}catch{return json({ok:false,error:"JSON illisible."},400);}
   try {
-    const c=validateBotConfig(input),id="bot_"+crypto.randomUUID(),bot=buildBotDraft(c,id);
+    const c=validateBotConfig(input);
+    const [marketBars,marketQuote]=await Promise.all([fetchCandles(c.timeframe,200),fetchLiveQuote()]);
+    const marketQuality=inspectDataQuality(marketBars,c.timeframe);
+    if(!marketQuality.ok)return json({ok:false,error:"Création bloquée : données XAUUSD insuffisamment fraîches ou incomplètes.",dataQuality:marketQuality},503);
+    const id="bot_"+crypto.randomUUID(),bot=buildBotDraft(c,id);
+    bot.marketValidation={instrument:CONFIG.SYMBOL,timeframe:c.timeframe,source:marketQuote.source,quoteTimestamp:marketQuote.timestamp,quoteAgeSeconds:marketQuote.quoteAgeSeconds,lastClosedCandleAt:new Date(marketBars[marketBars.length-1].time).toISOString(),validatedAt:new Date().toISOString()};
     await writeKV(env,"custom_bot:"+id,bot,30*86400);
     let index=[]; try{const raw=await readKV(env,"custom_bots_index_v1");index=raw?JSON.parse(raw):[];}catch{}
     if(!Array.isArray(index)) index=[];
@@ -5531,6 +5548,10 @@ export default {
 
       if (path === "/status") {
         return await handleStatus(env);
+      }
+
+      if (path === "/api/bot-market" && request.method === "GET") {
+        return await handleBotMarket(request);
       }
 
       if (path === "/api/bots" && request.method === "POST") {
