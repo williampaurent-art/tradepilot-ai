@@ -79,6 +79,9 @@ test("produces a sell setup from aligned bearish indicators", () => {
   const result = engine.evaluateConfiguredBot(config(), candles("down"), quote);
   assert.equal(result.signal, "VENTE");
   assert.ok(result.score >= result.threshold);
+  assert.ok(Array.isArray(result.indicatorDiagnostics));
+  assert.deepEqual(result.indicatorDiagnostics.map(x => x.name), config().indicators);
+  assert.ok(result.indicatorDiagnostics.every(x => x.status && x.explanation && x.value));
   assert.ok(result.stopLoss > result.entry);
   assert.ok(result.takeProfit < result.entry);
 });
