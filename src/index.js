@@ -5226,7 +5226,7 @@ async function handleCalendarKeyCheck(env) {
   }
 }
 
-// BOT BUILDER: public, no-signup strategy drafts stored in Cloudflare KV.
+// BOT BUILDER: authenticated customer strategies stored per workspace in Cloudflare D1.
 function validateBotConfig(input) {
   const symbols=["XAUUSD"];
   const tfs=["M1","M5","M15","H1","H4"];
