@@ -1,3 +1,5 @@
+> **Statut : phase SaaS reportée.** Le parcours actuellement prioritaire est le Bot Builder local, sans inscription. Ce guide décrit uniquement les fondations futures Supabase/D1 ; il n'est pas nécessaire pour créer, modifier ou analyser les bots en mode local.
+
 # Activation de l'espace client « Mes bots »
 
 ## Ce qui est ajouté
