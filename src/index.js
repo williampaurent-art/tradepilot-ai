@@ -5294,7 +5294,6 @@ function evaluateConfiguredBot(c, bars, quote) {
 
   if (selected.has("MACD")) {
     const nowHist = current.macd?.histogram, oldHist = previous.macd?.histogram;
-    const oldPrevious = getIndicators(bars.slice(0, -2)).macd?.histogram;
     if (Number.isFinite(nowHist) && Number.isFinite(oldHist)) {
       if (nowHist > 0 && nowHist > oldHist) add("BUY", oldHist <= 0 ? 34 : 24, "Histogramme MACD positif et en progression.");
       else if (nowHist < 0 && nowHist < oldHist) add("SELL", oldHist >= 0 ? 34 : 24, "Histogramme MACD négatif et en accélération.");
@@ -5326,7 +5325,8 @@ function evaluateConfiguredBot(c, bars, quote) {
 
   const atr = current.atr;
   const atrPercent = Number.isFinite(atr) && quote.mid > 0 ? atr / quote.mid * 100 : null;
-  const volatilityOK = Number.isFinite(atr) && atr > 0 &&
+  const atrAvailable = Number.isFinite(atr) && atr > 0;
+  const volatilityOK = atrAvailable &&
     Number.isFinite(atrPercent) && atrPercent >= 0.003 && atrPercent <= 0.35;
   const atrFilterSelected = selected.has("ATR 14");
   if (atrFilterSelected) {
@@ -5352,7 +5352,7 @@ function evaluateConfiguredBot(c, bars, quote) {
 
   const entry = side === "BUY" ? quote.ask : side === "SELL" ? quote.bid : quote.mid;
   const stopMultiplier = c.style === "scalping" ? 1.25 : c.style === "day" ? 1.75 : 2.25;
-  const stopDistance = volatilityOK ? Math.max(atr * stopMultiplier, quote.spread * 2) : null;
+  const stopDistance = atrAvailable ? Math.max(atr * stopMultiplier, quote.spread * 2) : null;
   const targetDistance = Number.isFinite(stopDistance) ? stopDistance * 1.8 : null;
   const stopLoss = side && Number.isFinite(stopDistance)
     ? Number((side === "BUY" ? entry - stopDistance : entry + stopDistance).toFixed(2)) : null;
