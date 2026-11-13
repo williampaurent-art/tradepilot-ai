@@ -5642,7 +5642,7 @@ export default {
         return await handleCreateBot(request, env);
       }
 
-      const botSignalsMatch = path.match(/^\\/api\\/bots\\/([a-z0-9_-]+)\\/signals$/i);
+      const botSignalsMatch = path.match(/^\/api\/bots\/([a-z0-9_-]+)\/signals$/i);
       if (botSignalsMatch && request.method === "GET") {
         return await handleBotSignals(request, env, botSignalsMatch[1]);
       }
