@@ -5400,12 +5400,29 @@ function evaluateConfiguredBot(c, bars, quote) {
 }
 
 async function handleBotAnalyze(request) {
+  // The header is only an early rejection hint: clients can omit it.
   if (Number(request.headers.get("content-length") || 0) > 12000) {
     return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
   }
+
+  let rawBody;
+  try {
+    rawBody = await request.arrayBuffer();
+  } catch {
+    return json({ ok: false, error: "Corps de requête illisible." }, 400);
+  }
+  // Enforce the limit on the actual bytes received, including chunked requests.
+  if (rawBody.byteLength > 12000) {
+    return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
+  }
+
   let input;
-  try { input = await request.json(); }
-  catch { return json({ ok: false, error: "Configuration JSON illisible." }, 400); }
+  try {
+    input = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(rawBody));
+  } catch {
+    return json({ ok: false, error: "Configuration JSON illisible." }, 400);
+  }
+
   let config;
   try { config = validateBotConfig(input); }
   catch (error) { return json({ ok: false, error: error.message }, 400); }
