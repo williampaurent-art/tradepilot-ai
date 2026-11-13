@@ -99,3 +99,15 @@ test("does not invent a direction in a flat market", () => {
   assert.equal(result.stopLoss, null);
   assert.equal(result.takeProfit, null);
 });
+
+
+test("customer bot pages contain syntactically valid browser scripts", async () => {
+  for (const path of ["../public/bots.html", "../public/builder.html"]) {
+    const html = await readFile(new URL(path, import.meta.url), "utf8");
+    const scripts = [...html.matchAll(/<script>([\\s\\S]*?)<\\/script>/gi)];
+    assert.ok(scripts.length > 0, `${path} should contain an inline application script`);
+    for (const match of scripts) {
+      assert.doesNotThrow(() => new Function(match[1]), `${path} inline script should parse`);
+    }
+  }
+});
