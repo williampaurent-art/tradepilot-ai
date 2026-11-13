@@ -5455,7 +5455,7 @@ async function handleBotMarket(request) {
     const [bars,quote] = await Promise.all([fetchCandles(timeframe,200),fetchLiveQuote()]);
     const quality = inspectDataQuality(bars,timeframe);
     if (!quality.ok) return json({ok:false,error:"Qualité ou fraîcheur des bougies insuffisante.",dataQuality:quality},503);
-    return json({ok:true,instrument:CONFIG.SYMBOL,timeframe,quote:{bid:quote.bid,ask:quote.ask,mid:quote.mid,spread:quote.spread,timestamp:quote.timestamp,ageSeconds:quote.quoteAgeSeconds,source:quote.source},candles:{count:bars.length,lastClosedAt:new Date(bars[bars.length-1].time).toISOString()},checkedAt:new Date().toISOString()});
+    return json({ok:true,instrument:CONFIG.SYMBOL,timeframe,quote:{bid:quote.bid,ask:quote.ask,mid:quote.mid,spread:quote.spread,timestamp:quote.timestamp,ageSeconds:quote.quoteAgeSeconds,source:quote.source},candles:{count:bars.length,lastCandleOpenedAt:new Date(bars[bars.length-1].time).toISOString(),lastClosedAt:new Date(bars[bars.length-1].time+TIMEFRAMES[timeframe].ms).toISOString()},dataQuality:quality,checkedAt:new Date().toISOString()});
   } catch(error) { return json({ok:false,instrument:CONFIG.SYMBOL,timeframe,error:error.message},503); }
 }
 
