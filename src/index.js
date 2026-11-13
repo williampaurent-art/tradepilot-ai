@@ -5366,11 +5366,13 @@ function evaluateConfiguredBot(c, bars, quote) {
 
   const reasons = signal === "ACHAT" ? buyReasons : signal === "VENTE" ? sellReasons : [
     "Aucune combinaison des indicateurs sélectionnés n'atteint le seuil de confirmation de 60/100.",
-    ...neutralReasons
+    ...neutralReasons,
+    ...(buyScore > sellScore ? buyReasons : sellScore > buyScore ? sellReasons : [...buyReasons, ...sellReasons])
   ];
   return {
     ok: true, instrument: CONFIG.SYMBOL, timeframe: c.timeframe,
     signal, side, score, threshold,
+    candidateScores: { buy: buyScore, sell: sellScore },
     entry: Number(entry.toFixed(2)), stopLoss, takeProfit,
     stopDistance: Number.isFinite(stopDistance) ? Number(stopDistance.toFixed(2)) : null,
     targetDistance: Number.isFinite(targetDistance) ? Number(targetDistance.toFixed(2)) : null,
