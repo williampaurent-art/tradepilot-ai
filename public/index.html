@@ -237,7 +237,7 @@ main.wrap>.foot{order:42}
 @media(max-width:650px){
  main.wrap{padding-bottom:calc(88px + env(safe-area-inset-bottom))}
  .mainnav{display:none}
- .mobile-dock{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;position:fixed;z-index:100;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));padding:8px 6px;border:1px solid rgba(105,217,237,.24);border-radius:17px;background:rgba(6,13,23,.94);backdrop-filter:blur(20px);box-shadow:0 12px 42px rgba(0,0,0,.48),inset 0 1px rgba(255,255,255,.06)}
+ .mobile-dock{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;position:fixed;z-index:100;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));padding:8px 6px;border:1px solid rgba(105,217,237,.24);border-radius:17px;background:rgba(6,13,23,.94);backdrop-filter:blur(20px);box-shadow:0 12px 42px rgba(0,0,0,.48),inset 0 1px rgba(255,255,255,.06)}
  .mobile-dock a{min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:7px 2px;border-radius:10px;color:#9eb0c7;text-decoration:none;font-size:9px;font-weight:800;letter-spacing:.1px}
  .mobile-dock a:before{font-size:17px;line-height:1}
  .mobile-dock a:nth-child(1):before{content:"◈"}
@@ -245,6 +245,7 @@ main.wrap>.foot{order:42}
  .mobile-dock a:nth-child(3):before{content:"✧"}
  .mobile-dock a:nth-child(4):before{content:"▤"}
  .mobile-dock a:nth-child(5):before{content:"⚙"}
+  .mobile-dock a:nth-child(6):before{content:"▣"}
  .mobile-dock a:focus-visible,.mobile-dock a:hover,.mobile-dock a.active{color:var(--gold);background:rgba(244,199,106,.11);outline:none}.mobile-dock a.active{box-shadow:inset 0 0 0 1px rgba(244,199,106,.18)}
  .mobile-dock a:first-child{color:var(--gold);background:rgba(244,199,106,.07)}
 }
@@ -374,7 +375,7 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
-<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer mon bot" title="Créer mon bot">Créer bot</a></nav>
+<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a><a href="/bots.html" aria-label="Mes bots" title="Mes bots">Mes bots</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer mon bot" title="Créer mon bot">Créer bot</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script>
