@@ -49,6 +49,22 @@ Le quota gratuit Workers AI publié par Cloudflare est limité à 10 000 Neurons
 La qualité des réponses dépend de la fraîcheur et de la couverture des données OHLC et du calendrier. L'assistant doit signaler les informations manquantes et ne doit jamais transformer un scénario anticipatif en signal confirmé.
 
 
+
+## Bot Builder — mode local (priorité actuelle)
+
+Le parcours de création de bots fonctionne sans inscription ni compte SaaS :
+- les configurations sont enregistrées dans le navigateur de l'appareil (`localStorage`) ;
+- « Mes bots » permet de consulter, modifier, activer, mettre en pause et supprimer une stratégie ;
+- « Analyser maintenant » appelle `POST /api/bot-analyze` ;
+- l'analyse utilise uniquement les indicateurs sélectionnés, les bougies clôturées et une cotation XAUUSD vérifiée ;
+- les signaux confirmés et leur historique sont conservés localement dans le navigateur ;
+- aucune analyse en arrière-plan n'est promise : l'utilisateur déclenche l'analyse depuis la fiche du bot ;
+- aucun ordre réel n'est envoyé et aucune taille de lot n'est calculée sans spécification contractuelle vérifiée du broker.
+
+Deux indicateurs directionnels au minimum sont requis. L'ATR sert au filtre de volatilité et au calcul des niveaux de stop/objectif. Le seuil de confirmation de 60/100 et les règles de chaque indicateur sont heuristiques : ils doivent être évalués en backtest avant tout usage en conditions réelles. Les données et l'historique locaux ne sont pas synchronisés entre appareils et peuvent être effacés avec les données du navigateur.
+
+Voir [la documentation du Bot Builder local](docs/LOCAL_BOT_BUILDER.md).
+
 ## TradePilot Edge & SaaS
 
 - `GET /signal-history` : journal des décisions et alertes du Cron.
@@ -58,8 +74,6 @@ TradePilot Edge suit les alertes confirmées et mesure leurs résultats à parti
 
 Le schéma SaaS multi-espace (utilisateurs, workspaces, rôles, abonnements, droits, connexions broker en lecture seule et journal d'audit) est préparé dans `migrations/0001_saas_core.sql`. Il n'est pas encore activé : aucun binding D1 ni fournisseur d'identité/facturation n'a été configuré. La version actuelle ne doit donc pas être présentée comme une plateforme multi-utilisateur isolée prête à vendre. Voir [la feuille de route Edge & SaaS](docs/TRADEPILOT_EDGE_SAAS.md).
 
-### Identité et comptes SaaS
+### Identité et comptes SaaS (reportés)
 
-- `GET /api/account` : vérifie un jeton d'accès Supabase (JWKS, ES256/RS256) et provisionne l'utilisateur, son espace personnel et son abonnement Free dans D1.
-- Configuration et commandes d'activation : [guide Supabase Auth + D1](docs/SUPABASE_D1_SETUP.md).
-- Cette fondation n'active pas encore les inscriptions dans l'interface : l'écran de connexion et l'isolation des routes/données historiques restent à réaliser avant toute ouverture publique.
+Les fondations Supabase Auth et D1 restent dans le dépôt pour une phase ultérieure. Elles ne sont pas requises pour le Bot Builder local actuel et ne doivent pas être présentées comme un parcours client activé. Voir [guide Supabase Auth + D1](docs/SUPABASE_D1_SETUP.md).
