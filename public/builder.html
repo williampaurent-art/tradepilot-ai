@@ -39,6 +39,7 @@ button{border:0;border-radius:10px;padding:13px 17px;font-weight:750;cursor:poin
 <div class="field"><label for="mode">Mode de fonctionnement</label><select id="mode"><option value="signals">Signaux uniquement</option><option value="automatic" disabled>Trading automatique · bientôt</option></select><div class="help">Le mode automatique n’est pas disponible. Aucun ordre réel ne sera envoyé.</div></div>
 <div class="field"><label for="direction">Sens autorisés</label><select id="direction"><option>Achats et ventes</option><option>Achats uniquement</option><option>Ventes uniquement</option></select></div>
 </div>
+<div class="help" style="margin-top:10px;padding:11px;border:1px solid var(--border);border-radius:9px;background:var(--panel2)">Transparence : en mode « Signaux uniquement », les limites de positions et de perte journalière sont enregistrées dans ta stratégie, mais ne sont pas encore appliquées à un portefeuille réel. TradePilot ne suit pas de positions broker et n’envoie aucun ordre.</div>
 <div class="actions"><button class="primary" id="generate">Générer ma configuration</button><button class="secondary" id="reset" type="button">Réinitialiser</button></div><div class="message" id="message" role="status"></div>
 </section>
 <aside class="card summary"><span class="pill">APERÇU DU BOT</span><h2 style="margin-top:15px" id="previewName">Mon Gold Scalper</h2>
