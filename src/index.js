@@ -5369,6 +5369,40 @@ function evaluateConfiguredBot(c, bars, quote) {
     ...neutralReasons,
     ...(buyScore > sellScore ? buyReasons : sellScore > buyScore ? sellReasons : [...buyReasons, ...sellReasons])
   ];
+  const allDirectionalReasons = [...buyReasons, ...sellReasons];
+  const indicatorDiagnostics = [
+    selected.has("EMA 9/21") ? {
+      name: "EMA 9/21", value: Number.isFinite(current.ema9) && Number.isFinite(current.ema21)
+        ? "EMA 9 " + current.ema9.toFixed(2) + " · EMA 21 " + current.ema21.toFixed(2) : "Indisponible",
+      status: allDirectionalReasons.some(x => x.startsWith("Croisement") || x.startsWith("EMA 9")) ? "confirmé" : "neutre",
+      explanation: allDirectionalReasons.find(x => x.includes("EMA 9/21") || x.startsWith("EMA 9")) || neutralReasons.find(x => x.startsWith("EMA 9/21")) || "Alignement non disponible."
+    } : null,
+    selected.has("RSI 14") ? {
+      name: "RSI 14", value: Number.isFinite(current.rsi) ? current.rsi.toFixed(1) : "Indisponible",
+      status: allDirectionalReasons.some(x => x.startsWith("RSI 14")) ? "confirmé" : "neutre",
+      explanation: allDirectionalReasons.find(x => x.startsWith("RSI 14")) || neutralReasons.find(x => x.startsWith("RSI 14") || x.startsWith("RSI en")) || "Momentum non confirmé."
+    } : null,
+    selected.has("MACD") ? {
+      name: "MACD", value: Number.isFinite(current.macd?.histogram) ? current.macd.histogram.toFixed(4) : "Indisponible",
+      status: allDirectionalReasons.some(x => x.includes("MACD")) ? "confirmé" : "neutre",
+      explanation: allDirectionalReasons.find(x => x.includes("MACD")) || neutralReasons.find(x => x.startsWith("MACD")) || "Pas d'accélération détectée."
+    } : null,
+    selected.has("Bandes de Bollinger") ? {
+      name: "Bandes de Bollinger", value: Number.isFinite(current.bollinger?.middle) ? "Bas " + current.bollinger.lower.toFixed(2) + " · médiane " + current.bollinger.middle.toFixed(2) + " · haut " + current.bollinger.upper.toFixed(2) : "Indisponible",
+      status: allDirectionalReasons.some(x => x.includes("Bollinger")) ? "confirmé" : "neutre",
+      explanation: allDirectionalReasons.find(x => x.includes("Bollinger")) || neutralReasons.find(x => x.startsWith("Bollinger")) || "Pas de franchissement confirmé."
+    } : null,
+    selected.has("Structure / liquidité") ? {
+      name: "Structure / liquidité", value: "Clôture " + last.close.toFixed(2),
+      status: allDirectionalReasons.some(x => x.includes("structure")) ? "confirmé" : "neutre",
+      explanation: allDirectionalReasons.find(x => x.includes("structure")) || neutralReasons.find(x => x.startsWith("Structure")) || "Aucune cassure récente."
+    } : null,
+    selected.has("ATR 14") ? {
+      name: "ATR 14", value: Number.isFinite(atr) ? atr.toFixed(2) + " (" + (Number.isFinite(atrPercent) ? atrPercent.toFixed(3) : "—") + " %)" : "Indisponible",
+      status: volatilityOK ? "filtre OK" : "bloquant",
+      explanation: volatilityOK ? "Volatilité dans la plage autorisée ; sert au calcul du stop et de la cible." : "Volatilité trop faible, excessive ou indisponible : signaux neutralisés."
+    } : null
+  ].filter(Boolean);
   return {
     ok: true, instrument: CONFIG.SYMBOL, timeframe: c.timeframe,
     signal, side, score, threshold,
@@ -5378,7 +5412,7 @@ function evaluateConfiguredBot(c, bars, quote) {
     targetDistance: Number.isFinite(targetDistance) ? Number(targetDistance.toFixed(2)) : null,
     riskReward: Number.isFinite(targetDistance) && Number.isFinite(stopDistance)
       ? Number((targetDistance / stopDistance).toFixed(2)) : null,
-    indicators: c.indicators, indicatorValues: {
+    indicators: c.indicators, indicatorDiagnostics, indicatorValues: {
       ema9: current.ema9, ema21: current.ema21, rsi14: current.rsi,
       macdHistogram: current.macd?.histogram, bollinger: current.bollinger,
       atr14: current.atr, atrPercent: Number.isFinite(atrPercent) ? Number(atrPercent.toFixed(4)) : null
