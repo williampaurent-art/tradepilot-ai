@@ -5299,12 +5299,8 @@ function evaluateConfiguredBot(c, bars, quote) {
       if (nowHist > 0 && nowHist > oldHist) add("BUY", oldHist <= 0 ? 34 : 24, "Histogramme MACD positif et en progression.");
       else if (nowHist < 0 && nowHist < oldHist) add("SELL", oldHist >= 0 ? 34 : 24, "Histogramme MACD négatif et en accélération.");
       else neutralReasons.push("MACD : histogramme sans accélération directionnelle.");
-      if (Number.isFinite(oldPrevious) && nowHist > 0 && oldHist <= 0 && oldPrevious <= 0) {
-        buyReasons.push("Passage du MACD en territoire positif.");
-      }
-      if (Number.isFinite(oldPrevious) && nowHist < 0 && oldHist >= 0 && oldPrevious >= 0) {
-        sellReasons.push("Passage du MACD en territoire négatif.");
-      }
+      // Keep diagnostics aligned with scored reasons: a MACD zero-line
+      // observation alone must not be reported as a confirmed contribution.
     }
   }
 
@@ -5332,11 +5328,14 @@ function evaluateConfiguredBot(c, bars, quote) {
   const atrPercent = Number.isFinite(atr) && quote.mid > 0 ? atr / quote.mid * 100 : null;
   const volatilityOK = Number.isFinite(atr) && atr > 0 &&
     Number.isFinite(atrPercent) && atrPercent >= 0.003 && atrPercent <= 0.35;
-  if (selected.has("ATR 14")) {
-    if (volatilityOK) neutralReasons.push("ATR 14 : volatilité exploitable, utilisé comme filtre et pour le dimensionnement des niveaux.");
-    else neutralReasons.push("ATR 14 : volatilité trop faible, excessive ou indisponible.");
+  const atrFilterSelected = selected.has("ATR 14");
+  if (atrFilterSelected) {
+    if (volatilityOK) neutralReasons.push("ATR 14 : volatilité exploitable, filtre actif et dimensionnement des niveaux.");
+    else neutralReasons.push("ATR 14 : volatilité trop faible, excessive ou indisponible ; filtre actif.");
   }
-  if (!volatilityOK) {
+  // ATR remains available for protective levels, but it must only veto a
+  // signal when the user explicitly selected it as a strategy filter.
+  if (atrFilterSelected && !volatilityOK) {
     buyScore = 0;
     sellScore = 0;
   }
