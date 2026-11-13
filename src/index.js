@@ -2056,7 +2056,8 @@ function buildAlertMessage(signal) {
     ...reasons,
     "⚠️ Vérifie le prix MT5 et recalcule TP/SL depuis ton exécution.",
     "Aucun ordre réel exécuté."
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("
+");
 }
 
 // --------------------------------------------------
@@ -4491,7 +4492,8 @@ async function handleAssistantChat(request, env) {
     "Tu ne donnes pas d'ordre exécutable, tu ne promets aucun rendement et tu ne prétends pas passer d'ordres. L'exécution reste manuelle et le statut est AUCUN ORDRE REEL.",
     "Si la question sort du contexte XAUUSD, réponds brièvement ou précise les limites.",
     "Contexte de marché structuré (JSON) : " + contextJson
-  ].join("\n");
+  ].join("
+");
 
   const modelMessages = [
     { role: "system", content: system },
@@ -4516,7 +4518,8 @@ async function handleAssistantChat(request, env) {
       (typeof result === "string" ? result : "");
     const answer = assistantCleanText(
       typeof rawAnswer === "string" ? rawAnswer :
-      Array.isArray(rawAnswer) ? rawAnswer.map(part => part?.text || "").join("\\n") :
+      Array.isArray(rawAnswer) ? rawAnswer.map(part => part?.text || "").join("\
+") :
       rawAnswer?.text || rawAnswer?.content || "",
       3200
     ).trim();
@@ -5801,7 +5804,11 @@ export default {
         return await handleStatus(env);
       }
 
-      if (path === "/api/bot-analyze" && request.method === "POST") {\n        return await handleBotAnalyze(request);\n      }\n\n      if (path === "/api/bot-market" && request.method === "GET") {
+      if (path === "/api/bot-analyze" && request.method === "POST") {
+        return await handleBotAnalyze(request);
+      }
+
+      if (path === "/api/bot-market" && request.method === "GET") {
         return await handleBotMarket(request);
       }
 
