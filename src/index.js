@@ -5265,23 +5265,99 @@ async function handleBotMarket(request) {
   } catch(error) { return json({ok:false,instrument:CONFIG.SYMBOL,timeframe,error:error.message},503); }
 }
 
-async function handleCreateBot(request,env) {
-  if(!env.TP_STATE) return json({ok:false,error:"Stockage KV indisponible."},503);
-  let input; try{input=await request.json();}catch{return json({ok:false,error:"JSON illisible."},400);}
+async function getAuthenticatedWorkspace(request, env) {
+  const auth = await verifySupabaseAccessToken(request, env);
+  if (!auth.ok) return { ok: false, response: json({ ok: false, error: auth.error }, auth.status) };
   try {
-    const c=validateBotConfig(input);
-    const [marketBars,marketQuote]=await Promise.all([fetchCandles(c.timeframe,200),fetchLiveQuote()]);
-    const marketQuality=inspectDataQuality(marketBars,c.timeframe);
-    if(!marketQuality.ok)return json({ok:false,error:"Création bloquée : données XAUUSD insuffisamment fraîches ou incomplètes.",dataQuality:marketQuality},503);
-    const id="bot_"+crypto.randomUUID(),bot=buildBotDraft(c,id);
-    bot.marketValidation={instrument:CONFIG.SYMBOL,timeframe:c.timeframe,source:marketQuote.source,quoteTimestamp:marketQuote.timestamp,quoteAgeSeconds:marketQuote.quoteAgeSeconds,lastClosedCandleAt:new Date(marketBars[marketBars.length-1].time).toISOString(),validatedAt:new Date().toISOString()};
-    await writeKV(env,"custom_bot:"+id,bot,30*86400);
-    let index=[]; try{const raw=await readKV(env,"custom_bots_index_v1");index=raw?JSON.parse(raw):[];}catch{}
-    if(!Array.isArray(index)) index=[];
-    index.unshift({id,name:c.name,symbol:c.symbol,createdAt:bot.createdAt});
-    await writeKV(env,"custom_bots_index_v1",index.slice(0,50),30*86400);
-    return json({ok:true,bot,storage:"cloudflare_kv",liveTrading:false});
-  } catch(e){return json({ok:false,error:e.message},400);}
+    const account = await provisionSaasAccount(auth.user, env);
+    return { ok: true, user: account.user, workspace: account.workspace };
+  } catch (error) {
+    return { ok: false, response: json({ ok: false, error: error.message }, error.message.includes("non configurée") ? 503 : 500) };
+  }
+}
+
+async function handleListBots(request, env) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  try {
+    const result = await env.DB.prepare(`
+      SELECT id, name, instrument, timeframe, style, status, strategy_json,
+             market_validation_json, created_at, updated_at
+      FROM trading_bots WHERE workspace_id = ?
+      ORDER BY created_at DESC LIMIT 100
+    `).bind(access.workspace.id).all();
+    const bots = (result.results || []).map(row => ({
+      id: row.id, name: row.name, symbol: row.instrument, timeframe: row.timeframe,
+      style: row.style, status: row.status,
+      ...JSON.parse(row.strategy_json),
+      marketValidation: row.market_validation_json ? JSON.parse(row.market_validation_json) : null,
+      createdAt: row.created_at, updatedAt: row.updated_at
+    }));
+    return json({ ok: true, workspace: access.workspace, bots, liveTrading: false });
+  } catch (error) {
+    return json({ ok: false, error: "Impossible de charger les bots. Vérifie que la migration D1 0002 est appliquée.", detail: error.message }, 503);
+  }
+}
+
+async function handleCreateBot(request, env) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  let input; try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  try {
+    const c = validateBotConfig(input);
+    const [marketBars, marketQuote] = await Promise.all([fetchCandles(c.timeframe, 200), fetchLiveQuote()]);
+    const marketQuality = inspectDataQuality(marketBars, c.timeframe);
+    if (!marketQuality.ok) return json({ ok: false, error: "Création bloquée : données XAUUSD insuffisamment fraîches ou incomplètes.", dataQuality: marketQuality }, 503);
+    const id = "bot_" + crypto.randomUUID();
+    const bot = buildBotDraft(c, id);
+    bot.marketValidation = {
+      instrument: CONFIG.SYMBOL, timeframe: c.timeframe, source: marketQuote.source,
+      quoteTimestamp: marketQuote.timestamp, quoteAgeSeconds: marketQuote.quoteAgeSeconds,
+      lastClosedCandleAt: new Date(marketBars[marketBars.length - 1].time).toISOString(),
+      validatedAt: new Date().toISOString()
+    };
+    await env.DB.prepare(`
+      INSERT INTO trading_bots
+        (id, workspace_id, created_by_user_id, name, instrument, timeframe, style, status, strategy_json, market_validation_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)
+    `).bind(id, access.workspace.id, access.user.id, c.name, c.symbol, c.timeframe, c.style, JSON.stringify(bot), JSON.stringify(bot.marketValidation)).run();
+    return json({ ok: true, bot, storage: "cloudflare_d1", workspaceId: access.workspace.id, liveTrading: false });
+  } catch (error) {
+    return json({ ok: false, error: error.message }, error.message.includes("no such table") ? 503 : 400);
+  }
+}
+
+async function handleBotSignals(request, env, botId) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  try {
+    const bot = await env.DB.prepare(
+      "SELECT id, name, instrument FROM trading_bots WHERE id = ? AND workspace_id = ? LIMIT 1"
+    ).bind(botId, access.workspace.id).first();
+    if (!bot) return json({ ok: false, error: "Bot introuvable dans cet espace." }, 404);
+    const rows = await env.DB.prepare(`
+      SELECT id, instrument, side, timeframe, entry, stop_price, target_price, score,
+             rationale_json, market_timestamp, created_at
+      FROM bot_signal_events
+      WHERE bot_id = ? AND workspace_id = ?
+      ORDER BY created_at DESC LIMIT 100
+    `).bind(botId, access.workspace.id).all();
+    return json({ ok: true, bot, signals: (rows.results || []).map(row => ({
+      id: row.id, instrument: row.instrument, side: row.side, timeframe: row.timeframe,
+      entry: row.entry, stopLoss: row.stop_price, takeProfit: row.target_price,
+      score: row.score, rationale: row.rationale_json ? JSON.parse(row.rationale_json) : [],
+      marketTimestamp: row.market_timestamp, createdAt: row.created_at
+    })) });
+  } catch (error) {
+    return json({ ok: false, error: "Historique des signaux indisponible. Vérifie la migration D1 0002.", detail: error.message }, 503);
+  }
+}
+
+async function handlePublicConfig(env) {
+  const projectUrl = String(env.SUPABASE_URL || "").replace(/\/+$/, "");
+  const publishableKey = String(env.SUPABASE_PUBLISHABLE_KEY || "");
+  if (!projectUrl || !publishableKey) return json({ ok: false, error: "Configuration Supabase incomplète : SUPABASE_URL et SUPABASE_PUBLISHABLE_KEY sont requis." }, 503);
+  return json({ ok: true, supabaseUrl: projectUrl, publishableKey });
 }
 
 async function handleHealth(env) {
