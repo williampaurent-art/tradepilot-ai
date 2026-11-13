@@ -86,6 +86,19 @@ test("produces a sell setup from aligned bearish indicators", () => {
   assert.ok(result.takeProfit < result.entry);
 });
 
+test("ATR only blocks entries when the user selected it as a filter", () => {
+  const noAtrFilter = config({
+    indicators: ["EMA 9/21", "MACD", "Structure / liquidité"]
+  });
+  const extremeVolatilityQuote = { ...quote, mid: 1 };
+  const withoutAtr = engine.evaluateConfiguredBot(noAtrFilter, candles("up"), extremeVolatilityQuote);
+  assert.equal(withoutAtr.signal, "ACHAT");
+
+  const withAtrFilter = engine.evaluateConfiguredBot(config(), candles("up"), extremeVolatilityQuote);
+  assert.equal(withAtrFilter.signal, "ATTENDRE");
+  assert.equal(withAtrFilter.candidateScores.buy, 0);
+});
+
 test("respects a buy-only strategy", () => {
   const result = engine.evaluateConfiguredBot(
     config({ direction: "Achats uniquement" }),
