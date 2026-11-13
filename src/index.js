@@ -5238,7 +5238,7 @@ function validateBotConfig(input) {
   if(!Number.isFinite(c.capital)||c.capital<1||c.capital>100000000) throw new Error("Capital invalide.");
   if(!Number.isFinite(c.riskPercent)||c.riskPercent<0.1||c.riskPercent>2) throw new Error("Risque par trade invalide (0,1 à 2 %).");
   if(!Number.isFinite(c.dailyLossPercent)||c.dailyLossPercent<0.5||c.dailyLossPercent>5) throw new Error("Perte journalière invalide (0,5 à 5 %).");
-  if(![1,2,3].includes(c.maxPositions)||!c.indicators.length) throw new Error("Choisis 1 à 3 positions maximum et au moins un indicateur.");
+  if(![1,2,3].includes(c.maxPositions)||c.indicators.filter(x=>x!=="ATR 14").length<2) throw new Error("Choisis 1 à 3 positions maximum et au moins deux indicateurs directionnels (hors ATR).");
   c.riskAmount=Number((c.capital*c.riskPercent/100).toFixed(2));
   c.dailyLossAmount=Number((c.capital*c.dailyLossPercent/100).toFixed(2));
   c.liveTrading=false;
