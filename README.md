@@ -95,8 +95,8 @@ Le Cron `*/3 * * * *` est déjà déclaré dans `wrangler.toml`.
 ## Activation du SaaS
 
 Avant d'ouvrir les inscriptions :
-1. Configurer `SUPABASE_PUBLISHABLE_KEY` dans les variables/secrets du Worker. La clé doit être la clé publishable du projet Supabase correspondant à `SUPABASE_URL`.
-2. Appliquer les migrations D1 dans l'ordre : `0001_saas_core.sql`, puis `0002_customer_bots.sql`.
+1. Dans GitHub → Settings → Secrets and variables → Actions, créer les secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` et `SUPABASE_PUBLISHABLE_KEY`. Le jeton Cloudflare doit pouvoir gérer Workers et D1 ; la clé Supabase doit être la clé publishable du projet correspondant à `SUPABASE_URL`.
+2. Le workflow `.github/workflows/deploy-worker.yml` exécute les tests, applique les migrations D1 puis déploie le Worker à chaque modification pertinente sur `main`. Si les secrets manquent, il saute le déploiement sans modifier la production.
 3. Vérifier `GET /health`, `GET /api/public-config`, puis tester inscription, connexion, création, activation, analyse, historique et suppression avec deux comptes distincts.
 4. Vérifier que chaque compte ne voit que les bots de son propre espace.
 5. Garder les ordres réels désactivés.
