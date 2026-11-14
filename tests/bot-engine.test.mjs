@@ -126,4 +126,18 @@ test("customer bot pages contain syntactically valid browser scripts", async () 
       assert.doesNotThrow(() => new Function(match[1]), `${path} inline script should parse`);
     }
   }
+  const sessionSource = await readFile(new URL("../public/session.js", import.meta.url), "utf8");
+  assert.doesNotThrow(() => new Function(sessionSource), "shared session helper should parse");
+});
+
+test("cloud bot lifecycle endpoints are workspace-scoped and read-only for execution", () => {
+  assert.match(workerSource, /handleUpdateBot/);
+  assert.match(workerSource, /handleSetBotStatus/);
+  assert.match(workerSource, /handleDeleteBot/);
+  assert.match(workerSource, /handleAnalyzeStoredBot/);
+  assert.match(workerSource, /processActiveCustomerBots/);
+  assert.match(workerSource, /customerBotExecution = await processActiveCustomerBots/);
+  assert.match(workerSource, /WHERE id = \? AND workspace_id = \?/);
+  assert.match(workerSource, /liveTrading:\s*false/);
+  assert.match(workerSource, /AUCUN ORDRE RÉEL|AUCUN ORDRE REEL/);
 });
