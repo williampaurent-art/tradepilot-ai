@@ -135,6 +135,8 @@ test("cloud bot lifecycle endpoints are workspace-scoped and read-only for execu
   assert.match(workerSource, /handleSetBotStatus/);
   assert.match(workerSource, /handleDeleteBot/);
   assert.match(workerSource, /handleAnalyzeStoredBot/);
+  assert.match(workerSource, /processActiveCustomerBots/);
+  assert.match(workerSource, /customerBotExecution = await processActiveCustomerBots/);
   assert.match(workerSource, /WHERE id = \? AND workspace_id = \?/);
   assert.match(workerSource, /liveTrading:\s*false/);
   assert.match(workerSource, /AUCUN ORDRE RÉEL|AUCUN ORDRE REEL/);
