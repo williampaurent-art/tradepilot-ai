@@ -2869,8 +2869,64 @@ async function handleX10Virtual(env) {
 // EXECUTION AUTOMATIQUE
 // --------------------------------------------------
 
+async function processActiveCustomerBots(env) {
+  if (!env.DB) return { ok: false, error: "D1 indisponible", analyzed: 0, signalsSaved: 0 };
+  try {
+    const result = await env.DB.prepare(`
+      SELECT id, workspace_id, strategy_json
+      FROM trading_bots
+      WHERE status = 'active' AND instrument = ?
+      ORDER BY updated_at DESC
+      LIMIT 100
+    `).bind(CONFIG.SYMBOL).all();
+    const rows = result.results || [];
+    const marketByTimeframe = new Map();
+    let analyzed = 0, signalsSaved = 0, duplicates = 0, skipped = 0;
+    const errors = [];
+    for (const row of rows) {
+      try {
+        const config = validateBotConfig(JSON.parse(row.strategy_json));
+        if (config.symbol !== CONFIG.SYMBOL) { skipped++; continue; }
+        let marketPromise = marketByTimeframe.get(config.timeframe);
+        if (!marketPromise) {
+          marketPromise = Promise.all([
+            fetchCandles(config.timeframe, 220),
+            fetchLiveQuote()
+          ]).then(([bars, quote]) => ({ bars, quote, quality: inspectDataQuality(bars, config.timeframe) }));
+          marketByTimeframe.set(config.timeframe, marketPromise);
+        }
+        const market = await marketPromise;
+        if (!market.quality.ok) { skipped++; continue; }
+        const analysis = evaluateConfiguredBot(config, market.bars, market.quote);
+        analyzed++;
+        if (!["ACHAT", "VENTE"].includes(analysis.signal) || analysis.score < analysis.threshold) continue;
+        const inserted = await env.DB.prepare(`
+          INSERT OR IGNORE INTO bot_signal_events
+            (id, bot_id, workspace_id, instrument, side, timeframe, entry, stop_price,
+             target_price, score, rationale_json, market_timestamp)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).bind(
+          createId("sig"), row.id, row.workspace_id, CONFIG.SYMBOL, analysis.signal,
+          config.timeframe, analysis.entry, analysis.stopLoss, analysis.takeProfit,
+          analysis.score, JSON.stringify(analysis.reasons || []),
+          analysis.market.lastClosedCandleAt
+        ).run();
+        if (inserted.meta?.changes) signalsSaved++;
+        else duplicates++;
+      } catch (error) {
+        errors.push({ botId: row.id, message: String(error.message || error).slice(0, 240) });
+      }
+    }
+    return { ok: true, activeBots: rows.length, analyzed, signalsSaved, duplicates, skipped, errors: errors.slice(0, 10), execution: "SIGNALS ONLY · NO REAL ORDERS" };
+  } catch (error) {
+    return { ok: false, error: String(error.message || error).slice(0, 300), analyzed: 0, signalsSaved: 0 };
+  }
+}
+
 async function scheduledCheck(env) {
   await saveCronStatus(env, "RUNNING");
+  const customerBotExecution = await processActiveCustomerBots(env);
+  await saveCronStatus(env, "RUNNING", { customerBotExecution });
 
   try {
     const edgeUpdate = await updateEdgeOutcomes(env);
