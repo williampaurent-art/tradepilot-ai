@@ -2926,7 +2926,7 @@ async function processActiveCustomerBots(env) {
 async function scheduledCheck(env) {
   await saveCronStatus(env, "RUNNING");
   const customerBotExecution = await processActiveCustomerBots(env);
-  await saveCronStatus(env, "RUNNING", { customerBotExecution });
+  await writeKV(env, "customer_bot_cron", customerBotExecution, 7 * 86400);
 
   try {
     const edgeUpdate = await updateEdgeOutcomes(env);
@@ -4610,6 +4610,7 @@ async function handleStatus(env) {
   const cronRaw = await readKV(env, "cron_status");
   const signalRaw = await readKV(env, "last_signal");
   const alertRaw = await readKV(env, "last_alert");
+  const customerBotCronRaw = await readKV(env, "customer_bot_cron");
 
   let cron = {
     status: "NOT_YET_EXECUTED",
@@ -4618,11 +4619,13 @@ async function handleStatus(env) {
 
   let lastSignal = null;
   let lastAlert = null;
+  let customerBotCron = null;
 
   try {
     if (cronRaw) cron = JSON.parse(cronRaw);
     if (signalRaw) lastSignal = JSON.parse(signalRaw);
     if (alertRaw) lastAlert = JSON.parse(alertRaw);
+    if (customerBotCronRaw) customerBotCron = JSON.parse(customerBotCronRaw);
   } catch {
     // Une donnee KV invalide ne bloque pas le diagnostic.
   }
@@ -4637,6 +4640,7 @@ async function handleStatus(env) {
     cron,
     lastSignal,
     lastAlert,
+    customerBotCron,
     timestamp: new Date().toISOString()
   });
 }
