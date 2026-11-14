@@ -1,79 +1,107 @@
 # TradePilot AI
 
-Tableau de bord d'analyse technique XAUUSD, hébergé sur Cloudflare Workers.
+**Tableau de bord d'intelligence de marché XAUUSD + moteur de signaux autonomes.**
 
-## Interface Market Intelligence
+Hébergé sur Cloudflare Workers. Analyse technique multi-timeframe, alertes Telegram filtrées, suivi de performance (Edge), Bot Builder personnalisé et assistant conversationnel.
 
-Le dossier `public/` contient l'interface responsive en français. La racine du Worker sert le tableau de bord via Cloudflare Workers Static Assets.
+> **Sécurité** : `liveTrading` est **toujours désactivé**. Aucun ordre n'est jamais envoyé à un broker.
 
-Fonctions affichées :
-- cours Bid/Ask, source et horodatage lorsqu'une cotation live est disponible ;
-- statut de marché uniquement lorsque la source le confirme ;
-- analyse M1, M5, M15, H1, H4 et D1 ;
-- EMA 20/50/200, RSI 14, MACD, ADX/DMI, Bollinger, ATR et Stochastique ;
-- classification de régime (tendance, range, transition, indéterminé) ;
-- structure par pivots, BOS/CHOCH et divergences RSI simplifiées ;
-- supports/résistances, bornes de range et alertes de ralentissement ;
-- calendrier économique Finance Calendar lorsque le secret API est configuré.
+---
 
-## API
+## Fonctionnalités
 
-- `GET /health` : santé du Worker et confirmation que l'exécution réelle est désactivée.
-- `GET /status` : état du Cron, dernière analyse et dernière alerte.
-- `GET /dashboard-data` : données agrégées pour le tableau de bord.
-- `POST /assistant-chat` : assistant conversationnel XAUUSD propulsé par Cloudflare Workers AI. Le corps JSON accepte `question`, `history` et `marketContext` (photographie du tableau de bord).
-- `GET /gold?timeframe=M1|M5|M15|H1|H4|D1` : diagnostic de données par unité.
-- `GET /analyze` : analyse technique utilisée par le robot.
-- `GET /calendar` : contexte du calendrier économique.
+### Market Intelligence
+- Cotation Bid/Ask live (BiQuote) avec contrôle de fraîcheur strict
+- Analyse M1 · M5 · M15 · H1 · H4 · D1
+- Indicateurs : EMA 20/50/200, RSI 14, MACD, ADX/DMI, Bollinger, ATR, Stochastique
+- Régime de marché (tendance / range / transition)
+- Structure (pivots, BOS/CHOCH), supports/résistances, divergences
+- Calendrier économique + contexte macro (lorsque les clés sont configurées)
 
-## Données et limites
+### Moteur autonome (Cron toutes les 3 minutes)
+- Analyse complète multi-timeframe
+- Scoring et confirmation de setup
+- Alertes Telegram uniquement sur signaux **CONFIRMÉS**
+- Contrôle anti-doublon + limite adaptative journalière
+- Suivi des résultats (TP/SL) → **TradePilot Edge**
+- Positions virtuelles X10 (papier)
+- **Exécution autonome des bots `active`** (signaux enregistrés, jamais d'ordres réels)
 
-La source OHLC configurée est BiQuote. Les intervalles H1, H4 et D1 sont demandés au fournisseur ; si un intervalle n'est pas pris en charge, si l'historique est insuffisant ou si les données sont périmées, le tableau de bord l'affiche comme indisponible au lieu d'inventer des valeurs. La disponibilité effective de chaque intervalle doit être vérifiée après déploiement.
+### Bot Builder
+- Création de stratégies personnalisées (indicateurs, style, risque)
+- Mode local (localStorage) pour essayer sans compte
+- Mode cloud (D1) pour les utilisateurs authentifiés
+- Historique des signaux par bot
 
-Le score affiché est un indicateur technique descriptif et ne représente pas une probabilité de gain. Les divergences et les pivots sont des heuristiques techniques à valider sur données historiques. Le calendrier dépend du secret `FINANCE_CALENDAR_API_KEY`.
+### Assistant conversationnel
+- Powered by Cloudflare Workers AI (Llama 3.1)
+- Contexte du tableau de bord injecté
+- Rate-limit IP
 
-## Sécurité d'exécution
+---
 
-- Aucun endpoint du tableau de bord ne transmet d'ordre au broker.
-- `liveTrading: false` reste la configuration attendue.
-- Le Cron d'analyse reste configuré toutes les trois minutes (`*/3 * * * *`).
-- Les alertes Telegram existantes ne sont pas remplacées par l'interface.
+## Architecture
 
+```
+src/index.js          → Worker principal (Cron + API + Assets)
+public/               → Interface (dashboard, builder, bots)
+migrations/           → Schéma D1 (SaaS + bots)
+docs/                 → Documentation technique
+```
 
-## Assistant conversationnel
+### Endpoints principaux
 
-L'assistant utilise le binding Cloudflare Workers AI `AI` et le modèle `@cf/meta/llama-3.1-8b-instruct`. Il reçoit une version filtrée des données du tableau de bord et un historique court. Une limite applicative de 12 requêtes par période de 10 minutes et par adresse IP est appliquée via KV lorsque KV est disponible.
+| Route | Description |
+|-------|-------------|
+| `GET /health` | Santé + confirmation `liveTrading: false` |
+| `GET /status` | État du Cron et dernière analyse |
+| `GET /dashboard-data` | Données agrégées pour l'interface |
+| `GET /analyze` | Analyse technique on-demand |
+| `GET /edge-stats` | Performance observée des alertes |
+| `POST /api/bot-analyze` | Analyse d'une config bot |
+| `GET/POST /api/bots` | Liste / création de bots (auth) |
+| `POST /assistant-chat` | Assistant IA |
 
-Le quota gratuit Workers AI publié par Cloudflare est limité à 10 000 Neurons par jour ; les requêtes peuvent échouer lorsque le quota quotidien est épuisé sur l'offre Free. Vérifier la consommation dans le tableau de bord Cloudflare. L'assistant n'est pas un moteur d'exécution et ne transmet aucun ordre au broker.
+---
 
-La qualité des réponses dépend de la fraîcheur et de la couverture des données OHLC et du calendrier. L'assistant doit signaler les informations manquantes et ne doit jamais transformer un scénario anticipatif en signal confirmé.
+## Déploiement
 
+```bash
+# Prérequis
+npm i -g wrangler
+wrangler login
 
+# Secrets nécessaires
+wrangler secret put TELEGRAM_BOT_TOKEN
+wrangler secret put TELEGRAM_GROUP_CHAT_ID
+# (optionnel) wrangler secret put FINANCE_CALENDAR_API_KEY
 
-## Bot Builder — mode local (priorité actuelle)
+# Déployer
+wrangler deploy
+```
 
-Le parcours de création de bots fonctionne sans inscription ni compte SaaS :
-- les configurations sont enregistrées dans le navigateur de l'appareil (`localStorage`) ;
-- « Mes bots » permet de consulter, modifier, activer, mettre en pause et supprimer une stratégie ;
-- « Analyser maintenant » appelle `POST /api/bot-analyze` ;
-- l'analyse utilise uniquement les indicateurs sélectionnés, les bougies clôturées et une cotation XAUUSD vérifiée ;
-- les signaux confirmés et leur historique sont conservés localement dans le navigateur ;
-- aucune analyse en arrière-plan n'est promise : l'utilisateur déclenche l'analyse depuis la fiche du bot ;
-- aucun ordre réel n'est envoyé et aucune taille de lot n'est calculée sans spécification contractuelle vérifiée du broker.
+Le Cron `*/3 * * * *` est déjà déclaré dans `wrangler.toml`.
 
-Deux indicateurs directionnels au minimum sont requis. L'ATR sert au filtre de volatilité et au calcul des niveaux de stop/objectif. Le seuil de confirmation de 60/100 et les règles de chaque indicateur sont heuristiques : ils doivent être évalués en backtest avant tout usage en conditions réelles. Les données et l'historique locaux ne sont pas synchronisés entre appareils et peuvent être effacés avec les données du navigateur.
+---
 
-Voir [la documentation du Bot Builder local](docs/LOCAL_BOT_BUILDER.md).
+## Philosophie & limites
 
-## TradePilot Edge & SaaS
+- Tout score est **heuristique**, jamais une probabilité de gain.
+- Les résultats Edge n'incluent pas spread, slippage ni commissions.
+- Les bots n'exécutent **aucun ordre réel**.
+- Les données OHLC dépendent de la source BiQuote ; les timeframes non fournis sont affichés comme indisponibles.
+- Le mode SaaS multi-utilisateur (auth + isolation) est préparé dans les migrations mais **pas encore activé en production**.
 
-- `GET /signal-history` : journal des décisions et alertes du Cron.
-- `GET /edge-stats` : résultats observés des alertes Telegram confirmées (TP/SL M1, win rate, expectancy R, ventilation achat/vente).
+---
 
-TradePilot Edge suit les alertes confirmées et mesure leurs résultats à partir des bougies M1 après l'alerte. Les résultats ambigus (TP et SL touchés dans la même bougie) sont exclus. Cette mesure n'intègre pas les frais, le spread ni le slippage et ne constitue pas une probabilité future.
+## Roadmap (prochaines étapes recommandées)
 
-Le schéma SaaS multi-espace (utilisateurs, workspaces, rôles, abonnements, droits, connexions broker en lecture seule et journal d'audit) est préparé dans `migrations/0001_saas_core.sql`. Il n'est pas encore activé : aucun binding D1 ni fournisseur d'identité/facturation n'a été configuré. La version actuelle ne doit donc pas être présentée comme une plateforme multi-utilisateur isolée prête à vendre. Voir [la feuille de route Edge & SaaS](docs/TRADEPILOT_EDGE_SAAS.md).
+1. Modularisation complète de `src/index.js`
+2. Backtest historique côté serveur pour les bots
+3. Activation progressive de l'auth (Supabase / Cloudflare Access)
+4. Fallback data source
+5. Tests unitaires automatisés sur les indicateurs
 
-### Identité et comptes SaaS (reportés)
+---
 
-Les fondations Supabase Auth et D1 restent dans le dépôt pour une phase ultérieure. Elles ne sont pas requises pour le Bot Builder local actuel et ne doivent pas être présentées comme un parcours client activé. Voir [guide Supabase Auth + D1](docs/SUPABASE_D1_SETUP.md).
+**TradePilot AI** — analyse, discipline, transparence.
