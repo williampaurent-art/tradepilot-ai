@@ -5554,6 +5554,119 @@ async function handleCreateBot(request, env) {
   }
 }
 
+async function handleUpdateBot(request, env, botId) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  let input;
+  try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  try {
+    const c = validateBotConfig(input);
+    const existing = await env.DB.prepare(
+      "SELECT id, status, created_at FROM trading_bots WHERE id = ? AND workspace_id = ? LIMIT 1"
+    ).bind(botId, access.workspace.id).first();
+    if (!existing) return json({ ok: false, error: "Bot introuvable dans cet espace." }, 404);
+    const [bars, quote] = await Promise.all([fetchCandles(c.timeframe, 200), fetchLiveQuote()]);
+    const quality = inspectDataQuality(bars, c.timeframe);
+    if (!quality.ok) return json({ ok: false, error: "Modification bloquée : données XAUUSD insuffisamment fraîches ou incomplètes.", dataQuality: quality }, 503);
+    const bot = buildBotDraft(c, botId);
+    bot.status = existing.status;
+    bot.createdAt = existing.created_at;
+    bot.updatedAt = new Date().toISOString();
+    bot.marketValidation = {
+      instrument: CONFIG.SYMBOL, timeframe: c.timeframe, source: quote.source,
+      quoteTimestamp: quote.timestamp, quoteAgeSeconds: quote.quoteAgeSeconds,
+      lastClosedCandleAt: new Date(bars[bars.length - 1].time).toISOString(),
+      validatedAt: new Date().toISOString()
+    };
+    await env.DB.prepare(`
+      UPDATE trading_bots
+      SET name = ?, instrument = ?, timeframe = ?, style = ?, strategy_json = ?,
+          market_validation_json = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE id = ? AND workspace_id = ?
+    `).bind(c.name, c.symbol, c.timeframe, c.style, JSON.stringify(bot),
+      JSON.stringify(bot.marketValidation), botId, access.workspace.id).run();
+    return json({ ok: true, bot, storage: "cloudflare_d1", liveTrading: false });
+  } catch (error) {
+    return json({ ok: false, error: error.message }, error.message.includes("no such table") ? 503 : 400);
+  }
+}
+
+async function handleSetBotStatus(request, env, botId) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  let input;
+  try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const status = String(input?.status || "");
+  if (!["active", "paused"].includes(status)) {
+    return json({ ok: false, error: "État demandé invalide." }, 400);
+  }
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE trading_bots SET status = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      WHERE id = ? AND workspace_id = ?
+    `).bind(status, botId, access.workspace.id).run();
+    if (!result.meta?.changes) return json({ ok: false, error: "Bot introuvable dans cet espace." }, 404);
+    return json({ ok: true, id: botId, status, execution: "ANALYSE MANUELLE UNIQUEMENT · AUCUN ORDRE RÉEL", liveTrading: false });
+  } catch (error) {
+    return json({ ok: false, error: "Impossible de modifier l'état du bot.", detail: error.message }, 503);
+  }
+}
+
+async function handleDeleteBot(request, env, botId) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  try {
+    const result = await env.DB.prepare(
+      "DELETE FROM trading_bots WHERE id = ? AND workspace_id = ?"
+    ).bind(botId, access.workspace.id).run();
+    if (!result.meta?.changes) return json({ ok: false, error: "Bot introuvable dans cet espace." }, 404);
+    return json({ ok: true, deleted: true, id: botId, liveTrading: false });
+  } catch (error) {
+    return json({ ok: false, error: "Suppression du bot impossible.", detail: error.message }, 503);
+  }
+}
+
+async function handleAnalyzeStoredBot(request, env, botId) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  try {
+    const row = await env.DB.prepare(
+      "SELECT strategy_json, status FROM trading_bots WHERE id = ? AND workspace_id = ? LIMIT 1"
+    ).bind(botId, access.workspace.id).first();
+    if (!row) return json({ ok: false, error: "Bot introuvable dans cet espace." }, 404);
+    if (row.status !== "active") return json({ ok: false, error: "Active ce bot avant de lancer une analyse." }, 409);
+    const config = validateBotConfig(JSON.parse(row.strategy_json));
+    const [bars, quote] = await Promise.all([
+      fetchCandles(config.timeframe, 220), fetchLiveQuote()
+    ]);
+    const quality = inspectDataQuality(bars, config.timeframe);
+    if (!quality.ok) return json({ ok: false, error: "Données XAUUSD insuffisamment fraîches ou continues.", dataQuality: quality }, 503);
+    const analysis = evaluateConfiguredBot(config, bars, quote);
+    let signalSaved = false;
+    if (["ACHAT", "VENTE"].includes(analysis.signal) && analysis.score >= analysis.threshold) {
+      const insert = await env.DB.prepare(`
+        INSERT OR IGNORE INTO bot_signal_events
+          (id, bot_id, workspace_id, instrument, side, timeframe, entry, stop_price,
+           target_price, score, rationale_json, market_timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        createId("sig"), botId, access.workspace.id, CONFIG.SYMBOL, analysis.signal,
+        config.timeframe, analysis.entry, analysis.stopLoss, analysis.takeProfit,
+        analysis.score, JSON.stringify(analysis.reasons || []),
+        analysis.market.lastClosedCandleAt
+      ).run();
+      signalSaved = Boolean(insert.meta?.changes);
+    }
+    return json({
+      ok: true, ...analysis, dataQuality: quality, signalSaved,
+      note: "Analyse à la demande. Seuls les signaux directionnels confirmés sont conservés dans l'historique du bot. Aucun message Telegram commun et aucun ordre réel.",
+      liveTrading: false
+    });
+  } catch (error) {
+    return json({ ok: false, error: error.message }, error.message.includes("no such table") ? 503 : 400);
+  }
+}
+
 async function handleBotSignals(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
@@ -5833,10 +5946,11 @@ export default {
       });
     }
 
+    const customerBotPost = /^\/api\/bots\/[a-z0-9_-]+(?:\/(?:status|analyze|delete))?$/i.test(path);
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze"))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || customerBotPost))
     ) {
       return json({
         ok: false,
@@ -5876,6 +5990,15 @@ export default {
       const botSignalsMatch = path.match(/^\/api\/bots\/([a-z0-9_-]+)\/signals$/i);
       if (botSignalsMatch && request.method === "GET") {
         return await handleBotSignals(request, env, botSignalsMatch[1]);
+      }
+
+      const customerBotMatch = path.match(/^\/api\/bots\/([a-z0-9_-]+)(?:\/(status|analyze|delete))?$/i);
+      if (customerBotMatch && request.method === "POST") {
+        const [, botId, action] = customerBotMatch;
+        if (action === "status") return await handleSetBotStatus(request, env, botId);
+        if (action === "analyze") return await handleAnalyzeStoredBot(request, env, botId);
+        if (action === "delete") return await handleDeleteBot(request, env, botId);
+        return await handleUpdateBot(request, env, botId);
       }
 
       if (path === "/api/account") {
