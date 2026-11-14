@@ -25,7 +25,7 @@ Hébergé sur Cloudflare Workers. Analyse technique multi-timeframe, alertes Tel
 - Contrôle anti-doublon + limite adaptative journalière
 - Suivi des résultats (TP/SL) → **TradePilot Edge**
 - Positions virtuelles X10 (papier)
-- **Exécution autonome des bots `active`** (signaux enregistrés, jamais d'ordres réels)
+- **Exécution autonome des bots `active` toutes les 3 minutes** (signaux confirmés enregistrés par espace, jamais d'ordres réels)
 
 ### Bot Builder
 - Création de stratégies personnalisées (indicateurs, style, risque)
@@ -60,6 +60,11 @@ docs/                 → Documentation technique
 | `GET /edge-stats` | Performance observée des alertes |
 | `POST /api/bot-analyze` | Analyse d'une config bot |
 | `GET/POST /api/bots` | Liste / création de bots (auth) |
+| `POST /api/bots/:id` | Modifier un bot (auth + espace propriétaire) |
+| `POST /api/bots/:id/status` | Activer / mettre en pause (auth) |
+| `POST /api/bots/:id/analyze` | Analyse à la demande et sauvegarde du signal confirmé |
+| `POST /api/bots/:id/delete` | Supprimer un bot (auth) |
+| `GET /api/bots/:id/signals` | Historique cloud du bot (auth) |
 | `POST /assistant-chat` | Assistant IA |
 
 ---
@@ -70,6 +75,9 @@ docs/                 → Documentation technique
 # Prérequis
 npm i -g wrangler
 wrangler login
+
+# Configuration Supabase (clé publishable requise pour connexion/inscription)
+wrangler secret put SUPABASE_PUBLISHABLE_KEY
 
 # Secrets nécessaires
 wrangler secret put TELEGRAM_BOT_TOKEN
@@ -83,6 +91,17 @@ wrangler deploy
 Le Cron `*/3 * * * *` est déjà déclaré dans `wrangler.toml`.
 
 ---
+
+## Activation du SaaS
+
+Avant d'ouvrir les inscriptions :
+1. Configurer `SUPABASE_PUBLISHABLE_KEY` dans les variables/secrets du Worker. La clé doit être la clé publishable du projet Supabase correspondant à `SUPABASE_URL`.
+2. Appliquer les migrations D1 dans l'ordre : `0001_saas_core.sql`, puis `0002_customer_bots.sql`.
+3. Vérifier `GET /health`, `GET /api/public-config`, puis tester inscription, connexion, création, activation, analyse, historique et suppression avec deux comptes distincts.
+4. Vérifier que chaque compte ne voit que les bots de son propre espace.
+5. Garder les ordres réels désactivés.
+
+Les bots actifs sont évalués par le Cron toutes les trois minutes. Les signaux confirmés sont enregistrés dans D1, par espace. Les signaux propres aux clients ne sont pas envoyés au canal Telegram global.
 
 ## Philosophie & limites
 
