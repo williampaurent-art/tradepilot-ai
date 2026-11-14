@@ -13,7 +13,7 @@ main{max-width:1120px;margin:auto;padding:24px 18px 110px}.top{display:flex;just
 <div class="divider"></div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><h2 style="margin:0">Signaux du bot</h2><span class="tag">HISTORIQUE</span></div><div id="signalPanel" class="signal-empty" style="margin-top:12px"><strong>Moteur de signaux non activé</strong>Aucun signal n’a encore été généré pour cette stratégie. Les entrées, stop-loss et take-profit ne seront affichés qu’à partir de calculs réels sur les données de marché validées.</div></section></div>
 <nav class="mobile-dock" aria-label="Navigation TradePilot"><a href="/#market-view">Marché</a><a href="/#timeframe-view">Unités</a><a href="/#assistantPanel">Assistant IA</a><a href="/#operations">Robot</a><a class="active" href="/bots.html">Mes bots</a><a href="/builder.html">Créer bot</a></nav></main><script src="/session.js"></script>
 <script>
-const KEY='tradepilot_local_bots_v1',$=id=>document.getElementById(id);
+const $=id=>document.getElementById(id);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=v=>Number.isFinite(Number(v))?Number(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' $':'—';
 let bots=[],selectedId=null;
