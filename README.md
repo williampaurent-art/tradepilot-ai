@@ -101,7 +101,7 @@ Avant d'ouvrir les inscriptions :
 4. Vérifier que chaque compte ne voit que les bots de son propre espace.
 5. Garder les ordres réels désactivés.
 
-Les bots actifs sont évalués par le Cron toutes les trois minutes. Les signaux confirmés sont enregistrés dans D1, par espace. Les signaux propres aux clients ne sont pas envoyés au canal Telegram global.
+Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots tournants de 20 bots maximum pour préserver les limites CPU du Worker gratuit. Les signaux confirmés sont enregistrés dans D1, par espace. Les signaux propres aux clients ne sont pas envoyés au canal Telegram global.
 
 ## Philosophie & limites
 
