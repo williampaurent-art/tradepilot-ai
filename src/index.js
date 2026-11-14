@@ -2876,8 +2876,8 @@ async function processActiveCustomerBots(env) {
       SELECT id, workspace_id, strategy_json
       FROM trading_bots
       WHERE status = 'active' AND instrument = ?
-      ORDER BY updated_at DESC
-      LIMIT 100
+      ORDER BY COALESCE(last_evaluated_at, '') ASC, created_at ASC
+      LIMIT 20
     `).bind(CONFIG.SYMBOL).all();
     const rows = result.results || [];
     const marketByTimeframe = new Map();
@@ -2915,9 +2915,19 @@ async function processActiveCustomerBots(env) {
         else duplicates++;
       } catch (error) {
         errors.push({ botId: row.id, message: String(error.message || error).slice(0, 240) });
+      } finally {
+        try {
+          await env.DB.prepare(`
+            UPDATE trading_bots
+            SET last_evaluated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+            WHERE id = ? AND workspace_id = ? AND status = 'active'
+          `).bind(row.id, row.workspace_id).run();
+        } catch (rotationError) {
+          errors.push({ botId: row.id, message: "Rotation impossible : " + String(rotationError.message || rotationError).slice(0, 180) });
+        }
       }
     }
-    return { ok: true, activeBots: rows.length, analyzed, signalsSaved, duplicates, skipped, errors: errors.slice(0, 10), execution: "SIGNALS ONLY · NO REAL ORDERS" };
+    return { ok: true, batchSize: rows.length, batchLimit: 20, analyzed, signalsSaved, duplicates, skipped, errors: errors.slice(0, 10), execution: "SIGNALS ONLY · NO REAL ORDERS" };
   } catch (error) {
     return { ok: false, error: String(error.message || error).slice(0, 300), analyzed: 0, signalsSaved: 0 };
   }
