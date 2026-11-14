@@ -139,4 +139,3 @@ test("cloud bot lifecycle endpoints are workspace-scoped and read-only for execu
   assert.match(workerSource, /liveTrading:\s*false/);
   assert.match(workerSource, /AUCUN ORDRE RÉEL|AUCUN ORDRE REEL/);
 });
-});
