@@ -1,6 +1,7 @@
 name: Deploy TradePilot Worker
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -49,6 +50,31 @@ jobs:
         run: |
           npx --yes wrangler@latest d1 migrations apply tradepilot-ai-db --remote
           npx --yes wrangler@latest deploy --var "SUPABASE_PUBLISHABLE_KEY:$SUPABASE_PUBLISHABLE_KEY"
+
+      - name: Verify deployed Worker
+        if: steps.credentials.outputs.configured == 'true'
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const base = "https://tradepilot-ai.williampaurent.workers.dev";
+          const healthResponse = await fetch(base + "/health");
+          const health = await healthResponse.json();
+          if (!healthResponse.ok || health.ok !== true || health.liveTrading !== false) {
+            throw new Error("Worker health check failed or live trading safety flag is not false.");
+          }
+          const configResponse = await fetch(base + "/api/public-config");
+          const config = await configResponse.json();
+          if (!configResponse.ok || config.ok !== true || !config.supabaseUrl || !config.publishableKey) {
+            throw new Error("Supabase public configuration check failed.");
+          }
+          console.log(JSON.stringify({
+            health: health.status,
+            instrument: health.instrument,
+            supabaseConfig: "available",
+            liveTrading: health.liveTrading,
+            execution: health.execution
+          }));
+          NODE
 
       - name: Deployment readiness summary
         if: steps.credentials.outputs.configured == 'false'
