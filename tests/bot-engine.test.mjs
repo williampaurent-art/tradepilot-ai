@@ -179,3 +179,25 @@ test("AI chat and standalone bot analysis require an authenticated workspace", (
 test("Worker does not emit wildcard CORS", () => {
   assert.doesNotMatch(workerSource, /access-control-allow-origin["']?\\s*:\\s*["']\\*["']/i);
 });
+
+test("customer bot write and stored-analysis endpoints use workspace-scoped limits", () => {
+  const names = [
+    "handleCreateBot", "handleUpdateBot", "handleSetBotStatus",
+    "handleDeleteBot", "handleAnalyzeStoredBot"
+  ];
+  for (const name of names) {
+    const start = workerSource.indexOf("async function " + name);
+    assert.notEqual(start, -1, name + " should exist");
+    const next = workerSource.indexOf("\nasync function ", start + 1);
+    const block = workerSource.slice(start, next < 0 ? workerSource.length : next);
+    assert.match(block, /getAuthenticatedWorkspace\(request, env\)/, name + " should authenticate");
+    assert.match(block, /workspaceRateLimitResponse\(env, access\.workspace\.id/, name + " should rate-limit its workspace");
+  }
+});
+test("assistant API rejects non-POST requests and bounds request bytes", () => {
+  const start = workerSource.indexOf("async function handleAssistantChat");
+  const end = workerSource.indexOf("async function handleTelegramTest", start);
+  const block = workerSource.slice(start, end);
+  assert.match(block, /request\.method !== "POST"/);
+  assert.match(block, /MAX_ASSISTANT_REQUEST_BYTES = 256_000/);
+});
