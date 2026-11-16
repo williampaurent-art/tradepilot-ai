@@ -6038,17 +6038,6 @@ async function handleWorkerRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          
-          "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "content-type, authorization, x-test-key, x-telegram-test-key"
-        }
-      });
-    }
-
     const customerBotPost = /^\/api\/bots\/[a-z0-9_-]+(?:\/(?:status|analyze|delete))?$/i.test(path);
     if (
       request.method !== "GET" &&
