@@ -168,7 +168,7 @@ test("workspace rate limits are isolated between tenants and fail closed without
   assert.equal(unavailable.ok, false); assert.equal(unavailable.status, 503);
 });
 test("AI chat and standalone bot analysis require an authenticated workspace", () => {
-  const assistant = workerSource.slice(workerSource.indexOf("async function handleAssistantChat"), workerSource.indexOf("function findSwingPoints"));
+  const assistant = workerSource.slice(workerSource.indexOf("async function handleAssistantChat"), workerSource.indexOf("async function handleTelegramTest"));
   const botAnalyze = workerSource.slice(workerSource.indexOf("async function handleBotAnalyze"), workerSource.indexOf("async function handleBotMarket"));
   assert.match(assistant, /getAuthenticatedWorkspace\(request, env\)/);
   assert.match(assistant, /consumeWorkspaceRateLimit\(env, access\.workspace\.id/);
