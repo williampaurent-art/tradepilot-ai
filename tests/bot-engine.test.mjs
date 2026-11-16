@@ -118,7 +118,7 @@ test("does not invent a direction in a flat market", () => {
 
 
 test("customer bot pages contain syntactically valid browser scripts", async () => {
-  for (const path of ["../public/bots.html", "../public/builder.html"]) {
+  for (const path of ["../public/index.html", "../public/bots.html", "../public/builder.html"]) {
     const html = await readFile(new URL(path, import.meta.url), "utf8");
     const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/gi)];
     assert.ok(scripts.length > 0, `${path} should contain an inline application script`);
@@ -174,4 +174,8 @@ test("AI chat and standalone bot analysis require an authenticated workspace", (
   assert.match(assistant, /consumeWorkspaceRateLimit\(env, access\.workspace\.id/);
   assert.match(botAnalyze, /getAuthenticatedWorkspace\(request, env\)/);
   assert.match(botAnalyze, /consumeWorkspaceRateLimit\(env, access\.workspace\.id/);
+});
+
+test("Worker does not emit wildcard CORS", () => {
+  assert.doesNotMatch(workerSource, /access-control-allow-origin["']?\\s*:\\s*["']\\*["']/i);
 });
