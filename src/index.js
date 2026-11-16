@@ -34,13 +34,51 @@ const TIMEFRAMES = {
 // HTTP
 // --------------------------------------------------
 
+// --------------------------------------------------
+// API SECURITY — CORS AND WORKSPACE RATE LIMITS
+// --------------------------------------------------
+function allowedCorsOrigin(request, env) {
+  const origin = request.headers.get("Origin");
+  if (!origin || origin === "null") return null;
+  let requestOrigin;
+  try { requestOrigin = new URL(request.url).origin; } catch { return null; }
+  const configured = String(env.CORS_ALLOWED_ORIGINS || "").split(",").map(value => value.trim()).filter(Boolean);
+  return origin === requestOrigin || configured.includes(origin) ? origin : null;
+}
+function withCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  const origin = allowedCorsOrigin(request, env);
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "content-type, authorization, x-test-key, x-telegram-test-key");
+    headers.set("Access-Control-Max-Age", "600");
+    headers.set("Vary", "Origin");
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+// Fixed-window KV counter per workspace and route. KV is approximate; strict enforcement should use Cloudflare Rate Limiting.
+async function consumeWorkspaceRateLimit(env, workspaceId, route, limit, windowSeconds) {
+  if (!env.TP_STATE || !workspaceId) return { ok: false, status: 503, reason: "RATE_LIMITER_UNAVAILABLE" };
+  const now = Date.now(), windowMs = windowSeconds * 1000, bucket = Math.floor(now / windowMs);
+  const key = "workspace_rate:" + route + ":" + workspaceId + ":" + bucket;
+  try {
+    const previous = Number(await env.TP_STATE.get(key) || 0);
+    if (!Number.isFinite(previous) || previous >= limit) return { ok: false, status: 429, reason: "RATE_LIMIT" };
+    await env.TP_STATE.put(key, String(previous + 1), { expirationTtl: windowSeconds * 2 });
+    return { ok: true, remaining: Math.max(0, limit - previous - 1) };
+  } catch {
+    return { ok: false, status: 503, reason: "RATE_LIMITER_UNAVAILABLE" };
+  }
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
-      "access-control-allow-origin": "*"
+      
     }
   });
 }
@@ -4483,6 +4521,10 @@ function buildAssistantMarketContext(raw) {
 }
 
 async function handleAssistantChat(request, env) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  const rate = await consumeWorkspaceRateLimit(env, access.workspace.id, "assistant_chat", 12, 600);
+  if (!rate.ok) return json({ ok: false, code: rate.reason, error: rate.status === 429 ? "Limite temporaire de questions IA atteinte. Réessaie dans quelques minutes." : "Protection anti-abus temporairement indisponible." }, rate.status);
   if (!env.AI || typeof env.AI.run !== "function") {
     return json({
       ok: false,
@@ -4511,18 +4553,6 @@ async function handleAssistantChat(request, env) {
 
   const question = assistantCleanText(body?.question, 700).trim();
   if (!question) return json({ ok: false, error: "Écris une question avant l'envoi." }, 400);
-
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
-  const ipHash = Array.from(new Uint8Array(digest)).slice(0, 12).map(x => x.toString(16).padStart(2, "0")).join("");
-  const rateKey = "assistant_rate_" + ipHash;
-  if (env.TP_STATE) {
-    const previous = Number(await readKV(env, rateKey) || 0);
-    if (previous >= 12) {
-      return json({ ok: false, code: "RATE_LIMIT", error: "Limite temporaire atteinte. Réessaie dans quelques minutes." }, 429);
-    }
-    await writeKV(env, rateKey, previous + 1, 600);
-  }
 
   const history = Array.isArray(body?.history) ? body.history.slice(-8) : [];
   const messages = history.map(item => ({
@@ -5502,7 +5532,11 @@ function evaluateConfiguredBot(c, bars, quote) {
   };
 }
 
-async function handleBotAnalyze(request) {
+async function handleBotAnalyze(request, env) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  const rate = await consumeWorkspaceRateLimit(env, access.workspace.id, "bot_analyze", 20, 600);
+  if (!rate.ok) return json({ ok: false, code: rate.reason, error: rate.status === 429 ? "Limite d'analyses atteinte. Réessaie après quelques minutes." : "Protection anti-abus temporairement indisponible." }, rate.status);
   // The header is only an early rejection hint: clients can omit it.
   if (Number(request.headers.get("content-length") || 0) > 12000) {
     return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
@@ -6000,8 +6034,7 @@ async function handleSaasAccount(request, env) {
 // CLOUDFLARE WORKER
 // --------------------------------------------------
 
-export default {
-  async fetch(request, env) {
+async function handleWorkerRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
 
@@ -6009,7 +6042,7 @@ export default {
       return new Response(null, {
         status: 204,
         headers: {
-          "access-control-allow-origin": "*",
+          
           "access-control-allow-methods": "GET, POST, OPTIONS",
           "access-control-allow-headers": "content-type, authorization, x-test-key, x-telegram-test-key"
         }
@@ -6038,7 +6071,7 @@ export default {
       }
 
       if (path === "/api/bot-analyze" && request.method === "POST") {
-        return await handleBotAnalyze(request);
+        return await handleBotAnalyze(request, env);
       }
 
       if (path === "/api/bot-market" && request.method === "GET") {
@@ -6155,8 +6188,21 @@ export default {
         timestamp: new Date().toISOString()
       }, 500);
     }
+}
+export default {
+  async fetch(request, env) {
+    const origin = request.headers.get("Origin");
+    if (request.method === "OPTIONS") {
+      if (origin && !allowedCorsOrigin(request, env)) return withCors(json({ ok: false, error: "Origine non autorisée." }, 403), request, env);
+      const requestedMethod = String(request.headers.get("Access-Control-Request-Method") || "").toUpperCase();
+      if (requestedMethod && !["GET", "POST"].includes(requestedMethod)) return withCors(json({ ok: false, error: "Méthode CORS non autorisée." }, 405), request, env);
+      const requestedHeaders = String(request.headers.get("Access-Control-Request-Headers") || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+      const allowedHeaders = new Set(["content-type", "authorization", "x-test-key", "x-telegram-test-key"]);
+      if (requestedHeaders.some(header => !allowedHeaders.has(header))) return withCors(json({ ok: false, error: "En-tête CORS non autorisé." }, 403), request, env);
+      return withCors(new Response(null, { status: 204 }), request, env);
+    }
+    return withCors(await handleWorkerRequest(request, env), request, env);
   },
-
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       scheduledCheck(env).catch(async error => {
