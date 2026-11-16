@@ -19,7 +19,7 @@ Working branch: `feature/saas-foundation`
 
 ### P1 — Confirm and enforce the public/private API boundary
 
-The Worker currently serves several market/dashboard/history routes without Supabase workspace authentication, including `/dashboard-data`, `/edge-stats`, `/signal-history`, `/x10`, `/gold`, `/calendar`, and `/analyze`. The bot analysis preview route `POST /api/bot-analyze` is also unauthenticated.
+The Worker serves shared market/dashboard/history routes without Supabase workspace authentication, including `/dashboard-data`, `/edge-stats`, `/signal-history`, `/x10`, `/gold`, `/calendar`, and `/analyze`. These are classified as public platform data. The standalone compute endpoints `POST /api/bot-analyze` and `POST /assistant-chat` have since been moved behind Supabase workspace authentication.
 
 This may be intentional for public market data and pre-login previews. Before changing behavior, map each route to its frontend caller and decide whether it is:
 - public market information,
@@ -30,20 +30,15 @@ Any user-specific records must be moved behind verified workspace authentication
 
 ### P1 — CORS and browser access policy
 
-The Worker currently returns `access-control-allow-origin: *` and allows generic browser origins. Define the supported production origins and make credentialed/session-bearing routes enforce an explicit origin policy. Keep public read-only market endpoints separate where wildcard CORS is an intentional product decision.
+The original wildcard CORS policy has been removed. Same-origin requests are allowed by default; any separate frontend origin must be explicitly added to `CORS_ALLOWED_ORIGINS`. Verify the deployed allow-list before connecting a broker portal hosted on another domain.
 
 ### P1 — Request validation and abuse controls
 
-Review body-size limits, JSON parsing, rate limiting, and per-workspace quotas on public preview, assistant, Telegram-test and bot-analysis routes. Apply limits server-side; client-side limits are not security controls.
+AI chat and bot-analysis now enforce body-size limits and per-workspace rate limits; customer bot create/update/status handlers enforce bounded JSON parsing. Telegram test remains protected by its server-side secret. Add edge-level limits for public market-data endpoints before opening them to high-volume third-party use.
 
 ### P1 — Authentication and tenant-isolation regression tests
 
-Add tests for:
-- missing, malformed, expired, wrong-issuer and wrong-audience Supabase tokens;
-- a user from workspace A cannot read, update, analyze, change status or delete a bot from workspace B;
-- private endpoints reject unauthenticated requests;
-- public endpoints return only intentionally public data;
-- CORS headers match the configured route policy.
+Current regression tests cover CORS allow-list behavior, workspace-specific rate-limit counters, body-size/JSON validation, authenticated route guards and existing workspace-scoped bot SQL. Still add integration tests with mocked Supabase JWKS and D1 to prove missing/expired/wrong-issuer tokens are rejected and workspace A cannot access workspace B's records.
 
 ### P2 — Reliability and operational readiness
 
