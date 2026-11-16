@@ -145,7 +145,7 @@ test("cloud bot lifecycle endpoints are workspace-scoped and read-only for execu
 });
 
 
-const security = new Function(factorySource + "; return { allowedCorsOrigin, withCors, consumeWorkspaceRateLimit };")();
+const security = new Function(factorySource + "; return { allowedCorsOrigin, withCors, consumeWorkspaceRateLimit, readBoundedJson };")();
 test("CORS allows same-origin and explicitly configured origins only", () => {
   const same = new Request("https://tradepilot.example/api/bots", { headers: { Origin: "https://tradepilot.example" } });
   const foreign = new Request("https://tradepilot.example/api/bots", { headers: { Origin: "https://attacker.example" } });
@@ -200,4 +200,13 @@ test("assistant API rejects non-POST requests and bounds request bytes", () => {
   const block = workerSource.slice(start, end);
   assert.match(block, /request\.method !== "POST"/);
   assert.match(block, /MAX_ASSISTANT_REQUEST_BYTES = 256_000/);
+});
+
+test("customer bot APIs reject oversized and malformed JSON bodies", async () => {
+  const tooLarge = await security.readBoundedJson(new Request("https://tradepilot.example", { method: "POST", body: JSON.stringify({ value: "x".repeat(100) }) }), 20);
+  assert.equal(tooLarge.ok, false); assert.equal(tooLarge.status, 413);
+  const malformed = await security.readBoundedJson(new Request("https://tradepilot.example", { method: "POST", body: "not-json" }), 100);
+  assert.equal(malformed.ok, false); assert.equal(malformed.status, 400);
+  const valid = await security.readBoundedJson(new Request("https://tradepilot.example", { method: "POST", body: JSON.stringify({ name: "Test" }) }), 100);
+  assert.equal(valid.ok, true); assert.equal(valid.value.name, "Test");
 });
