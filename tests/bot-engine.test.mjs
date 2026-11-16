@@ -143,3 +143,35 @@ test("cloud bot lifecycle endpoints are workspace-scoped and read-only for execu
   assert.match(workerSource, /liveTrading:\s*false/);
   assert.match(workerSource, /AUCUN ORDRE RÉEL|AUCUN ORDRE REEL/);
 });
+
+
+const security = new Function(factorySource + "; return { allowedCorsOrigin, withCors, consumeWorkspaceRateLimit };")();
+test("CORS allows same-origin and explicitly configured origins only", () => {
+  const same = new Request("https://tradepilot.example/api/bots", { headers: { Origin: "https://tradepilot.example" } });
+  const foreign = new Request("https://tradepilot.example/api/bots", { headers: { Origin: "https://attacker.example" } });
+  assert.equal(security.allowedCorsOrigin(same, {}), "https://tradepilot.example");
+  assert.equal(security.allowedCorsOrigin(foreign, {}), null);
+  const configured = new Request("https://tradepilot.example/api/bots", { headers: { Origin: "https://app.tradepilot.example" } });
+  assert.equal(security.allowedCorsOrigin(configured, { CORS_ALLOWED_ORIGINS: "https://app.tradepilot.example" }), "https://app.tradepilot.example");
+  assert.equal(security.withCors(new Response("ok"), same, {}).headers.get("access-control-allow-origin"), "https://tradepilot.example");
+  assert.equal(security.withCors(new Response("ok"), foreign, {}).headers.get("access-control-allow-origin"), null);
+});
+test("workspace rate limits are isolated between tenants and fail closed without KV", async () => {
+  const values = new Map();
+  const env = { TP_STATE: { async get(key) { return values.get(key) ?? null; }, async put(key, value) { values.set(key, value); } } };
+  assert.equal((await security.consumeWorkspaceRateLimit(env, "workspace-a", "assistant", 2, 600)).ok, true);
+  assert.equal((await security.consumeWorkspaceRateLimit(env, "workspace-a", "assistant", 2, 600)).ok, true);
+  const blocked = await security.consumeWorkspaceRateLimit(env, "workspace-a", "assistant", 2, 600);
+  assert.equal(blocked.ok, false); assert.equal(blocked.status, 429);
+  assert.equal((await security.consumeWorkspaceRateLimit(env, "workspace-b", "assistant", 2, 600)).ok, true);
+  const unavailable = await security.consumeWorkspaceRateLimit({}, "workspace-a", "assistant", 2, 600);
+  assert.equal(unavailable.ok, false); assert.equal(unavailable.status, 503);
+});
+test("AI chat and standalone bot analysis require an authenticated workspace", () => {
+  const assistant = workerSource.slice(workerSource.indexOf("async function handleAssistantChat"), workerSource.indexOf("function findSwingPoints"));
+  const botAnalyze = workerSource.slice(workerSource.indexOf("async function handleBotAnalyze"), workerSource.indexOf("async function handleBotMarket"));
+  assert.match(assistant, /getAuthenticatedWorkspace\(request, env\)/);
+  assert.match(assistant, /consumeWorkspaceRateLimit\(env, access\.workspace\.id/);
+  assert.match(botAnalyze, /getAuthenticatedWorkspace\(request, env\)/);
+  assert.match(botAnalyze, /consumeWorkspaceRateLimit\(env, access\.workspace\.id/);
+});
