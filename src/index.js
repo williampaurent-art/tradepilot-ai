@@ -95,6 +95,22 @@ function json(data, status = 200) {
   });
 }
 
+async function readBoundedJson(request, maxBytes) {
+  let bytes;
+  try { bytes = await request.arrayBuffer(); }
+  catch { return { ok: false, status: 400, error: "Corps de requête illisible." }; }
+  if (bytes.byteLength > maxBytes) return { ok: false, status: 413, error: "Corps de requête trop volumineux." };
+  try {
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, status: 400, error: "Un objet JSON est requis." };
+    }
+    return { ok: true, value };
+  } catch {
+    return { ok: false, status: 400, error: "JSON illisible." };
+  }
+}
+
 function numberParam(url, name, fallback, min, max) {
   const raw = url.searchParams.get(name);
 
@@ -5648,7 +5664,9 @@ async function handleCreateBot(request, env) {
   if (!access.ok) return access.response;
   const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_create", 10, 3600);
   if (rateResponse) return rateResponse;
-  let input; try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const parsed = await readBoundedJson(request, 16_000);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
   try {
     const c = validateBotConfig(input);
     const [marketBars, marketQuote] = await Promise.all([fetchCandles(c.timeframe, 200), fetchLiveQuote()]);
@@ -5678,8 +5696,9 @@ async function handleUpdateBot(request, env, botId) {
   if (!access.ok) return access.response;
   const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_update", 30, 600);
   if (rateResponse) return rateResponse;
-  let input;
-  try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const parsed = await readBoundedJson(request, 16_000);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
   try {
     const c = validateBotConfig(input);
     const existing = await env.DB.prepare(
@@ -5717,8 +5736,9 @@ async function handleSetBotStatus(request, env, botId) {
   if (!access.ok) return access.response;
   const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_status", 30, 600);
   if (rateResponse) return rateResponse;
-  let input;
-  try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const parsed = await readBoundedJson(request, 2_048);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
   const status = String(input?.status || "");
   if (!["active", "paused"].includes(status)) {
     return json({ ok: false, error: "État demandé invalide." }, 400);
