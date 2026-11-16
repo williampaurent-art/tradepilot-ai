@@ -53,7 +53,10 @@ function withCors(response, request, env) {
     headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     headers.set("Access-Control-Allow-Headers", "content-type, authorization, x-test-key, x-telegram-test-key");
     headers.set("Access-Control-Max-Age", "600");
-    headers.set("Vary", "Origin");
+    const vary = headers.get("Vary");
+    if (!vary || !vary.split(",").some(value => value.trim().toLowerCase() === "origin")) {
+      headers.set("Vary", vary ? vary + ", Origin" : "Origin");
+    }
   }
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -71,14 +74,23 @@ async function consumeWorkspaceRateLimit(env, workspaceId, route, limit, windowS
     return { ok: false, status: 503, reason: "RATE_LIMITER_UNAVAILABLE" };
   }
 }
+function workspaceRateLimitResponse(env, workspaceId, route, limit, windowSeconds) {
+  return consumeWorkspaceRateLimit(env, workspaceId, route, limit, windowSeconds).then(rate => {
+    if (rate.ok) return null;
+    return json({
+      ok: false,
+      code: rate.reason,
+      error: rate.status === 429 ? "Limite temporaire atteinte. Réessaie dans quelques minutes." : "Protection anti-abus temporairement indisponible."
+    }, rate.status);
+  });
+}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      
+      "cache-control": "no-store"
     }
   });
 }
@@ -4521,6 +4533,7 @@ function buildAssistantMarketContext(raw) {
 }
 
 async function handleAssistantChat(request, env) {
+  if (request.method !== "POST") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
   const rate = await consumeWorkspaceRateLimit(env, access.workspace.id, "assistant_chat", 12, 600);
@@ -4538,7 +4551,7 @@ async function handleAssistantChat(request, env) {
   // avec buildAssistantMarketContext avant de le transmettre au modele.
   const rawBody = await request.text();
   const requestBytes = new TextEncoder().encode(rawBody).byteLength;
-  const MAX_ASSISTANT_REQUEST_BYTES = 1_000_000;
+  const MAX_ASSISTANT_REQUEST_BYTES = 256_000;
   if (requestBytes > MAX_ASSISTANT_REQUEST_BYTES) {
     return json({
       ok: false,
@@ -5633,6 +5646,8 @@ async function handleListBots(request, env) {
 async function handleCreateBot(request, env) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_create", 10, 3600);
+  if (rateResponse) return rateResponse;
   let input; try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
   try {
     const c = validateBotConfig(input);
@@ -5661,6 +5676,8 @@ async function handleCreateBot(request, env) {
 async function handleUpdateBot(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_update", 30, 600);
+  if (rateResponse) return rateResponse;
   let input;
   try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
   try {
@@ -5698,6 +5715,8 @@ async function handleUpdateBot(request, env, botId) {
 async function handleSetBotStatus(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_status", 30, 600);
+  if (rateResponse) return rateResponse;
   let input;
   try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
   const status = String(input?.status || "");
@@ -5719,6 +5738,8 @@ async function handleSetBotStatus(request, env, botId) {
 async function handleDeleteBot(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_delete", 10, 600);
+  if (rateResponse) return rateResponse;
   try {
     const result = await env.DB.prepare(
       "DELETE FROM trading_bots WHERE id = ? AND workspace_id = ?"
@@ -5733,6 +5754,8 @@ async function handleDeleteBot(request, env, botId) {
 async function handleAnalyzeStoredBot(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_analyze_stored", 20, 600);
+  if (rateResponse) return rateResponse;
   try {
     const row = await env.DB.prepare(
       "SELECT strategy_json, status FROM trading_bots WHERE id = ? AND workspace_id = ? LIMIT 1"
