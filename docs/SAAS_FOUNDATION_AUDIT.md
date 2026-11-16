@@ -78,7 +78,7 @@ This is a source-level review of the Worker, D1 SaaS foundation, Wrangler config
 - Removed wildcard CORS. Same-origin browser requests are allowed; additional origins must be listed exactly in the Worker environment variable `CORS_ALLOWED_ORIGINS` as comma-separated origins (scheme + host + optional port, no path).
 - CORS preflight now validates origin, requested method and requested headers. Bearer-token requests do not use cookie credentials.
 - `POST /assistant-chat` and `POST /api/bot-analyze` now require a valid Supabase access token and a provisioned workspace.
-- AI chat is limited to 12 requests per workspace per 10-minute fixed window; standalone bot analysis is limited to 20 requests per workspace per 10-minute fixed window. Customer bot creation is limited to 10 per workspace per hour; bot updates, status changes, stored-bot analysis and deletion have separate workspace-scoped fixed-window limits. If KV is unavailable, these paid/compute-intensive endpoints fail closed with HTTP 503.
+- AI chat is limited to 12 requests per workspace per 10-minute fixed window; standalone bot analysis is limited to 20 requests per workspace per 10-minute fixed window. Customer bot creation is limited to 10 per workspace per hour; updates and status changes to 30 per 10 minutes; stored-bot analysis to 20 per 10 minutes; and deletion to 10 per 10 minutes. If KV is unavailable, these paid/compute-intensive endpoints fail closed with HTTP 503.
 - The dashboard assistant now uses the shared authenticated session helper.
 - Added tests for exact-origin CORS behavior, per-workspace rate-limit separation, fail-closed behavior and authenticated route guards.
 
