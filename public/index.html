@@ -378,7 +378,7 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 <div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a><a href="/bots.html" aria-label="Mes bots" title="Mes bots">Mes bots</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer mon bot" title="Créer mon bot">Créer bot</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
-<script>
+<script src="/session.js"></script><script>
 const UI_VERSION="2026.11.10.9";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15",chartWindow=90,chartLevelsOn=true,chartRangeOn=true,chartHoverIndex=null,chartGeometry=null;
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
@@ -842,9 +842,8 @@ async function assistantSubmit(question){
  const submit=$("assistantForm")?.querySelector('button[type="submit"]');if(submit){submit.disabled=true;submit.textContent="Analyse…";}
  const history=Array.from(log.querySelectorAll(".assistant-msg")).slice(-6).map(node=>({role:node.classList.contains("user")?"user":"assistant",content:(node.textContent||"").slice(0,350)}));
  try{
-  const response=await fetch(API+"/assistant-chat",{method:"POST",headers:{"content-type":"application/json","accept":"application/json"},body:JSON.stringify({question:value,history,marketContext:snapshot||{}})});
-  const payload=await response.json();
-  if(!response.ok||payload?.ok!==true)throw new Error(payload?.error||"Assistant IA indisponible.");
+  const payload=await TradePilotSession.api("/assistant-chat",{method:"POST",headers:{"content-type":"application/json","accept":"application/json"},body:JSON.stringify({question:value,history,marketContext:snapshot||{}})});
+  if(payload?.ok!==true)throw new Error(payload?.error||"Assistant IA indisponible.");
   assistantPush(payload.answer,"bot");
   if(meta)meta.textContent="Modèle conversationnel actif · "+payload.model+" · contexte marché du "+(payload.contextAt||"—")+".";
  }catch(error){
