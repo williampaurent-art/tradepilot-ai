@@ -1,0 +1,25 @@
+name: TradePilot CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [feature/saas-foundation]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check Worker syntax
+        run: node --input-type=module --check < src/index.js
+      - name: Run tests
+        run: node --test tests/*.test.mjs
