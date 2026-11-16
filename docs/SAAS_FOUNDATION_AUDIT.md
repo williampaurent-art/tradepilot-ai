@@ -71,3 +71,27 @@ Add tests for:
 ## Audit limitations
 
 This is a source-level review of the Worker, D1 SaaS foundation, Wrangler configuration, existing bot-engine tests and deployment workflow. It is not a penetration test, a production configuration inspection, or proof that the deployed environment matches the repository.
+
+
+## Implemented on `feature/saas-foundation`
+
+- Removed wildcard CORS. Same-origin browser requests are allowed; additional origins must be listed exactly in the Worker environment variable `CORS_ALLOWED_ORIGINS` as comma-separated origins (scheme + host + optional port, no path).
+- CORS preflight now validates origin, requested method and requested headers. Bearer-token requests do not use cookie credentials.
+- `POST /assistant-chat` and `POST /api/bot-analyze` now require a valid Supabase access token and a provisioned workspace.
+- AI chat is limited to 12 requests per workspace per 10-minute fixed window; standalone bot analysis is limited to 20 requests per workspace per 10-minute fixed window. If KV is unavailable, these paid/compute-intensive endpoints fail closed with HTTP 503.
+- The dashboard assistant now uses the shared authenticated session helper.
+- Added tests for exact-origin CORS behavior, per-workspace rate-limit separation, fail-closed behavior and authenticated route guards.
+
+### Data classification (important)
+
+Private customer strategy data remains in D1 tables `trading_bots` and `bot_signal_events`; customer bot handlers select or mutate rows with the authenticated `workspace_id`. The scheduled bot processor writes each signal with the originating bot's workspace ID.
+
+The following routes remain public because they expose shared platform market/strategy information rather than customer records: `/dashboard-data`, `/gold`, `/calendar`, `/signal-history`, `/edge-stats`, and `/x10`. In particular, the current X10 virtual position and global signal history are platform-wide demonstration/market feeds, **not a personal user portfolio or private journal**. Do not place customer-specific records in those shared KV keys. If TradePilot should offer each customer a private X10 portfolio, implement it as a separate workspace-keyed D1 feature and process each workspace independently before exposing it as a customer account.
+
+### Rate-limit limitation
+
+The current limiter uses a per-workspace fixed-window counter in Cloudflare KV. KV counters are eventually consistent and are not atomic under high concurrency; they provide an abuse-control layer, not a strict financial quota. Before a public paid launch, add Cloudflare Rate Limiting or another atomic quota service at the edge. The application fails closed when KV is missing or errors.
+
+### Deployment
+
+These changes are on the feature branch only. They do not alter production secrets, D1 data, Worker deployment, broker permissions or order execution.
