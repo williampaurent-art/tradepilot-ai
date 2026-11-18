@@ -17,7 +17,7 @@ function fixture() {
 
 test("enters only after a completed single M15 candle moves at least $5", () => {
   const result = runXauM15ImpulseBacktest(fixture(), { spreadDollars: 0, slippageDollars: 0 });
-  assert.equal(result.trades, 2);
+  assert.equal(result.trades.length, 2);
   assert.equal(result.takeProfits, 2);
   assert.equal(result.winRate, 100);
 });
