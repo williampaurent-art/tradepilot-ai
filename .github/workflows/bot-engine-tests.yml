@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: 22
       - name: Run deterministic bot engine tests
-        run: node --test tests/bot-engine.test.mjs
+        run: node --test tests/*.test.mjs
