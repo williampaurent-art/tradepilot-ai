@@ -2999,6 +2999,114 @@ async function processActiveCustomerBots(env) {
   }
 }
 
+// --------------------------------------------------
+// ULTRA PRECISION POLICY — XAUUSD ALERT GATE
+// --------------------------------------------------
+const ULTRA_PRECISION_POLICY = Object.freeze({
+  mode: "ULTRA_PRECISION",
+  minimumScore: 85,
+  minimumResolvedSamples: 30,
+  minimumWilsonLowerBoundPercent: 60,
+  minimumAnticipationIndex: 68,
+  minimumSetupConfluence: 75,
+  requiredTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
+  minimumAlignedHigherTimeframes: 2
+});
+
+function applyUltraPrecisionPolicy(signal) {
+  if (!signal || typeof signal !== "object") return signal;
+  const blockers = [];
+  const direction = signal.signal === "ACHAT" ? "HAUSSIER" :
+    signal.signal === "VENTE" ? "BAISSIER" : null;
+  const policy = ULTRA_PRECISION_POLICY;
+
+  if (!signal.ok) blockers.push("Analyse marché invalide ou indisponible.");
+  if (!direction) blockers.push("Aucune direction acheteuse/vendeuse exploitable.");
+  if (signal.alertLevel !== "CONFIRMED") blockers.push("Confirmation technique de base absente.");
+  if (!Number.isFinite(Number(signal.score)) || Number(signal.score) < policy.minimumScore) {
+    blockers.push("Score inférieur au seuil Ultra de " + policy.minimumScore + "/100.");
+  }
+
+  const quality = signal.dataQuality || {};
+  for (const timeframe of ["M1", "M5", "M15"]) {
+    if (quality[timeframe]?.ok !== true) blockers.push("Qualité des données " + timeframe + " non validée.");
+  }
+
+  const advanced = signal.advancedIntelligence || {};
+  const available = new Set(advanced.availableTimeframes || []);
+  for (const timeframe of policy.requiredTimeframes) {
+    if (!available.has(timeframe)) blockers.push("Unité " + timeframe + " indisponible.");
+  }
+
+  const anticipation = advanced.anticipation || {};
+  if (direction && anticipation.direction !== direction) blockers.push("Anticipation multi-timeframe non alignée.");
+  if (Number(anticipation.confluenceIndex) < policy.minimumAnticipationIndex) {
+    blockers.push("Confluence multi-timeframe inférieure au seuil requis.");
+  }
+  if (Number(anticipation.alignedHigherTimeframes) < policy.minimumAlignedHigherTimeframes) {
+    blockers.push("Moins de deux unités supérieures ne confirment le scénario.");
+  }
+
+  const setup = direction === "HAUSSIER" ? advanced.confluence?.bullish :
+    direction === "BAISSIER" ? advanced.confluence?.bearish : null;
+  if (advanced.confluence?.status !== "CONFLUENCE_FORTE_A_VALIDER" ||
+      Number(setup?.score) < policy.minimumSetupConfluence) {
+    blockers.push("Confluence structure/liquidité insuffisante.");
+  }
+
+  const risk = signal.riskChecks || {};
+  if (risk.spreadOK !== true) blockers.push("Spread non validé.");
+  if (risk.entryTriggerConfirmed !== true) blockers.push("Déclencheur d'entrée non confirmé.");
+  if (risk.structuralPlanConfirmed !== true) blockers.push("Plan structurel non confirmé.");
+  if (signal.entryQuality?.confirmed !== true) blockers.push("Qualité d'entrée non confirmée.");
+  if (signal.tradePlan?.confirmed !== true) blockers.push("Plan de trade non confirmé.");
+  if (signal.reversalGuard?.blockConfirmedAlert === true) blockers.push("Risque de retournement opposé détecté.");
+
+  const quoteAge = Number(signal.liveQuote?.quoteAgeSeconds);
+  if (!Number.isFinite(quoteAge) || quoteAge < 0 || quoteAge > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS) {
+    blockers.push("Cotation live absente ou trop ancienne.");
+  }
+  const spread = Number(signal.liveQuote?.spread);
+  if (!Number.isFinite(spread) || spread < 0) blockers.push("Spread live invalide.");
+
+  const stats = signal.statisticalValidation || {};
+  const resolved = Number(stats.resolved);
+  const lowerBound = Number(stats.confidence95?.lower);
+  if (stats.status !== "QUALIFIED_HISTORICALLY" ||
+      !Number.isFinite(resolved) || resolved < policy.minimumResolvedSamples) {
+    blockers.push("Historique statistique non qualifié : au moins " + policy.minimumResolvedSamples + " résultats résolus sont requis.");
+  }
+  if (!Number.isFinite(lowerBound) || lowerBound < policy.minimumWilsonLowerBoundPercent) {
+    blockers.push("Borne basse de confiance statistique à 95 % inférieure à " +
+      policy.minimumWilsonLowerBoundPercent + " %.");
+  }
+
+  const approved = signal.ok === true && direction !== null && blockers.length === 0;
+  signal.ultraPrecision = {
+    mode: policy.mode,
+    approved,
+    evaluatedAt: new Date().toISOString(),
+    threshold: policy.minimumScore,
+    historicalSample: Number.isFinite(resolved) ? resolved : 0,
+    wilsonLowerBoundPercent: Number.isFinite(lowerBound) ? lowerBound : null,
+    blockers,
+    note: "Filtre strict et heuristique. Une validation historique ne garantit jamais le prochain résultat."
+  };
+
+  if (!approved && direction) {
+    signal.alertLevel = "EARLY";
+    signal.confirmationBlockers = [
+      ...(Array.isArray(signal.confirmationBlockers) ? signal.confirmationBlockers : []),
+      ...blockers
+    ];
+    signal.reasons = [
+      ...(Array.isArray(signal.reasons) ? signal.reasons : []),
+      "ULTRA PRECISION : alerte bloquée — " + blockers.slice(0, 3).join(" ")
+    ];
+  }
+  return signal;
+}
+
 async function scheduledCheck(env) {
   await saveCronStatus(env, "RUNNING");
   const customerBotExecution = await processActiveCustomerBots(env);
@@ -3008,22 +3116,22 @@ async function scheduledCheck(env) {
     const edgeUpdate = await updateEdgeOutcomes(env);
     await saveCronStatus(env, "RUNNING", { edgeOutcomeUpdates: edgeUpdate.updated, edgeOutcomeError: edgeUpdate.error });
     const dailyState = await getDailyAlertState(env);
-    const adaptiveMinScore = getAdaptiveAlertMinScore(dailyState.count);
     const settings = {
       capital: CONFIG.CAPITAL,
       target: CONFIG.TARGET,
       stop: CONFIG.STOP,
-      minScore: adaptiveMinScore,
+      minScore: ULTRA_PRECISION_POLICY.minimumScore,
       lots: CONFIG.LOTS_PER_1000
     };
 
-    const signal = await getSignal(settings, env, true);
+    let signal = await getSignal(settings, env, true);
+    signal = applyUltraPrecisionPolicy(signal);
     const x10Virtual = await processX10Virtual(env, signal);
     signal.dailyAlertControl = {
+      mode: ULTRA_PRECISION_POLICY.mode,
       countBeforeSignal: dailyState.count,
-      targetMin: 10,
-      targetMax: 15,
-      adaptiveMinScore,
+      minimumScore: ULTRA_PRECISION_POLICY.minimumScore,
+      frequencyTarget: null,
       timezone: "Europe/Paris"
     };
 
