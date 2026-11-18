@@ -1901,8 +1901,8 @@ async function getSignal(settings, env, recordStatistics = false) {
 
   result.advancedIntelligence = {
     anticipation, reversal, confluence, alignment, macroCrossAsset,
-    availableTimeframes:frameResults.filter(x=>x.ok).map(x=>x.timeframe),
-    missingTimeframes:frameResults.filter(x=>!x.ok).map(x=>x.timeframe)
+    availableTimeframes:frameResults.filter(x=>x.ok && x.analysis?.dataQuality?.ok === true).map(x=>x.timeframe),
+    missingTimeframes:frameResults.filter(x=>!x.ok || x.analysis?.dataQuality?.ok !== true).map(x=>x.timeframe)
   };
 
   const reasons = [];
@@ -3040,17 +3040,17 @@ function applyUltraPrecisionPolicy(signal) {
 
   const anticipation = advanced.anticipation || {};
   if (direction && anticipation.direction !== direction) blockers.push("Anticipation multi-timeframe non alignée.");
-  if (Number(anticipation.confluenceIndex) < policy.minimumAnticipationIndex) {
+  if (!Number.isFinite(Number(anticipation.confluenceIndex)) || Number(anticipation.confluenceIndex) < policy.minimumAnticipationIndex) {
     blockers.push("Confluence multi-timeframe inférieure au seuil requis.");
   }
-  if (Number(anticipation.alignedHigherTimeframes) < policy.minimumAlignedHigherTimeframes) {
+  if (!Number.isFinite(Number(anticipation.alignedHigherTimeframes)) || Number(anticipation.alignedHigherTimeframes) < policy.minimumAlignedHigherTimeframes) {
     blockers.push("Moins de deux unités supérieures ne confirment le scénario.");
   }
 
   const setup = direction === "HAUSSIER" ? advanced.confluence?.bullish :
     direction === "BAISSIER" ? advanced.confluence?.bearish : null;
   if (advanced.confluence?.status !== "CONFLUENCE_FORTE_A_VALIDER" ||
-      Number(setup?.score) < policy.minimumSetupConfluence) {
+      !Number.isFinite(Number(setup?.score)) || Number(setup?.score) < policy.minimumSetupConfluence) {
     blockers.push("Confluence structure/liquidité insuffisante.");
   }
 
