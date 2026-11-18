@@ -210,3 +210,64 @@ test("customer bot APIs reject oversized and malformed JSON bodies", async () =>
   const valid = await security.readBoundedJson(new Request("https://tradepilot.example", { method: "POST", body: JSON.stringify({ name: "Test" }) }), 100);
   assert.equal(valid.ok, true); assert.equal(valid.value.name, "Test");
 });
+
+
+const ultra = new Function(factorySource + "; return { applyUltraPrecisionPolicy, ULTRA_PRECISION_POLICY };")();
+function ultraCandidate(overrides = {}) {
+  return {
+    ok: true, signal: "ACHAT", alertLevel: "CONFIRMED", score: 92,
+    dataQuality: { M1: { ok: true }, M5: { ok: true }, M15: { ok: true } },
+    liveQuote: { quoteAgeSeconds: 2, spread: 0.2 },
+    riskChecks: { spreadOK: true, entryTriggerConfirmed: true, structuralPlanConfirmed: true },
+    entryQuality: { confirmed: true }, tradePlan: { confirmed: true },
+    advancedIntelligence: {
+      availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
+      anticipation: { direction: "HAUSSIER", confluenceIndex: 82, alignedHigherTimeframes: 2 },
+      confluence: { status: "CONFLUENCE_FORTE_A_VALIDER", bullish: { score: 84 } }
+    },
+    reversalGuard: { blockConfirmedAlert: false },
+    statisticalValidation: {
+      status: "QUALIFIED_HISTORICALLY", resolved: 60, winRate: 75,
+      confidence95: { lower: 63.2, upper: 84.1 }
+    },
+    ...overrides
+  };
+}
+
+test("Ultra Precision approves only a fully validated, statistically qualified setup", () => {
+  const result = ultra.applyUltraPrecisionPolicy(ultraCandidate());
+  assert.equal(result.ultraPrecision.approved, true);
+  assert.equal(result.alertLevel, "CONFIRMED");
+  assert.deepEqual(result.ultraPrecision.blockers, []);
+});
+
+test("Ultra Precision blocks a setup without a mature historical sample", () => {
+  const result = ultra.applyUltraPrecisionPolicy(ultraCandidate({
+    statisticalValidation: { status: "WAITING_FOR_SAMPLE", resolved: 8, confidence95: { lower: null } }
+  }));
+  assert.equal(result.ultraPrecision.approved, false);
+  assert.equal(result.alertLevel, "EARLY");
+  assert.ok(result.ultraPrecision.blockers.some(x => x.includes("résultats résolus")));
+});
+
+test("Ultra Precision blocks missing higher-timeframe data and opposing confluence", () => {
+  const result = ultra.applyUltraPrecisionPolicy(ultraCandidate({
+    advancedIntelligence: {
+      availableTimeframes: ["M1", "M5", "M15", "H1"],
+      anticipation: { direction: "BAISSIER", confluenceIndex: 55, alignedHigherTimeframes: 0 },
+      confluence: { status: "CONFLUENCE_FAIBLE", bullish: { score: 30 } }
+    }
+  }));
+  assert.equal(result.ultraPrecision.approved, false);
+  assert.ok(result.ultraPrecision.blockers.length >= 5);
+});
+
+test("Ultra Precision blocks stale quotes and unconfirmed risk checks", () => {
+  const result = ultra.applyUltraPrecisionPolicy(ultraCandidate({
+    liveQuote: { quoteAgeSeconds: 180, spread: 0.2 },
+    riskChecks: { spreadOK: false, entryTriggerConfirmed: false, structuralPlanConfirmed: false }
+  }));
+  assert.equal(result.ultraPrecision.approved, false);
+  assert.ok(result.ultraPrecision.blockers.some(x => x.includes("trop ancienne")));
+  assert.ok(result.ultraPrecision.blockers.some(x => x.includes("Spread non validé")));
+});
