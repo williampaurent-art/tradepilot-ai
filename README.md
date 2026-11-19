@@ -156,3 +156,5 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 - `GET /api/partner/dashboard` expose des statistiques agrégées sur 30 jours et les 50 derniers événements, protégé par `PARTNER_DASHBOARD_KEY` dans l’en-tête `x-partner-dashboard-key`.
 - Secrets Cloudflare à configurer avant activation : `VT_PARTNER_WEBHOOK_SECRET` et `PARTNER_DASHBOARD_KEY`. Le broker doit accepter/configurer le postback HMAC et transmettre le click ID ; tant que ce n’est pas fait, aucune conversion broker ne sera disponible.
 - Aucune donnée personnelle du client n’est stockée dans le journal de postbacks.
+
+- Contrat technique de postback VT Markets : [docs/partner-postbacks.md](docs/partner-postbacks.md).
