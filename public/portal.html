@@ -36,6 +36,33 @@
  </div>
 </section>
 
+
+<section class="section" id="account">
+ <div class="section-head"><div><div class="eyebrow">00 · MON COMPTE</div><h2>Mon espace personnel</h2></div><p id="accountState">Chargement de ton espace sécurisé…</p></div>
+ <div class="cards">
+  <article class="card"><div class="card-top"><span class="icon">◉</span><span class="tag">MON PROFIL</span></div>
+   <h3 id="welcomeName">Bienvenue sur TradePilot</h3><p id="accountEmail">Compte authentifié</p>
+   <label for="profileName" style="display:block;margin:13px 0 5px;color:var(--muted);font-size:10px">Nom affiché</label>
+   <input id="profileName" maxlength="80" placeholder="Ton nom" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:#07101d;color:var(--text)">
+   <label for="profileCountry" style="display:block;margin:10px 0 5px;color:var(--muted);font-size:10px">Pays (code ISO à 2 lettres)</label>
+   <input id="profileCountry" maxlength="2" placeholder="FR" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:#07101d;color:var(--text);text-transform:uppercase">
+   <button class="btn gold" id="saveProfile" style="margin-top:12px">Enregistrer mon profil</button><p id="profileMessage" aria-live="polite"></p>
+  </article>
+  <article class="card"><div class="card-top"><span class="icon">▤</span><span class="tag">MON ACTIVITÉ</span></div><h3>Mon activité TradePilot</h3>
+   <div class="broker-benefits" style="margin-top:13px">
+    <div class="benefit"><small style="color:var(--muted)">BOTS</small><strong id="statBots" style="display:block;font-size:21px">—</strong></div>
+    <div class="benefit"><small style="color:var(--muted)">SIGNAUX</small><strong id="statSignals" style="display:block;font-size:21px">—</strong></div>
+    <div class="benefit"><small style="color:var(--muted)">CLICS PARTENAIRE</small><strong id="statClicks" style="display:block;font-size:21px">—</strong></div>
+    <div class="benefit"><small style="color:var(--muted)">FORMULE</small><strong id="statPlan" style="display:block;font-size:15px">—</strong></div>
+   </div><p id="accountSecurity">Données rattachées à ton espace personnel.</p>
+  </article>
+  <article class="card"><div class="card-top"><span class="icon">◎</span><span class="tag">SUIVI BROKER</span></div><h3 id="brokerStatusTitle">VT Markets · Non connecté</h3>
+   <p id="brokerStatusText">Aucune connexion MT5 active. Tu peux demander à être informé lorsque le parcours de connexion autorisé sera disponible.</p>
+   <button class="btn" id="brokerRequest" style="margin-top:13px">Demander l'activation du parcours</button><p id="brokerRequestMessage" aria-live="polite"></p>
+  </article>
+ </div>
+</section>
+
 <section class="section" id="tools">
  <div class="section-head"><div><div class="eyebrow">01 · TRADING TOOLS</div><h2>Tous tes outils, au même endroit</h2></div><p>Les fonctionnalités existantes restent au cœur de TradePilot.</p></div>
  <div class="cards">
@@ -83,10 +110,58 @@
 <div class="callout"><strong>Transparence & sécurité.</strong> Les liens commerciaux, les conditions promotionnelles et les intégrations broker devront être validés avant activation. Les données de compte ne seront affichées qu'après authentification et autorisation explicite. Les outils TradePilot fournissent des analyses informatives et ne garantissent aucun résultat de trading.</div>
 <footer>TRADEPILOT AI · CLIENT PLATFORM · VERSION DE PRÉVISUALISATION</footer>
 </main>
-<nav class="mobile-nav" aria-label="Navigation rapide"><a href="#home">Accueil</a><a href="#tools">Outils</a><a href="#academy">Academy</a><a href="#broker">Broker</a></nav>
+<nav class="mobile-nav" aria-label="Navigation rapide"><a href="#home">Accueil</a><a href="#account">Mon compte</a><a href="#tools">Outils</a><a href="#academy">Academy</a><a href="#broker">Broker</a></nav>
 <div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-box"><h3 id="modalTitle">Connexion MT5 sécurisée</h3><p>La connexion réelle nécessite une méthode d'accès fournie ou autorisée par VT Markets (API, interface Manager ou fournisseur compatible). Cette prévisualisation ne collecte aucun identifiant, mot de passe ou numéro de compte.</p><p>La première intégration sera limitée à la lecture des informations autorisées : solde, positions et historique, avec révocation possible par le client.</p><div class="modal-actions"><button class="btn" id="closeModal" type="button">Fermer</button></div></div></div>
+<script src="/session.js"></script>
 <script>
 const modal=document.getElementById('connectModal');
+const portalApi=window.TradePilotSession;
+const accountState=document.getElementById('accountState');
+const showPortalMessage=(id,message)=>{const node=document.getElementById(id);if(node)node.textContent=message;};
+async function loadPortal(){
+ try{
+  const data=await portalApi.api('/api/portal');
+  const displayName=data.profile?.display_name||'';
+  document.getElementById('welcomeName').textContent=displayName?'Bienvenue, '+displayName:'Bienvenue sur TradePilot';
+  document.getElementById('accountEmail').textContent=data.user?.email||'Compte authentifié';
+  document.getElementById('profileName').value=displayName;
+  document.getElementById('profileCountry').value=data.profile?.country_code||'';
+  document.getElementById('statBots').textContent=data.stats?.bots??0;
+  document.getElementById('statSignals').textContent=data.stats?.signals??0;
+  document.getElementById('statClicks').textContent=data.stats?.partnerClicks??0;
+  document.getElementById('statPlan').textContent=(data.subscription?.plan_key||'free').toUpperCase();
+  const status=data.broker?.status||'not_connected';
+  document.getElementById('brokerStatusTitle').textContent='VT Markets · '+(status==='connected'?'Connecté':status==='pending'?'Demande en attente':'Non connecté');
+  document.getElementById('brokerStatusText').textContent=status==='connected'?'Une connexion autorisée est enregistrée en lecture seule.':status==='pending'?'Ta demande est enregistrée. La connexion MT5 n’est pas encore active.':'Aucune connexion MT5 active. Demande à être informé lorsque le parcours autorisé sera disponible.';
+  document.getElementById('brokerRequest').disabled=status==='pending'||status==='connected';
+  document.getElementById('brokerRequest').textContent=status==='pending'?'Demande déjà enregistrée':status==='connected'?'Compte déjà connecté':'Demander l’activation du parcours';
+  accountState.textContent='Espace sécurisé chargé · '+(data.workspace?.name||'Mon espace');
+ }catch(error){
+  accountState.textContent='Connexion requise';
+  if(String(error.message).includes('Connexion requise')||String(error.message).includes('Session'))location.replace('/auth.html?next=portal');
+  else showPortalMessage('profileMessage',error.message);
+ }
+}
+document.getElementById('saveProfile').addEventListener('click',async()=>{
+ const button=document.getElementById('saveProfile');button.disabled=true;
+ try{
+  await portalApi.api('/api/portal/profile',{method:'POST',body:JSON.stringify({displayName:document.getElementById('profileName').value,countryCode:document.getElementById('profileCountry').value.toUpperCase(),language:'fr'})});
+  showPortalMessage('profileMessage','Profil enregistré.');document.getElementById('welcomeName').textContent=document.getElementById('profileName').value.trim()?'Bienvenue, '+document.getElementById('profileName').value.trim():'Bienvenue sur TradePilot';
+ }catch(error){showPortalMessage('profileMessage',error.message);}finally{button.disabled=false;}
+});
+document.getElementById('brokerRequest').addEventListener('click',async()=>{
+ const button=document.getElementById('brokerRequest');button.disabled=true;
+ try{
+  const data=await portalApi.api('/api/portal/broker-request',{method:'POST',body:JSON.stringify({consent:true,regionCode:document.getElementById('profileCountry').value.toUpperCase()})});
+  showPortalMessage('brokerRequestMessage',data.message||'Demande enregistrée. Aucune connexion MT5 n’est encore établie.');
+  await loadPortal();
+ }catch(error){showPortalMessage('brokerRequestMessage',error.message);button.disabled=false;}
+});
+document.querySelectorAll('a[href="https://www.vtmarkets.com/"]').forEach(link=>link.addEventListener('click',()=>{
+ portalApi.api('/api/portal/partner-click',{method:'POST',body:JSON.stringify({source:'client_portal',campaign:new URLSearchParams(location.search).get('campaign')||'organic'})}).catch(()=>{});
+}));
+loadPortal();
+
 document.getElementById('connectInfo').addEventListener('click',()=>modal.classList.add('open'));
 document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('open'));
 modal.addEventListener('click',event=>{if(event.target===modal)modal.classList.remove('open')});
