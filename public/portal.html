@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080d17">
+<title>Espace client · TradePilot AI</title>
+<style>
+:root{color-scheme:dark;--bg:#070d17;--panel:#101b2c;--panel2:#0b1422;--line:rgba(145,166,194,.17);--text:#eef4fc;--muted:#91a2b9;--gold:#f3c86b;--cyan:#69d9ed;--green:#42d6a0;--red:#ff7185}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:85px}body{margin:0;background:radial-gradient(ellipse at 75% -12%,rgba(53,94,150,.24),transparent 38%),radial-gradient(ellipse at 5% 30%,rgba(183,134,49,.08),transparent 28%),var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:inherit;text-decoration:none}button{font:inherit;cursor:pointer}.shell{max-width:1420px;margin:auto;padding:22px clamp(13px,2.3vw,32px) 110px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:17px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:11px}.logo{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#ffe09a,#b77d25);color:#1b160d;font-size:21px;font-weight:950;box-shadow:0 8px 25px #f3c86b24}.brand strong{display:block;font-size:18px;letter-spacing:-.4px}.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:1.5px;font-weight:800}.top-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.user-pill,.status{border:1px solid var(--line);border-radius:99px;padding:7px 11px;color:var(--muted);font-size:10px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:10px;background:#17243a;color:var(--text);padding:10px 14px;font-weight:800;font-size:12px;transition:.18s}.btn:hover{border-color:#f3c86b;transform:translateY(-1px)}.btn.gold{background:var(--gold);border-color:var(--gold);color:#211a0c}.btn.ghost{background:transparent}.nav{position:sticky;top:0;z-index:30;display:flex;gap:7px;overflow-x:auto;padding:12px 0;margin-bottom:18px;background:rgba(7,13,23,.9);backdrop-filter:blur(16px);scrollbar-width:none}.nav::-webkit-scrollbar{display:none}.nav a{white-space:nowrap;padding:8px 11px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:11px;font-weight:800}.nav a:hover,.nav a.active{color:var(--gold);border-color:#f3c86b66;background:#f3c86b10}.hero{position:relative;overflow:hidden;display:grid;grid-template-columns:1.35fr .65fr;gap:20px;padding:clamp(20px,3vw,34px);border:1px solid #f3c86b3d;border-radius:20px;background:linear-gradient(115deg,#182942f5,#0d192bf5 70%,#211d17f2);box-shadow:0 22px 70px #0005}.hero:after{content:"";position:absolute;width:340px;height:340px;right:-110px;top:-210px;border-radius:50%;background:radial-gradient(circle,#f3c86b24,transparent 68%);pointer-events:none}.eyebrow{font-size:10px;letter-spacing:1.7px;text-transform:uppercase;color:var(--gold);font-weight:900}.hero h1{font-size:clamp(27px,4vw,42px);line-height:1.08;letter-spacing:-1.3px;margin:9px 0 12px;max-width:720px}.hero p{max-width:720px;color:#bdc9d9;font-size:13px;line-height:1.75;margin:0}.hero-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}.hero-side{position:relative;z-index:1;align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:10px}.mini-stat{padding:13px;border:1px solid #91a2b92b;border-radius:12px;background:#07101d80}.mini-stat small{display:block;color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase}.mini-stat strong{display:block;font-size:17px;margin-top:4px}.section{margin-top:24px;scroll-margin-top:85px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:12px}.section-head h2{margin:3px 0 0;font-size:19px;letter-spacing:-.4px}.section-head p{margin:0;color:var(--muted);font-size:11px}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.card{min-width:0;padding:17px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(155deg,#152238f2,#0c1626f5);box-shadow:0 12px 32px #0002}.card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.icon{width:37px;height:37px;display:grid;place-items:center;border-radius:11px;background:#f3c86b16;color:var(--gold);font-size:17px}.tag{padding:5px 8px;border-radius:99px;background:#69d9ed12;color:var(--cyan);font-size:9px;font-weight:900;letter-spacing:.5px}.card h3{margin:0 0 6px;font-size:14px}.card p{margin:0;color:var(--muted);font-size:11px;line-height:1.65}.card .link{display:inline-flex;margin-top:13px;color:var(--gold);font-size:11px;font-weight:850}.broker{display:grid;grid-template-columns:1fr 1fr;gap:14px}.broker-main{padding:22px;border:1px solid #f3c86b44;border-radius:17px;background:linear-gradient(130deg,#1a2a42,#101b2c 70%,#211d16)}.broker-brand{display:flex;align-items:center;gap:10px;margin-bottom:16px}.broker-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#f3c86b;color:#17130b;font-weight:950;font-size:20px}.broker-brand strong{display:block;font-size:17px}.broker-brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:1px}.broker-main h3{font-size:23px;letter-spacing:-.6px;margin:0 0 8px}.broker-main p{max-width:600px;color:#bdc9d9;font-size:12px;line-height:1.7}.broker-benefits{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}.benefit{padding:10px;border:1px solid #91a2b926;border-radius:10px;background:#07101d66;color:#dce5f1;font-size:10px}.offer{padding:19px;border:1px solid var(--line);border-radius:17px;background:linear-gradient(150deg,#111e31,#0b1422)}.offer .offer-label{color:var(--gold);font-size:9px;font-weight:900;letter-spacing:1.3px;text-transform:uppercase}.offer h3{font-size:19px;margin:8px 0}.offer p{color:var(--muted);font-size:11px;line-height:1.65}.offer-note{margin-top:12px;padding:10px;border-radius:9px;background:#f3c86b10;color:#d9c99e;font-size:10px;line-height:1.6}.connect{margin-top:13px;padding:15px;border:1px solid var(--line);border-radius:13px;background:#07101d70}.connect-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.connect-head strong{font-size:12px}.connect-state{color:#f3c86b;font-size:9px;font-weight:900}.connect p{margin:7px 0 12px;color:var(--muted);font-size:10px;line-height:1.6}.course{display:flex;flex-direction:column;min-height:190px}.course .course-meta{display:flex;gap:7px;flex-wrap:wrap;margin:11px 0}.course-meta span{font-size:9px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:4px 7px}.course .link{margin-top:auto;padding-top:13px}.callout{margin-top:20px;padding:15px 17px;border:1px solid var(--line);border-radius:13px;background:#0d1929;color:var(--muted);font-size:10px;line-height:1.7}.callout strong{color:var(--text)}footer{padding:24px 0 8px;text-align:center;color:var(--muted);font-size:10px}.modal{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:18px;background:#02060bd9}.modal.open{display:grid}.modal-box{width:min(100%,480px);padding:21px;border:1px solid var(--line);border-radius:16px;background:#111d30;box-shadow:0 25px 90px #0009}.modal-box h3{margin:0 0 8px}.modal-box p{color:var(--muted);font-size:12px;line-height:1.7}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.mobile-nav{display:none}
+@media(max-width:850px){.hero{grid-template-columns:1fr}.hero-side{display:grid;grid-template-columns:repeat(2,1fr)}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.broker{grid-template-columns:1fr}}
+@media(max-width:600px){.shell{padding:13px 12px 100px}.top{align-items:flex-start}.brand strong{font-size:16px}.top-actions .user-pill{display:none}.nav{top:0;margin:0 -12px 14px;padding:10px 12px}.hero{padding:19px;border-radius:16px}.hero h1{font-size:29px}.hero-side{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr}.card{padding:15px}.broker-main,.offer{padding:17px}.section-head{align-items:flex-start;flex-direction:column}.mobile-nav{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;position:fixed;z-index:40;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));padding:7px;border:1px solid #69d9ed35;border-radius:15px;background:#070e1af2;backdrop-filter:blur(16px);box-shadow:0 12px 42px #0009}.mobile-nav a{text-align:center;padding:8px 2px;color:var(--muted);font-size:9px;font-weight:850}.mobile-nav a:first-child{color:var(--gold)}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="top">
+ <a class="brand" href="/portal.html"><span class="logo">T</span><span><strong>TradePilot AI</strong><small>CLIENT EXPERIENCE</small></span></a>
+ <div class="top-actions"><span class="user-pill">ESPACE PERSONNEL</span><a class="btn ghost" href="/auth.html">Connexion / compte</a><a class="btn gold" href="/">Ouvrir le terminal</a></div>
+</header>
+<nav class="nav" aria-label="Navigation espace client">
+ <a class="active" href="#home">Accueil</a><a href="#tools">Trading Tools</a><a href="#academy">Academy</a><a href="#broker">My Broker</a><a href="/bots.html">Mes bots</a><a href="/builder.html">Créer un bot</a>
+</nav>
+<section class="hero" id="home">
+ <div>
+  <div class="eyebrow">TON ESPACE TRADING · UNE SEULE PLATEFORME</div>
+  <h1>Apprends, analyse et progresse avec TradePilot.</h1>
+  <p>Retrouve tes outils de trading, construis tes stratégies, développe tes compétences et prépare la connexion de ton compte broker dans un espace unique.</p>
+  <div class="hero-actions"><a class="btn gold" href="#tools">Explorer mes outils <span>→</span></a><a class="btn" href="#academy">Découvrir l'Academy</a></div>
+ </div>
+ <div class="hero-side">
+  <div class="mini-stat"><small>Market intelligence</small><strong>XAUUSD · Multi-timeframe</strong></div>
+  <div class="mini-stat"><small>Trading engine</small><strong>Alertes & stratégies</strong></div>
+  <div class="mini-stat"><small>Broker workspace</small><strong>VT Markets · Connexion à venir</strong></div>
+  <div class="mini-stat"><small>Mode d'exécution</small><strong style="color:var(--green)">Analyse uniquement · Pas d'ordre réel</strong></div>
+ </div>
+</section>
+
+<section class="section" id="tools">
+ <div class="section-head"><div><div class="eyebrow">01 · TRADING TOOLS</div><h2>Tous tes outils, au même endroit</h2></div><p>Les fonctionnalités existantes restent au cœur de TradePilot.</p></div>
+ <div class="cards">
+  <article class="card"><div class="card-top"><span class="icon">◈</span><span class="tag">MARKET INTELLIGENCE</span></div><h3>Analyse des marchés</h3><p>Analyse XAUUSD, lecture multi-timeframe, indicateurs techniques, structure de marché et contexte macro.</p><a class="link" href="/">Ouvrir le dashboard →</a></article>
+  <article class="card"><div class="card-top"><span class="icon">⚙</span><span class="tag">BOT BUILDER</span></div><h3>Créer mon bot</h3><p>Configure tes stratégies, sélectionne tes indicateurs et ajuste les paramètres de risque.</p><a class="link" href="/builder.html">Lancer le Bot Builder →</a></article>
+  <article class="card"><div class="card-top"><span class="icon">▤</span><span class="tag">MY STRATEGIES</span></div><h3>Mes bots</h3><p>Retrouve tes stratégies enregistrées, leur statut et les signaux associés à ton espace.</p><a class="link" href="/bots.html">Consulter mes bots →</a></article>
+ </div>
+</section>
+
+<section class="section" id="academy">
+ <div class="section-head"><div><div class="eyebrow">02 · TRADEPILOT ACADEMY</div><h2>Développe tes compétences</h2></div><p>Un espace pédagogique pour accompagner les traders.</p></div>
+ <div class="cards">
+  <article class="card course"><div class="card-top"><span class="icon">01</span><span class="tag">FONDAMENTAUX</span></div><h3>Les bases du trading</h3><p>Comprendre les marchés, les ordres, le spread, le levier et les principaux risques.</p><div class="course-meta"><span>Débutant</span><span>Parcours pédagogique</span></div><a class="link" href="#academy-note">Programme en préparation →</a></article>
+  <article class="card course"><div class="card-top"><span class="icon">02</span><span class="tag">ANALYSE TECHNIQUE</span></div><h3>Lire les marchés</h3><p>EMA, RSI, MACD, ATR, supports, résistances et structure de marché.</p><div class="course-meta"><span>Intermédiaire</span><span>Ateliers pratiques</span></div><a class="link" href="#academy-note">Programme en préparation →</a></article>
+  <article class="card course"><div class="card-top"><span class="icon">03</span><span class="tag">OUTILS TRADEPILOT</span></div><h3>Maîtriser MT5 et TradePilot</h3><p>Découvrir le terminal, configurer un bot, interpréter les alertes et suivre ses résultats.</p><div class="course-meta"><span>Pratique</span><span>Guides pas à pas</span></div><a class="link" href="#academy-note">Programme en préparation →</a></article>
+ </div>
+ <div class="callout" id="academy-note"><strong>Academy en cours de construction.</strong> Cette première version pose la structure des parcours. Les vidéos, le suivi de progression, les quiz et les webinaires seront ajoutés dans une prochaine étape.</div>
+</section>
+
+<section class="section" id="broker">
+ <div class="section-head"><div><div class="eyebrow">03 · MY BROKER</div><h2>Ton espace broker</h2></div><p>Un parcours pensé pour une future intégration VT Markets.</p></div>
+ <div class="broker">
+  <article class="broker-main">
+   <div class="broker-brand"><span class="broker-mark">V</span><span><strong>VT Markets</strong><small>BROKER À DÉCOUVRIR</small></span></div>
+   <h3>Connecte ton expérience de trading.</h3>
+   <p>Découvre l'environnement VT Markets et prépare le suivi de ton compte dans TradePilot. L'ouverture de compte et la connexion MT5 seront deux étapes distinctes.</p>
+   <div class="broker-benefits"><div class="benefit">↗ Accès à MT5 selon le compte proposé</div><div class="benefit">◎ Plusieurs marchés et instruments</div><div class="benefit">▤ Outils d'analyse TradePilot</div><div class="benefit">⌁ Suivi de compte en lecture seule prévu</div></div>
+   <a class="btn gold" href="https://www.vtmarkets.com/" target="_blank" rel="noopener noreferrer">Découvrir VT Markets ↗</a>
+   <div class="offer-note">Cette page présente une piste d'intégration commerciale. TradePilot n'affirme pas être partenaire officiel de VT Markets à ce stade.</div>
+  </article>
+  <article class="offer">
+   <div class="offer-label">OFFRE PARTENAIRE · EMPLACEMENT PRÉVU</div>
+   <h3>Les avantages VT Markets, directement dans TradePilot.</h3>
+   <p>Un emplacement dédié permettra d'afficher une offre de bienvenue, un lien d'inscription attribué à TradePilot et les conditions officielles validées par le broker.</p>
+   <div class="connect">
+    <div class="connect-head"><strong>Connexion de ton compte MT5</strong><span class="connect-state">NON CONNECTÉ</span></div>
+    <p>La connexion sera activée après validation d'une méthode d'intégration autorisée par VT Markets. Elle sera conçue en lecture seule : aucun mot de passe MT5 ne sera demandé dans cette page et aucun ordre ne sera envoyé.</p>
+    <button class="btn" type="button" id="connectInfo">Comprendre la connexion MT5</button>
+   </div>
+   <div class="offer-note"><strong>Bonus de dépôt :</strong> aucun montant ni pourcentage n'est affiché avant confirmation écrite de l'offre, des pays éligibles, des dates et des conditions par VT Markets.</div>
+  </article>
+ </div>
+</section>
+
+<div class="callout"><strong>Transparence & sécurité.</strong> Les liens commerciaux, les conditions promotionnelles et les intégrations broker devront être validés avant activation. Les données de compte ne seront affichées qu'après authentification et autorisation explicite. Les outils TradePilot fournissent des analyses informatives et ne garantissent aucun résultat de trading.</div>
+<footer>TRADEPILOT AI · CLIENT PLATFORM · VERSION DE PRÉVISUALISATION</footer>
+</main>
+<nav class="mobile-nav" aria-label="Navigation rapide"><a href="#home">Accueil</a><a href="#tools">Outils</a><a href="#academy">Academy</a><a href="#broker">Broker</a></nav>
+<div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-box"><h3 id="modalTitle">Connexion MT5 sécurisée</h3><p>La connexion réelle nécessite une méthode d'accès fournie ou autorisée par VT Markets (API, interface Manager ou fournisseur compatible). Cette prévisualisation ne collecte aucun identifiant, mot de passe ou numéro de compte.</p><p>La première intégration sera limitée à la lecture des informations autorisées : solde, positions et historique, avec révocation possible par le client.</p><div class="modal-actions"><button class="btn" id="closeModal" type="button">Fermer</button></div></div></div>
+<script>
+const modal=document.getElementById('connectModal');
+document.getElementById('connectInfo').addEventListener('click',()=>modal.classList.add('open'));
+document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('open'));
+modal.addEventListener('click',event=>{if(event.target===modal)modal.classList.remove('open')});
+document.addEventListener('keydown',event=>{if(event.key==='Escape')modal.classList.remove('open')});
+</script>
+</body>
+</html>
