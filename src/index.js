@@ -6245,15 +6245,16 @@ async function handlePortalApi(request, env, action) {
     if (action === "partner-click") {
       const source = typeof input.source === "string" ? input.source.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) : "portal";
       const campaign = typeof input.campaign === "string" ? input.campaign.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) : null;
+      const clickId = createId("clk");
       await env.DB.prepare("INSERT INTO partner_click_events (id, workspace_id, provider, source, campaign) VALUES (?, ?, 'vt_markets', ?, ?)")
-        .bind(createId("clk"), workspaceId, source, campaign).run();
+        .bind(clickId, workspaceId, source, campaign).run();
       await env.DB.prepare(`
         INSERT INTO partner_attributions (workspace_id, first_source, first_campaign, last_source, last_campaign)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(workspace_id) DO UPDATE SET last_source = excluded.last_source,
           last_campaign = excluded.last_campaign, last_touch_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
       `).bind(workspaceId, source, campaign, source, campaign).run();
-      return json({ ok: true, tracked: true });
+      return json({ ok: true, tracked: true, clickId });
     }
 
     if (action === "academy-progress") {
@@ -6289,6 +6290,75 @@ async function handlePortalApi(request, env, action) {
   }
 }
 
+async function verifyPartnerWebhookSignature(rawBody, signature, secret) {
+  if (!secret || !signature || !/^sha256=[a-f0-9]{64}$/i.test(signature)) return false;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody)));
+  const expected = "sha256=" + Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+  const a = encoder.encode(expected.toLowerCase()), b = encoder.encode(signature.toLowerCase());
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
+  return mismatch === 0;
+}
+
+async function handlePartnerWebhook(request, env) {
+  const secret = env.VT_PARTNER_WEBHOOK_SECRET;
+  if (!secret) return json({ ok:false, error:"Webhook partenaire non configuré." },503);
+  const rawBody = await request.text();
+  if (new TextEncoder().encode(rawBody).byteLength > 8000) return json({ok:false,error:"Événement trop volumineux."},413);
+  const valid = await verifyPartnerWebhookSignature(rawBody, request.headers.get("x-vt-signature"), secret);
+  if (!valid) return json({ok:false,error:"Signature invalide."},401);
+  let event;
+  try { event = JSON.parse(rawBody); } catch { return json({ok:false,error:"JSON invalide."},400); }
+  if (!event || typeof event !== "object" || Array.isArray(event)) return json({ok:false,error:"Objet événement requis."},400);
+  const eventId = typeof event.event_id === "string" ? event.event_id.trim().slice(0,120) : "";
+  const clickId = typeof event.click_id === "string" && /^[a-zA-Z0-9_-]{8,100}$/.test(event.click_id) ? event.click_id : null;
+  const allowedTypes = new Set(["registration","account_approved","first_deposit","first_trade","active_trader","commission"]);
+  const eventType = typeof event.event_type === "string" ? event.event_type : "";
+  const occurredAt = typeof event.occurred_at === "string" ? Date.parse(event.occurred_at) : NaN;
+  if (!eventId || !/^[a-zA-Z0-9._:-]+$/.test(eventId) || !allowedTypes.has(eventType) || !Number.isFinite(occurredAt)) {
+    return json({ok:false,error:"Identifiant, type ou date d'événement invalide."},400);
+  }
+  const now = Date.now();
+  if (occurredAt > now + 10 * 60 * 1000 || occurredAt < now - 180 * 24 * 60 * 60 * 1000) {
+    return json({ok:false,error:"Date d'événement hors fenêtre acceptée."},400);
+  }
+  const amount = event.value_amount === undefined || event.value_amount === null ? null : Number(event.value_amount);
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000)) return json({ok:false,error:"Montant invalide."},400);
+  const currency = typeof event.value_currency === "string" && /^[A-Z]{3}$/.test(event.value_currency.toUpperCase()) ? event.value_currency.toUpperCase() : null;
+  const country = typeof event.country_code === "string" && /^[A-Z]{2}$/i.test(event.country_code) ? event.country_code.toUpperCase() : null;
+  const campaign = typeof event.campaign === "string" ? event.campaign.replace(/[^a-zA-Z0-9_-]/g,"").slice(0,80) : null;
+  try {
+    const result = await env.DB.prepare("INSERT OR IGNORE INTO partner_conversion_events (id,provider,external_event_id,click_id,event_type,occurred_at,value_amount,value_currency,country_code,campaign) VALUES (?, 'vt_markets', ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(createId("pce"),eventId,clickId,eventType,new Date(occurredAt).toISOString(),amount,currency,country,campaign).run();
+    const inserted = Number(result.meta?.changes || 0) > 0;
+    return json({ok:true,accepted:true,duplicate:!inserted},inserted?202:200);
+  } catch (error) {
+    return json({ok:false,error:"Événement non enregistré."},503);
+  }
+}
+
+async function handlePartnerDashboard(request, env) {
+  const secret = env.PARTNER_DASHBOARD_KEY;
+  if (!secret) return json({ok:false,error:"Dashboard partenaire non configuré."},503);
+  const supplied = request.headers.get("x-partner-dashboard-key") || "";
+  if (supplied.length !== secret.length) return json({ok:false,error:"Accès refusé."},401);
+  let mismatch = 0;
+  for (let i=0;i<secret.length;i++) mismatch |= secret.charCodeAt(i) ^ supplied.charCodeAt(i);
+  if (mismatch) return json({ok:false,error:"Accès refusé."},401);
+  try {
+    const [clicks, totals, recent, daily] = await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS total, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days')").first(),
+      env.DB.prepare("SELECT event_type, COUNT(*) AS total, COUNT(DISTINCT click_id) AS attributed_clicks, SUM(value_amount) AS value_total, MAX(value_currency) AS currency FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days') GROUP BY event_type").all(),
+      env.DB.prepare("SELECT event_type, occurred_at, country_code, campaign, value_amount, value_currency FROM partner_conversion_events WHERE provider = 'vt_markets' ORDER BY occurred_at DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT substr(occurred_at,1,10) AS day, event_type, COUNT(*) AS total FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days') GROUP BY day,event_type ORDER BY day ASC").all()
+    ]);
+    return json({ok:true,periodDays:30,clicks:{total:Number(clicks?.total||0),uniqueWorkspaces:Number(clicks?.unique_workspaces||0)},conversions:totals.results||[],daily:daily.results||[],recentEvents:recent.results||[],generatedAt:new Date().toISOString(),note:"Les conversions reflètent uniquement les postbacks reçus et authentifiés de VT Markets. Les événements non transmis par le broker ne sont pas estimés."});
+  } catch(error) { return json({ok:false,error:"Statistiques partenaire indisponibles."},503); }
+}
+
 async function handleSaasAccount(request, env) {
   if (request.method !== "GET") {
     return json({ ok: false, error: "Méthode non prise en charge." }, 405);
@@ -6315,7 +6385,7 @@ async function handleWorkerRequest(request, env) {
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || path === "/api/portal/profile" || path === "/api/portal/partner-click" || path === "/api/portal/academy-progress" || path === "/api/portal/broker-request" || customerBotPost))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || path === "/api/portal/profile" || path === "/api/portal/partner-click" || path === "/api/portal/academy-progress" || path === "/api/portal/broker-request" || path === "/api/partner/webhook" || customerBotPost))
     ) {
       return json({
         ok: false,
@@ -6366,7 +6436,7 @@ async function handleWorkerRequest(request, env) {
         return await handleUpdateBot(request, env, botId);
       }
 
-      if (path === "/api/portal" && request.method === "GET") {
+      if (path === "/api/partner/webhook" && request.method === "POST") return await handlePartnerWebhook(request, env);\n      if (path === "/api/partner/dashboard" && request.method === "GET") return await handlePartnerDashboard(request, env);\n      if (path === "/api/portal" && request.method === "GET") {
         return await handlePortalApi(request, env, "summary");
       }
       if (path === "/api/portal/promotions" && request.method === "GET") return await handlePortalApi(request, env, "promotions");
