@@ -49,59 +49,30 @@ const settings = await Promise.all(scripts.map(async script => {
   return { worker: script.id, bindings: payload.result?.bindings || [] };
 }));
 
-const collisions = [];
+const expectedBindingMatches = new Map(expectedNamespaces.map(item => [item.namespaceId, []]));
 for (const item of settings) {
   for (const binding of item.bindings) {
     if (binding.type !== "ratelimit") continue;
-    const expected = expectedNamespaces.find(entry => entry.namespaceId === String(binding.namespace_id));
-    if (!expected) continue;
-    const isExpectedBinding = item.worker === workerName && binding.name === expected.name;
-    if (!isExpectedBinding) {
-      collisions.push({
-        namespaceId: String(binding.namespace_id),
-        existingWorker: item.worker,
-        existingBinding: binding.name
-      });
-    }
+    const expected = expectedBindingMatches.get(String(binding.namespace_id));
+    if (expected) expected.push({ worker: item.worker, name: binding.name });
   }
 }
 
-if (collisions.length) {
-  for (const item of collisions) {
-    console.error(
-      "Rate-limit namespace collision: " + item.namespaceId +
-      " is already used by " + item.existingWorker + "/" + item.existingBinding
-    );
+const problems = [];
+for (const item of expectedNamespaces) {
+  const matches = expectedBindingMatches.get(item.namespaceId);
+  if (matches.length === 0) {
+    problems.push("Namespace " + item.namespaceId + " (" + item.name + ") is not currently bound to any Worker.");
+  } else if (matches.length > 1) {
+    problems.push("Namespace " + item.namespaceId + " is bound more than once: " + JSON.stringify(matches));
+  } else if (matches[0].worker !== workerName || matches[0].name !== item.name) {
+    problems.push("Namespace " + item.namespaceId + " is bound to " + matches[0].worker + "/" + matches[0].name +
+      " instead of " + workerName + "/" + item.name + ".");
   }
-  throw new Error("Refusing deployment: configured rate-limit namespace IDs are not unique to the expected bindings.");
 }
-
-const failedBuildId = process.env.CLOUDFLARE_FAILED_BUILD_ID;
-if (failedBuildId) {
-  const buildPath = "/accounts/" + encodeURIComponent(accountId) + "/builds/builds/" + encodeURIComponent(failedBuildId);
-  try {
-    const build = await cloudflareGet(buildPath);
-    const item = build.result || {};
-    console.log("Historical Cloudflare build: " + JSON.stringify({
-      build_uuid: item.build_uuid,
-      build_outcome: item.build_outcome,
-      created_on: item.created_on,
-      modified_on: item.modified_on,
-      commit_hash: item.build_trigger_metadata?.commit_hash,
-      branch: item.build_trigger_metadata?.branch,
-      build_command: item.build_trigger_metadata?.build_command,
-      deploy_command: item.build_trigger_metadata?.deploy_command
-    }));
-    const logs = await cloudflareGet(buildPath + "/logs");
-    const rows = logs.result?.lines || [];
-    const messages = rows.map(row => Array.isArray(row) ? row[row.length - 1] : row).map(String);
-    const diagnostics = messages.filter(line => /error|failed|failure|exception|not found|invalid|denied|unauthorized/i.test(line)).slice(-30);
-    console.log("Historical Cloudflare build diagnostic lines:");
-    for (const line of diagnostics) console.log(line.slice(0, 1200));
-    if (!diagnostics.length) console.log("No error-like log lines returned; inspect the full build in Cloudflare if needed.");
-  } catch (error) {
-    console.warn("Historical Cloudflare build logs unavailable with this token: " + error.message);
-  }
+if (problems.length) {
+  for (const problem of problems) console.error(problem);
+  throw new Error("Cloudflare rate-limit namespace preflight failed; deployment must not continue.");
 }
 
 console.log("Cloudflare preflight passed.");
