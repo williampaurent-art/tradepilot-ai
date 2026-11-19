@@ -21,6 +21,8 @@ jobs:
           node-version: 22
       - name: Check Worker syntax
         run: node --input-type=module --check < src/index.js
+      - name: Check deployment preflight script syntax
+        run: node --check scripts/cloudflare-preflight.mjs
       - name: Check frontend JavaScript syntax
         run: |
           node --input-type=module <<'NODE'
