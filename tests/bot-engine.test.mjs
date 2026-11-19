@@ -177,7 +177,7 @@ test("AI chat and standalone bot analysis require an authenticated workspace", (
 });
 
 test("Worker does not emit wildcard CORS", () => {
-  assert.doesNotMatch(workerSource, /access-control-allow-origin["']?\\s*:\\s*["']\\*["']/i);
+  assert.doesNotMatch(workerSource, /access-control-allow-origin["']?\s*:\s*["']\*["']/i);
 });
 
 test("customer bot write and stored-analysis endpoints use workspace-scoped limits", () => {
@@ -276,7 +276,7 @@ test("Ultra Precision blocks stale quotes and unconfirmed risk checks", () => {
 
 test("partner webhook validates its secret, payload size and signature before persistence", () => {
   const start = workerSource.indexOf("async function handlePartnerWebhook");
-  const end = workerSource.indexOf("\\nasync function handlePartnerDashboard", start);
+  const end = workerSource.indexOf("\nasync function handlePartnerDashboard", start);
   const block = workerSource.slice(start, end);
   assert.notEqual(start, -1, "partner webhook handler should exist");
   assert.ok(block.includes("env.VT_PARTNER_WEBHOOK_SECRET"));
@@ -410,7 +410,7 @@ test("every customer bot read and mutation is scoped by workspace_id", () => {
   for (const [name, requiredScope] of handlers) {
     const start = workerSource.indexOf("async function " + name);
     assert.notEqual(start, -1, name + " must exist");
-    const next = workerSource.indexOf("\\nasync function ", start + 1);
+    const next = workerSource.indexOf("\nasync function ", start + 1);
     const block = workerSource.slice(start, next < 0 ? workerSource.length : next);
     assert.match(block, /getAuthenticatedWorkspace\(request, env\)/, name + " must authenticate");
     assert.ok(block.includes(requiredScope), name + " must include a workspace predicate/column");
@@ -420,9 +420,9 @@ test("every customer bot read and mutation is scoped by workspace_id", () => {
 
 
 test("anonymous public endpoints use Cloudflare-native rate-limit bindings", () => {
-  assert.match(workerSource, /async function enforcePublicRateLimit\\(request, env, route, tier = "standard"\\)/);
-  assert.match(workerSource, /env\\.PUBLIC_API_LIMITER/);
-  assert.match(workerSource, /env\\.UPSTREAM_API_LIMITER/);
+  assert.match(workerSource, /async function enforcePublicRateLimit\(request, env, route, tier = "standard"\)/);
+  assert.match(workerSource, /env\.PUBLIC_API_LIMITER/);
+  assert.match(workerSource, /env\.UPSTREAM_API_LIMITER/);
   assert.match(workerSource, /"RATE_LIMITED"/);
   assert.match(workerSource, /"RATE_LIMIT_UNAVAILABLE"/);
   for (const route of ["/api/bot-market", "/gold", "/calendar", "/analyze", "/scalp", "/api/public-config", "/signal-history"]) {
