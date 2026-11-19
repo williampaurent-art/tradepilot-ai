@@ -34,15 +34,81 @@ const TIMEFRAMES = {
 // HTTP
 // --------------------------------------------------
 
+// --------------------------------------------------
+// API SECURITY — CORS AND WORKSPACE RATE LIMITS
+// --------------------------------------------------
+function allowedCorsOrigin(request, env) {
+  const origin = request.headers.get("Origin");
+  if (!origin || origin === "null") return null;
+  let requestOrigin;
+  try { requestOrigin = new URL(request.url).origin; } catch { return null; }
+  const configured = String(env.CORS_ALLOWED_ORIGINS || "").split(",").map(value => value.trim()).filter(Boolean);
+  return origin === requestOrigin || configured.includes(origin) ? origin : null;
+}
+function withCors(response, request, env) {
+  const headers = new Headers(response.headers);
+  const origin = allowedCorsOrigin(request, env);
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "content-type, authorization, x-test-key, x-telegram-test-key");
+    headers.set("Access-Control-Max-Age", "600");
+    const vary = headers.get("Vary");
+    if (!vary || !vary.split(",").some(value => value.trim().toLowerCase() === "origin")) {
+      headers.set("Vary", vary ? vary + ", Origin" : "Origin");
+    }
+  }
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+// Fixed-window KV counter per workspace and route. KV is approximate; strict enforcement should use Cloudflare Rate Limiting.
+async function consumeWorkspaceRateLimit(env, workspaceId, route, limit, windowSeconds) {
+  if (!env.TP_STATE || !workspaceId) return { ok: false, status: 503, reason: "RATE_LIMITER_UNAVAILABLE" };
+  const now = Date.now(), windowMs = windowSeconds * 1000, bucket = Math.floor(now / windowMs);
+  const key = "workspace_rate:" + route + ":" + workspaceId + ":" + bucket;
+  try {
+    const previous = Number(await env.TP_STATE.get(key) || 0);
+    if (!Number.isFinite(previous) || previous >= limit) return { ok: false, status: 429, reason: "RATE_LIMIT" };
+    await env.TP_STATE.put(key, String(previous + 1), { expirationTtl: windowSeconds * 2 });
+    return { ok: true, remaining: Math.max(0, limit - previous - 1) };
+  } catch {
+    return { ok: false, status: 503, reason: "RATE_LIMITER_UNAVAILABLE" };
+  }
+}
+function workspaceRateLimitResponse(env, workspaceId, route, limit, windowSeconds) {
+  return consumeWorkspaceRateLimit(env, workspaceId, route, limit, windowSeconds).then(rate => {
+    if (rate.ok) return null;
+    return json({
+      ok: false,
+      code: rate.reason,
+      error: rate.status === 429 ? "Limite temporaire atteinte. Réessaie dans quelques minutes." : "Protection anti-abus temporairement indisponible."
+    }, rate.status);
+  });
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data, null, 2), {
     status,
     headers: {
       "content-type": "application/json; charset=utf-8",
-      "cache-control": "no-store",
-      "access-control-allow-origin": "*"
+      "cache-control": "no-store"
     }
   });
+}
+
+async function readBoundedJson(request, maxBytes) {
+  let bytes;
+  try { bytes = await request.arrayBuffer(); }
+  catch { return { ok: false, status: 400, error: "Corps de requête illisible." }; }
+  if (bytes.byteLength > maxBytes) return { ok: false, status: 413, error: "Corps de requête trop volumineux." };
+  try {
+    const value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { ok: false, status: 400, error: "Un objet JSON est requis." };
+    }
+    return { ok: true, value };
+  } catch {
+    return { ok: false, status: 400, error: "JSON illisible." };
+  }
 }
 
 function numberParam(url, name, fallback, min, max) {
@@ -1835,8 +1901,8 @@ async function getSignal(settings, env, recordStatistics = false) {
 
   result.advancedIntelligence = {
     anticipation, reversal, confluence, alignment, macroCrossAsset,
-    availableTimeframes:frameResults.filter(x=>x.ok).map(x=>x.timeframe),
-    missingTimeframes:frameResults.filter(x=>!x.ok).map(x=>x.timeframe)
+    availableTimeframes:frameResults.filter(x=>x.ok && x.analysis?.dataQuality?.ok === true).map(x=>x.timeframe),
+    missingTimeframes:frameResults.filter(x=>!x.ok || x.analysis?.dataQuality?.ok !== true).map(x=>x.timeframe)
   };
 
   const reasons = [];
@@ -2933,6 +2999,114 @@ async function processActiveCustomerBots(env) {
   }
 }
 
+// --------------------------------------------------
+// ULTRA PRECISION POLICY — XAUUSD ALERT GATE
+// --------------------------------------------------
+const ULTRA_PRECISION_POLICY = Object.freeze({
+  mode: "ULTRA_PRECISION",
+  minimumScore: 85,
+  minimumResolvedSamples: 30,
+  minimumWilsonLowerBoundPercent: 60,
+  minimumAnticipationIndex: 68,
+  minimumSetupConfluence: 75,
+  requiredTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
+  minimumAlignedHigherTimeframes: 2
+});
+
+function applyUltraPrecisionPolicy(signal) {
+  if (!signal || typeof signal !== "object") return signal;
+  const blockers = [];
+  const direction = signal.signal === "ACHAT" ? "HAUSSIER" :
+    signal.signal === "VENTE" ? "BAISSIER" : null;
+  const policy = ULTRA_PRECISION_POLICY;
+
+  if (!signal.ok) blockers.push("Analyse marché invalide ou indisponible.");
+  if (!direction) blockers.push("Aucune direction acheteuse/vendeuse exploitable.");
+  if (signal.alertLevel !== "CONFIRMED") blockers.push("Confirmation technique de base absente.");
+  if (!Number.isFinite(Number(signal.score)) || Number(signal.score) < policy.minimumScore) {
+    blockers.push("Score inférieur au seuil Ultra de " + policy.minimumScore + "/100.");
+  }
+
+  const quality = signal.dataQuality || {};
+  for (const timeframe of ["M1", "M5", "M15"]) {
+    if (quality[timeframe]?.ok !== true) blockers.push("Qualité des données " + timeframe + " non validée.");
+  }
+
+  const advanced = signal.advancedIntelligence || {};
+  const available = new Set(advanced.availableTimeframes || []);
+  for (const timeframe of policy.requiredTimeframes) {
+    if (!available.has(timeframe)) blockers.push("Unité " + timeframe + " indisponible.");
+  }
+
+  const anticipation = advanced.anticipation || {};
+  if (direction && anticipation.direction !== direction) blockers.push("Anticipation multi-timeframe non alignée.");
+  if (!Number.isFinite(Number(anticipation.confluenceIndex)) || Number(anticipation.confluenceIndex) < policy.minimumAnticipationIndex) {
+    blockers.push("Confluence multi-timeframe inférieure au seuil requis.");
+  }
+  if (!Number.isFinite(Number(anticipation.alignedHigherTimeframes)) || Number(anticipation.alignedHigherTimeframes) < policy.minimumAlignedHigherTimeframes) {
+    blockers.push("Moins de deux unités supérieures ne confirment le scénario.");
+  }
+
+  const setup = direction === "HAUSSIER" ? advanced.confluence?.bullish :
+    direction === "BAISSIER" ? advanced.confluence?.bearish : null;
+  if (advanced.confluence?.status !== "CONFLUENCE_FORTE_A_VALIDER" ||
+      !Number.isFinite(Number(setup?.score)) || Number(setup?.score) < policy.minimumSetupConfluence) {
+    blockers.push("Confluence structure/liquidité insuffisante.");
+  }
+
+  const risk = signal.riskChecks || {};
+  if (risk.spreadOK !== true) blockers.push("Spread non validé.");
+  if (risk.entryTriggerConfirmed !== true) blockers.push("Déclencheur d'entrée non confirmé.");
+  if (risk.structuralPlanConfirmed !== true) blockers.push("Plan structurel non confirmé.");
+  if (signal.entryQuality?.confirmed !== true) blockers.push("Qualité d'entrée non confirmée.");
+  if (signal.tradePlan?.confirmed !== true) blockers.push("Plan de trade non confirmé.");
+  if (signal.reversalGuard?.blockConfirmedAlert === true) blockers.push("Risque de retournement opposé détecté.");
+
+  const quoteAge = Number(signal.liveQuote?.quoteAgeSeconds);
+  if (!Number.isFinite(quoteAge) || quoteAge < 0 || quoteAge > CONFIG.LIVE_QUOTE_MAX_AGE_SECONDS) {
+    blockers.push("Cotation live absente ou trop ancienne.");
+  }
+  const spread = Number(signal.liveQuote?.spread);
+  if (!Number.isFinite(spread) || spread < 0) blockers.push("Spread live invalide.");
+
+  const stats = signal.statisticalValidation || {};
+  const resolved = Number(stats.resolved);
+  const lowerBound = Number(stats.confidence95?.lower);
+  if (stats.status !== "QUALIFIED_HISTORICALLY" ||
+      !Number.isFinite(resolved) || resolved < policy.minimumResolvedSamples) {
+    blockers.push("Historique statistique non qualifié : au moins " + policy.minimumResolvedSamples + " résultats résolus sont requis.");
+  }
+  if (!Number.isFinite(lowerBound) || lowerBound < policy.minimumWilsonLowerBoundPercent) {
+    blockers.push("Borne basse de confiance statistique à 95 % inférieure à " +
+      policy.minimumWilsonLowerBoundPercent + " %.");
+  }
+
+  const approved = signal.ok === true && direction !== null && blockers.length === 0;
+  signal.ultraPrecision = {
+    mode: policy.mode,
+    approved,
+    evaluatedAt: new Date().toISOString(),
+    threshold: policy.minimumScore,
+    historicalSample: Number.isFinite(resolved) ? resolved : 0,
+    wilsonLowerBoundPercent: Number.isFinite(lowerBound) ? lowerBound : null,
+    blockers,
+    note: "Filtre strict et heuristique. Une validation historique ne garantit jamais le prochain résultat."
+  };
+
+  if (!approved && direction) {
+    signal.alertLevel = "EARLY";
+    signal.confirmationBlockers = [
+      ...(Array.isArray(signal.confirmationBlockers) ? signal.confirmationBlockers : []),
+      ...blockers
+    ];
+    signal.reasons = [
+      ...(Array.isArray(signal.reasons) ? signal.reasons : []),
+      "ULTRA PRECISION : alerte bloquée — " + blockers.slice(0, 3).join(" ")
+    ];
+  }
+  return signal;
+}
+
 async function scheduledCheck(env) {
   await saveCronStatus(env, "RUNNING");
   const customerBotExecution = await processActiveCustomerBots(env);
@@ -2942,22 +3116,22 @@ async function scheduledCheck(env) {
     const edgeUpdate = await updateEdgeOutcomes(env);
     await saveCronStatus(env, "RUNNING", { edgeOutcomeUpdates: edgeUpdate.updated, edgeOutcomeError: edgeUpdate.error });
     const dailyState = await getDailyAlertState(env);
-    const adaptiveMinScore = getAdaptiveAlertMinScore(dailyState.count);
     const settings = {
       capital: CONFIG.CAPITAL,
       target: CONFIG.TARGET,
       stop: CONFIG.STOP,
-      minScore: adaptiveMinScore,
+      minScore: ULTRA_PRECISION_POLICY.minimumScore,
       lots: CONFIG.LOTS_PER_1000
     };
 
-    const signal = await getSignal(settings, env, true);
+    let signal = await getSignal(settings, env, true);
+    signal = applyUltraPrecisionPolicy(signal);
     const x10Virtual = await processX10Virtual(env, signal);
     signal.dailyAlertControl = {
+      mode: ULTRA_PRECISION_POLICY.mode,
       countBeforeSignal: dailyState.count,
-      targetMin: 10,
-      targetMax: 15,
-      adaptiveMinScore,
+      minimumScore: ULTRA_PRECISION_POLICY.minimumScore,
+      frequencyTarget: null,
       timezone: "Europe/Paris"
     };
 
@@ -4483,6 +4657,29 @@ function buildAssistantMarketContext(raw) {
 }
 
 async function handleAssistantChat(request, env) {
+  if (action === "promotions" && request.method === "GET") {
+    try {
+      const profile = await env.DB.prepare("SELECT country_code FROM workspace_profiles WHERE workspace_id = ?").bind(workspaceId).first();
+      const countryCode = typeof profile?.country_code === "string" ? profile.country_code.toUpperCase() : null;
+      const now = new Date().toISOString();
+      const result = await env.DB.prepare("SELECT id, slug, title, summary, status, promotion_type, entity_label, eligible_countries_json, excluded_countries_json, eligible_account_types_json, bonus_percent, bonus_cap_amount, bonus_cap_currency, min_deposit_amount, min_deposit_currency, starts_at, ends_at, terms_url, source_url, source_label, verified_at FROM broker_promotions WHERE provider = ? AND status IN (?, ?) AND (status = ? OR (verified_at IS NOT NULL AND verified_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days') AND terms_url IS NOT NULL)) AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at >= ?) ORDER BY published_at DESC, title ASC").bind("vt_markets", "published", "review", "review", now, now).all();
+      const parseList = (value) => { try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed.map((v) => String(v).toUpperCase()) : []; } catch { return []; } };
+      const promotions = (result.results || []).filter((item) => {
+        const eligible = parseList(item.eligible_countries_json), excluded = parseList(item.excluded_countries_json);
+        if (item.status === "published" && (!countryCode || !eligible.includes(countryCode) || !item.entity_label || !parseList(item.eligible_account_types_json).length)) return false;
+        if (countryCode && excluded.includes(countryCode)) return false;
+        if (eligible.length && (!countryCode || !eligible.includes(countryCode))) return false;
+        if (!countryCode && (eligible.length || excluded.length)) return false;
+        return true;
+      }).filter((item) => { const safe = (value) => { try { const parsed = new URL(value); return parsed.protocol === "https:" && ["www.vtmarkets.com", "vtmarkets.com", "get.vtmarkets.help"].includes(parsed.hostname); } catch { return false; } }; return safe(item.source_url) && (item.status === "review" || safe(item.terms_url)); }).map((item) => ({ id:item.id, slug:item.slug, title:item.title, summary:item.summary, status:item.status, promotionType:item.promotion_type, entity:item.entity_label, eligibleAccountTypes:parseList(item.eligible_account_types_json), bonusPercent:item.bonus_percent, bonusCapAmount:item.bonus_cap_amount, bonusCapCurrency:item.bonus_cap_currency, minDepositAmount:item.min_deposit_amount, minDepositCurrency:item.min_deposit_currency, startsAt:item.starts_at, endsAt:item.ends_at, termsUrl:item.terms_url, sourceUrl:item.source_url, sourceLabel:item.source_label, verifiedAt:item.verified_at }));
+      return json({ ok:true, countryCode, promotions, checkedAt:now, eligibilityNote:"L’éligibilité finale dépend du pays, de l’entité contractante, du type de compte et de la validation dans le portail VT Markets." });
+    } catch (error) { return json({ ok:false, error:"Catalogue promotionnel indisponible.", detail:error.message },503); }
+  }
+  if (request.method !== "POST") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  const rate = await consumeWorkspaceRateLimit(env, access.workspace.id, "assistant_chat", 12, 600);
+  if (!rate.ok) return json({ ok: false, code: rate.reason, error: rate.status === 429 ? "Limite temporaire de questions IA atteinte. Réessaie dans quelques minutes." : "Protection anti-abus temporairement indisponible." }, rate.status);
   if (!env.AI || typeof env.AI.run !== "function") {
     return json({
       ok: false,
@@ -4496,7 +4693,7 @@ async function handleAssistantChat(request, env) {
   // avec buildAssistantMarketContext avant de le transmettre au modele.
   const rawBody = await request.text();
   const requestBytes = new TextEncoder().encode(rawBody).byteLength;
-  const MAX_ASSISTANT_REQUEST_BYTES = 1_000_000;
+  const MAX_ASSISTANT_REQUEST_BYTES = 256_000;
   if (requestBytes > MAX_ASSISTANT_REQUEST_BYTES) {
     return json({
       ok: false,
@@ -4511,18 +4708,6 @@ async function handleAssistantChat(request, env) {
 
   const question = assistantCleanText(body?.question, 700).trim();
   if (!question) return json({ ok: false, error: "Écris une question avant l'envoi." }, 400);
-
-  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
-  const ipHash = Array.from(new Uint8Array(digest)).slice(0, 12).map(x => x.toString(16).padStart(2, "0")).join("");
-  const rateKey = "assistant_rate_" + ipHash;
-  if (env.TP_STATE) {
-    const previous = Number(await readKV(env, rateKey) || 0);
-    if (previous >= 12) {
-      return json({ ok: false, code: "RATE_LIMIT", error: "Limite temporaire atteinte. Réessaie dans quelques minutes." }, 429);
-    }
-    await writeKV(env, rateKey, previous + 1, 600);
-  }
 
   const history = Array.isArray(body?.history) ? body.history.slice(-8) : [];
   const messages = history.map(item => ({
@@ -5502,7 +5687,11 @@ function evaluateConfiguredBot(c, bars, quote) {
   };
 }
 
-async function handleBotAnalyze(request) {
+async function handleBotAnalyze(request, env) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  const rate = await consumeWorkspaceRateLimit(env, access.workspace.id, "bot_analyze", 20, 600);
+  if (!rate.ok) return json({ ok: false, code: rate.reason, error: rate.status === 429 ? "Limite d'analyses atteinte. Réessaie après quelques minutes." : "Protection anti-abus temporairement indisponible." }, rate.status);
   // The header is only an early rejection hint: clients can omit it.
   if (Number(request.headers.get("content-length") || 0) > 12000) {
     return json({ ok: false, error: "Configuration trop volumineuse." }, 413);
@@ -5599,7 +5788,11 @@ async function handleListBots(request, env) {
 async function handleCreateBot(request, env) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
-  let input; try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_create", 10, 3600);
+  if (rateResponse) return rateResponse;
+  const parsed = await readBoundedJson(request, 16_000);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
   try {
     const c = validateBotConfig(input);
     const [marketBars, marketQuote] = await Promise.all([fetchCandles(c.timeframe, 200), fetchLiveQuote()]);
@@ -5627,8 +5820,11 @@ async function handleCreateBot(request, env) {
 async function handleUpdateBot(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
-  let input;
-  try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_update", 30, 600);
+  if (rateResponse) return rateResponse;
+  const parsed = await readBoundedJson(request, 16_000);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
   try {
     const c = validateBotConfig(input);
     const existing = await env.DB.prepare(
@@ -5664,8 +5860,11 @@ async function handleUpdateBot(request, env, botId) {
 async function handleSetBotStatus(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
-  let input;
-  try { input = await request.json(); } catch { return json({ ok: false, error: "JSON illisible." }, 400); }
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_status", 30, 600);
+  if (rateResponse) return rateResponse;
+  const parsed = await readBoundedJson(request, 2_048);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
   const status = String(input?.status || "");
   if (!["active", "paused"].includes(status)) {
     return json({ ok: false, error: "État demandé invalide." }, 400);
@@ -5685,6 +5884,8 @@ async function handleSetBotStatus(request, env, botId) {
 async function handleDeleteBot(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_delete", 10, 600);
+  if (rateResponse) return rateResponse;
   try {
     const result = await env.DB.prepare(
       "DELETE FROM trading_bots WHERE id = ? AND workspace_id = ?"
@@ -5699,6 +5900,8 @@ async function handleDeleteBot(request, env, botId) {
 async function handleAnalyzeStoredBot(request, env, botId) {
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
+  const rateResponse = await workspaceRateLimitResponse(env, access.workspace.id, "bot_analyze_stored", 20, 600);
+  if (rateResponse) return rateResponse;
   try {
     const row = await env.DB.prepare(
       "SELECT strategy_json, status FROM trading_bots WHERE id = ? AND workspace_id = ? LIMIT 1"
@@ -5982,6 +6185,199 @@ async function provisionSaasAccount(user, env) {
   };
 }
 
+
+async function handlePortalApi(request, env, action) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  const workspaceId = access.workspace.id;
+  const userId = access.user.id;
+
+  if (action === "summary" && request.method === "GET") {
+    try {
+      const [profile, botCount, signalCount, broker, brokerRequest, progress, clicks, subscription] = await Promise.all([
+        env.DB.prepare("SELECT display_name, country_code, preferred_language FROM workspace_profiles WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT COUNT(*) AS total FROM trading_bots WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT COUNT(*) AS total FROM bot_signal_events WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT provider, display_label, status, access_mode, last_checked_at FROM broker_connections WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first(),
+        env.DB.prepare("SELECT provider, status, created_at FROM broker_connection_requests WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first(),
+        env.DB.prepare("SELECT course_key, status, progress_percent, updated_at FROM academy_progress WHERE workspace_id = ? ORDER BY updated_at DESC").bind(workspaceId).all(),
+        env.DB.prepare("SELECT COUNT(*) AS total FROM partner_click_events WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT plan_key, status, current_period_end FROM subscriptions WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first()
+      ]);
+      return json({
+        ok: true,
+        user: { id: access.user.id, email: access.user.email, emailVerified: access.user.emailVerified },
+        workspace: access.workspace,
+        profile: profile || { display_name: null, country_code: null, preferred_language: "fr" },
+        stats: { bots: Number(botCount?.total || 0), signals: Number(signalCount?.total || 0), partnerClicks: Number(clicks?.total || 0) },
+        broker: broker || { provider: "vt_markets", status: brokerRequest?.status || "not_connected", access_mode: "READ_ONLY", requestedAt: brokerRequest?.created_at || null },
+        academyProgress: progress.results || [],
+        subscription: subscription || { plan_key: "free", status: "active", current_period_end: null },
+        liveTrading: false
+      });
+    } catch (error) {
+      return json({ ok: false, error: "Espace client indisponible. Vérifie les migrations D1 0001 à 0004.", detail: error.message }, 503);
+    }
+  }
+
+  if (request.method !== "POST") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+  const parsed = await readBoundedJson(request, 4000);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
+
+  try {
+    if (action === "profile") {
+      const displayName = typeof input.displayName === "string" ? input.displayName.trim().slice(0, 80) : "";
+      const countryCode = typeof input.countryCode === "string" && /^[A-Z]{2}$/.test(input.countryCode.toUpperCase()) ? input.countryCode.toUpperCase() : null;
+      const language = input.language === "en" ? "en" : "fr";
+      await env.DB.prepare(`
+        INSERT INTO workspace_profiles (workspace_id, display_name, country_code, preferred_language)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(workspace_id) DO UPDATE SET display_name = excluded.display_name,
+          country_code = excluded.country_code, preferred_language = excluded.preferred_language,
+          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      `).bind(workspaceId, displayName || null, countryCode, language).run();
+      await env.DB.prepare("INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type) VALUES (?, ?, ?, 'profile.updated')")
+        .bind(createId("evt"), workspaceId, userId).run();
+      return json({ ok: true, saved: true });
+    }
+
+    if (action === "partner-click") {
+      const source = typeof input.source === "string" ? input.source.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) : "portal";
+      const campaign = typeof input.campaign === "string" ? input.campaign.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) : null;
+      const clickId = createId("clk");
+      await env.DB.prepare("INSERT INTO partner_click_events (id, workspace_id, provider, source, campaign) VALUES (?, ?, 'vt_markets', ?, ?)")
+        .bind(clickId, workspaceId, source, campaign).run();
+      await env.DB.prepare(`
+        INSERT INTO partner_attributions (workspace_id, first_source, first_campaign, last_source, last_campaign)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id) DO UPDATE SET last_source = excluded.last_source,
+          last_campaign = excluded.last_campaign, last_touch_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      `).bind(workspaceId, source, campaign, source, campaign).run();
+      return json({ ok: true, tracked: true, clickId });
+    }
+
+    if (action === "academy-progress") {
+      const courseKey = typeof input.courseKey === "string" && /^[a-z0-9_-]{2,50}$/.test(input.courseKey) ? input.courseKey : null;
+      if (!courseKey) return json({ ok: false, error: "Identifiant de cours invalide." }, 400);
+      const percent = Number.isFinite(Number(input.progressPercent)) ? Math.max(0, Math.min(100, Math.round(Number(input.progressPercent)))) : 0;
+      const status = percent >= 100 ? "completed" : percent > 0 ? "in_progress" : "not_started";
+      await env.DB.prepare(`
+        INSERT INTO academy_progress (workspace_id, course_key, status, progress_percent)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(workspace_id, course_key) DO UPDATE SET status = excluded.status,
+          progress_percent = excluded.progress_percent, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      `).bind(workspaceId, courseKey, status, percent).run();
+      return json({ ok: true, courseKey, status, progressPercent: percent });
+    }
+
+    if (action === "broker-request") {
+      const regionCode = typeof input.regionCode === "string" && /^[A-Z]{2}$/.test(input.regionCode.toUpperCase()) ? input.regionCode.toUpperCase() : null;
+      const accountLabel = typeof input.accountLabel === "string" ? input.accountLabel.trim().slice(0, 60) : null;
+      if (input.consent !== true) return json({ ok: false, error: "Le consentement explicite est requis." }, 400);
+      const existing = await env.DB.prepare("SELECT id, status FROM broker_connection_requests WHERE workspace_id = ? AND provider = 'vt_markets' AND status = 'pending' LIMIT 1").bind(workspaceId).first();
+      if (existing) return json({ ok: true, requestId: existing.id, status: existing.status, alreadyPending: true });
+      const id = createId("brq");
+      await env.DB.prepare("INSERT INTO broker_connection_requests (id, workspace_id, provider, region_code, account_label, consent_at) VALUES (?, ?, 'vt_markets', ?, ?, ?)")
+        .bind(id, workspaceId, regionCode, accountLabel, new Date().toISOString()).run();
+      await env.DB.prepare("INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type, target_ref) VALUES (?, ?, ?, 'broker.connection_requested', ?)")
+        .bind(createId("evt"), workspaceId, userId, id).run();
+      return json({ ok: true, requestId: id, status: "pending", message: "Demande enregistrée. Aucune connexion MT5 n'est encore établie." }, 201);
+    }
+    return json({ ok: false, error: "Action portail inconnue." }, 404);
+  } catch (error) {
+    return json({ ok: false, error: "Opération portail impossible.", detail: error.message }, 503);
+  }
+}
+
+async function verifyPartnerWebhookSignature(rawBody, signature, secret) {
+  if (!secret || !signature || !/^sha256=[a-f0-9]{64}$/i.test(signature)) return false;
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const digest = new Uint8Array(await crypto.subtle.sign("HMAC", key, encoder.encode(rawBody)));
+  const expected = "sha256=" + Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+  const a = encoder.encode(expected.toLowerCase()), b = encoder.encode(signature.toLowerCase());
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a[i] ^ b[i];
+  return mismatch === 0;
+}
+
+async function handlePartnerWebhook(request, env) {
+  const secret = env.VT_PARTNER_WEBHOOK_SECRET;
+  if (!secret) return json({ ok:false, error:"Webhook partenaire non configuré." },503);
+  let rawBytes;
+  try { rawBytes = await request.arrayBuffer(); } catch { return json({ok:false,error:"Corps illisible."},400); }
+  if (rawBytes.byteLength > 8000) return json({ok:false,error:"Événement trop volumineux."},413);
+  let rawBody;
+  try { rawBody = new TextDecoder("utf-8",{fatal:true}).decode(rawBytes); } catch { return json({ok:false,error:"Encodage invalide."},400); }
+  const valid = await verifyPartnerWebhookSignature(rawBody, request.headers.get("x-vt-signature"), secret);
+  if (!valid) return json({ok:false,error:"Signature invalide."},401);
+  let event;
+  try { event = JSON.parse(rawBody); } catch { return json({ok:false,error:"JSON invalide."},400); }
+  if (!event || typeof event !== "object" || Array.isArray(event)) return json({ok:false,error:"Objet événement requis."},400);
+  const eventId = typeof event.event_id === "string" ? event.event_id.trim().slice(0,120) : "";
+  const clickId = typeof event.click_id === "string" && /^[a-zA-Z0-9_-]{8,100}$/.test(event.click_id) ? event.click_id : null;
+  if (clickId) {
+    const knownClick = await env.DB.prepare("SELECT id FROM partner_click_events WHERE id = ? AND provider = 'vt_markets' LIMIT 1").bind(clickId).first();
+    if (!knownClick) return json({ok:false,error:"Click ID inconnu pour ce programme partenaire."},400);
+  }
+  const allowedTypes = new Set(["registration","account_approved","first_deposit","first_trade","active_trader","commission"]);
+  const eventType = typeof event.event_type === "string" ? event.event_type : "";
+  const occurredAt = typeof event.occurred_at === "string" ? Date.parse(event.occurred_at) : NaN;
+  if (!eventId || !/^[a-zA-Z0-9._:-]+$/.test(eventId) || !allowedTypes.has(eventType) || !Number.isFinite(occurredAt)) {
+    return json({ok:false,error:"Identifiant, type ou date d'événement invalide."},400);
+  }
+  const now = Date.now();
+  if (occurredAt > now + 10 * 60 * 1000 || occurredAt < now - 180 * 24 * 60 * 60 * 1000) {
+    return json({ok:false,error:"Date d'événement hors fenêtre acceptée."},400);
+  }
+  const amount = event.value_amount === undefined || event.value_amount === null ? null : Number(event.value_amount);
+  if (amount !== null && (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000)) return json({ok:false,error:"Montant invalide."},400);
+  const currency = typeof event.value_currency === "string" && /^[A-Z]{3}$/.test(event.value_currency.toUpperCase()) ? event.value_currency.toUpperCase() : null;
+  const country = typeof event.country_code === "string" && /^[A-Z]{2}$/i.test(event.country_code) ? event.country_code.toUpperCase() : null;
+  const campaign = typeof event.campaign === "string" ? event.campaign.replace(/[^a-zA-Z0-9_-]/g,"").slice(0,80) : null;
+  try {
+    const result = await env.DB.prepare("INSERT OR IGNORE INTO partner_conversion_events (id,provider,external_event_id,click_id,event_type,occurred_at,value_amount,value_currency,country_code,campaign) VALUES (?, 'vt_markets', ?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(createId("pce"),eventId,clickId,eventType,new Date(occurredAt).toISOString(),amount,currency,country,campaign).run();
+    const inserted = Number(result.meta?.changes || 0) > 0;
+    return json({ok:true,accepted:true,duplicate:!inserted},inserted?202:200);
+  } catch (error) {
+    return json({ok:false,error:"Événement non enregistré."},503);
+  }
+}
+
+async function handlePartnerDashboard(request, env) {
+  const secret = env.PARTNER_DASHBOARD_KEY;
+  if (!secret) return json({ok:false,error:"Dashboard partenaire non configuré."},503);
+  const supplied = request.headers.get("x-partner-dashboard-key") || "";
+  if (supplied.length !== secret.length) return json({ok:false,error:"Accès refusé."},401);
+  let mismatch = 0;
+  for (let i=0;i<secret.length;i++) mismatch |= secret.charCodeAt(i) ^ supplied.charCodeAt(i);
+  if (mismatch) return json({ok:false,error:"Accès refusé."},401);
+  const requestedDays = Number(new URL(request.url).searchParams.get("days"));
+  const periodDays = Number.isInteger(requestedDays) ? Math.min(365,Math.max(7,requestedDays)) : 30;
+  const since = new Date(Date.now()-periodDays*24*60*60*1000).toISOString();
+  try {
+    const [clicks, totals, recent, dailyConversions, dailyClicks, campaignClicks, campaignConversions, commissions] = await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS total, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= ?").bind(since).first(),
+      env.DB.prepare("SELECT event_type, COUNT(*) AS total, COUNT(DISTINCT click_id) AS attributed_clicks, COUNT(DISTINCT external_event_id) AS unique_events FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= ? GROUP BY event_type ORDER BY CASE event_type WHEN 'registration' THEN 1 WHEN 'account_approved' THEN 2 WHEN 'first_deposit' THEN 3 WHEN 'first_trade' THEN 4 WHEN 'active_trader' THEN 5 ELSE 6 END").bind(since).all(),
+      env.DB.prepare("SELECT e.event_type, e.occurred_at, e.country_code, e.campaign AS broker_campaign, e.value_amount, e.value_currency, c.source, c.campaign AS tracked_campaign, CASE WHEN c.id IS NULL THEN 0 ELSE 1 END AS attributed FROM partner_conversion_events e LEFT JOIN partner_click_events c ON c.id = e.click_id WHERE e.provider = 'vt_markets' ORDER BY e.occurred_at DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT substr(occurred_at,1,10) AS day, event_type, COUNT(*) AS total FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= ? GROUP BY day,event_type ORDER BY day ASC").bind(since).all(),
+      env.DB.prepare("SELECT substr(created_at,1,10) AS day, COUNT(*) AS total, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= ? GROUP BY day ORDER BY day ASC").bind(since).all(),
+      env.DB.prepare("SELECT COALESCE(source,'unknown') AS source, COALESCE(campaign,'organic') AS campaign, COUNT(*) AS clicks, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= ? GROUP BY source,campaign ORDER BY clicks DESC LIMIT 100").bind(since).all(),
+      env.DB.prepare("SELECT COALESCE(c.source,'unattributed') AS source, COALESCE(c.campaign,e.campaign,'unattributed') AS campaign, e.event_type, COUNT(*) AS events, COUNT(DISTINCT e.click_id) AS attributed_clicks FROM partner_conversion_events e LEFT JOIN partner_click_events c ON c.id = e.click_id WHERE e.provider = 'vt_markets' AND e.occurred_at >= ? GROUP BY COALESCE(c.source,'unattributed'),COALESCE(c.campaign,e.campaign,'unattributed'),e.event_type ORDER BY events DESC LIMIT 200").bind(since).all(),
+      env.DB.prepare("SELECT value_currency AS currency, SUM(value_amount) AS total_commission, COUNT(*) AS commission_events FROM partner_conversion_events WHERE provider = 'vt_markets' AND event_type = 'commission' AND occurred_at >= ? AND value_amount IS NOT NULL GROUP BY value_currency ORDER BY total_commission DESC").bind(since).all()
+    ]);
+    const clickTotal = Number(clicks?.total||0);
+    const conversionRows = totals.results||[];
+    const registration = conversionRows.find(row=>row.event_type==='registration');
+    const firstTrade = conversionRows.find(row=>row.event_type==='first_trade');
+    const activeTrader = conversionRows.find(row=>row.event_type==='active_trader');
+    const attributedEvents = conversionRows.reduce((sum,row)=>sum+Number(row.attributed_clicks||0),0);
+    return json({ok:true,periodDays,since,clicks:{total:clickTotal,uniqueWorkspaces:Number(clicks?.unique_workspaces||0)},funnel:{registrations:Number(registration?.total||0),firstTrades:Number(firstTrade?.total||0),activeTraders:Number(activeTrader?.total||0),registrationRate:clickTotal?Number(((Number(registration?.total||0)/clickTotal)*100).toFixed(2)):0,firstTradeRate:clickTotal?Number(((Number(firstTrade?.total||0)/clickTotal)*100).toFixed(2)):0,activeTraderRate:clickTotal?Number(((Number(activeTrader?.total||0)/clickTotal)*100).toFixed(2)):0,attributedConversionEvents:attributedEvents},conversions:conversionRows,dailyConversions:dailyConversions.results||[],dailyClicks:dailyClicks.results||[],campaignClicks:campaignClicks.results||[],campaignConversions:campaignConversions.results||[],commissionsByCurrency:commissions.results||[],recentEvents:recent.results||[],generatedAt:new Date().toISOString(),note:"Les taux sont des ratios bruts entre événements reçus et clics TradePilot sur la période ; ils ne constituent pas une attribution de cohorte. Les postbacks reflètent uniquement les événements transmis et authentifiés par VT Markets. Les conversions non transmises ne sont pas estimées."});
+  } catch(error) { return json({ok:false,error:"Statistiques partenaire indisponibles."},503); }
+}
 async function handleSaasAccount(request, env) {
   if (request.method !== "GET") {
     return json({ ok: false, error: "Méthode non prise en charge." }, 405);
@@ -5996,31 +6392,63 @@ async function handleSaasAccount(request, env) {
   }
 }
 
+// Cloudflare-native rate limits for anonymous endpoints that can trigger upstream work.
+async function enforcePublicRateLimit(request, env, route, tier = "standard") {
+  const limiter = tier === "upstream" ? env.UPSTREAM_API_LIMITER : env.PUBLIC_API_LIMITER;
+  // Local tests and Wrangler dev may not provide the optional binding.
+  if (!limiter || typeof limiter.limit !== "function") return null;
+
+  const clientIp = request.headers.get("cf-connecting-ip") || "unknown";
+  try {
+    const { success } = await limiter.limit({ key: route + ":" + clientIp });
+    if (!success) {
+      return json({
+        ok: false,
+        error: "Trop de requêtes. Réessaie dans une minute.",
+        code: "RATE_LIMITED",
+        retryAfter: 60
+      }, 429);
+    }
+    return null;
+  } catch (error) {
+    console.error("Cloudflare rate limiter unavailable:", error.message);
+    return json({
+      ok: false,
+      error: "Protection anti-abus temporairement indisponible.",
+      code: "RATE_LIMIT_UNAVAILABLE"
+    }, 503);
+  }
+}
+
 // --------------------------------------------------
 // CLOUDFLARE WORKER
 // --------------------------------------------------
 
-export default {
-  async fetch(request, env) {
+async function handleWorkerRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        status: 204,
-        headers: {
-          "access-control-allow-origin": "*",
-          "access-control-allow-methods": "GET, POST, OPTIONS",
-          "access-control-allow-headers": "content-type, authorization, x-test-key, x-telegram-test-key"
-        }
-      });
+    const upstreamRoutes = new Set([
+      "/api/bot-market", "/gold", "/calendar", "/calendar-key-check",
+      "/analyze", "/scalp"
+    ]);
+    const publicApiRoutes = new Set([
+      "/api/public-config", "/signal-history", "/x10",
+      "/dashboard-data", "/edge-stats", "/sniper-stats"
+    ]);
+    if (request.method === "GET" && upstreamRoutes.has(path)) {
+      const limited = await enforcePublicRateLimit(request, env, path, "upstream");
+      if (limited) return limited;
+    } else if (request.method === "GET" && publicApiRoutes.has(path)) {
+      const limited = await enforcePublicRateLimit(request, env, path, "standard");
+      if (limited) return limited;
     }
 
     const customerBotPost = /^\/api\/bots\/[a-z0-9_-]+(?:\/(?:status|analyze|delete))?$/i.test(path);
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || customerBotPost))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || path === "/api/portal/profile" || path === "/api/portal/partner-click" || path === "/api/portal/academy-progress" || path === "/api/portal/broker-request" || path === "/api/partner/webhook" || customerBotPost))
     ) {
       return json({
         ok: false,
@@ -6038,7 +6466,7 @@ export default {
       }
 
       if (path === "/api/bot-analyze" && request.method === "POST") {
-        return await handleBotAnalyze(request);
+        return await handleBotAnalyze(request, env);
       }
 
       if (path === "/api/bot-market" && request.method === "GET") {
@@ -6069,6 +6497,25 @@ export default {
         if (action === "analyze") return await handleAnalyzeStoredBot(request, env, botId);
         if (action === "delete") return await handleDeleteBot(request, env, botId);
         return await handleUpdateBot(request, env, botId);
+      }
+
+      if (path === "/api/partner/webhook" && request.method === "POST") return await handlePartnerWebhook(request, env);
+      if (path === "/api/partner/dashboard" && request.method === "GET") return await handlePartnerDashboard(request, env);
+      if (path === "/api/portal" && request.method === "GET") {
+        return await handlePortalApi(request, env, "summary");
+      }
+      if (path === "/api/portal/promotions" && request.method === "GET") return await handlePortalApi(request, env, "promotions");
+      if (path === "/api/portal/profile" && request.method === "POST") {
+        return await handlePortalApi(request, env, "profile");
+      }
+      if (path === "/api/portal/partner-click" && request.method === "POST") {
+        return await handlePortalApi(request, env, "partner-click");
+      }
+      if (path === "/api/portal/academy-progress" && request.method === "POST") {
+        return await handlePortalApi(request, env, "academy-progress");
+      }
+      if (path === "/api/portal/broker-request" && request.method === "POST") {
+        return await handlePortalApi(request, env, "broker-request");
       }
 
       if (path === "/api/account") {
@@ -6155,8 +6602,21 @@ export default {
         timestamp: new Date().toISOString()
       }, 500);
     }
+}
+export default {
+  async fetch(request, env) {
+    const origin = request.headers.get("Origin");
+    if (request.method === "OPTIONS") {
+      if (origin && !allowedCorsOrigin(request, env)) return withCors(json({ ok: false, error: "Origine non autorisée." }, 403), request, env);
+      const requestedMethod = String(request.headers.get("Access-Control-Request-Method") || "").toUpperCase();
+      if (requestedMethod && !["GET", "POST"].includes(requestedMethod)) return withCors(json({ ok: false, error: "Méthode CORS non autorisée." }, 405), request, env);
+      const requestedHeaders = String(request.headers.get("Access-Control-Request-Headers") || "").split(",").map(value => value.trim().toLowerCase()).filter(Boolean);
+      const allowedHeaders = new Set(["content-type", "authorization", "x-test-key", "x-telegram-test-key"]);
+      if (requestedHeaders.some(header => !allowedHeaders.has(header))) return withCors(json({ ok: false, error: "En-tête CORS non autorisé." }, 403), request, env);
+      return withCors(new Response(null, { status: 204 }), request, env);
+    }
+    return withCors(await handleWorkerRequest(request, env), request, env);
   },
-
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       scheduledCheck(env).catch(async error => {

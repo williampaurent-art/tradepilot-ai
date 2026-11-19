@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#080d17">
+<title>Espace client · TradePilot AI</title>
+<style>
+:root{color-scheme:dark;--bg:#070d17;--panel:#101b2c;--panel2:#0b1422;--line:rgba(145,166,194,.17);--text:#eef4fc;--muted:#91a2b9;--gold:#f3c86b;--cyan:#69d9ed;--green:#42d6a0;--red:#ff7185}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:85px}body{margin:0;background:radial-gradient(ellipse at 75% -12%,rgba(53,94,150,.24),transparent 38%),radial-gradient(ellipse at 5% 30%,rgba(183,134,49,.08),transparent 28%),var(--bg);color:var(--text);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}a{color:inherit;text-decoration:none}button{font:inherit;cursor:pointer}.shell{max-width:1420px;margin:auto;padding:22px clamp(13px,2.3vw,32px) 110px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-bottom:17px;border-bottom:1px solid var(--line)}.brand{display:flex;align-items:center;gap:11px}.logo{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(135deg,#ffe09a,#b77d25);color:#1b160d;font-size:21px;font-weight:950;box-shadow:0 8px 25px #f3c86b24}.brand strong{display:block;font-size:18px;letter-spacing:-.4px}.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:1.5px;font-weight:800}.top-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.user-pill,.status{border:1px solid var(--line);border-radius:99px;padding:7px 11px;color:var(--muted);font-size:10px}.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);border-radius:10px;background:#17243a;color:var(--text);padding:10px 14px;font-weight:800;font-size:12px;transition:.18s}.btn:hover{border-color:#f3c86b;transform:translateY(-1px)}.btn.gold{background:var(--gold);border-color:var(--gold);color:#211a0c}.btn.ghost{background:transparent}.nav{position:sticky;top:0;z-index:30;display:flex;gap:7px;overflow-x:auto;padding:12px 0;margin-bottom:18px;background:rgba(7,13,23,.9);backdrop-filter:blur(16px);scrollbar-width:none}.nav::-webkit-scrollbar{display:none}.nav a{white-space:nowrap;padding:8px 11px;border:1px solid var(--line);border-radius:9px;color:var(--muted);font-size:11px;font-weight:800}.nav a:hover,.nav a.active{color:var(--gold);border-color:#f3c86b66;background:#f3c86b10}.hero{position:relative;overflow:hidden;display:grid;grid-template-columns:1.35fr .65fr;gap:20px;padding:clamp(20px,3vw,34px);border:1px solid #f3c86b3d;border-radius:20px;background:linear-gradient(115deg,#182942f5,#0d192bf5 70%,#211d17f2);box-shadow:0 22px 70px #0005}.hero:after{content:"";position:absolute;width:340px;height:340px;right:-110px;top:-210px;border-radius:50%;background:radial-gradient(circle,#f3c86b24,transparent 68%);pointer-events:none}.eyebrow{font-size:10px;letter-spacing:1.7px;text-transform:uppercase;color:var(--gold);font-weight:900}.hero h1{font-size:clamp(27px,4vw,42px);line-height:1.08;letter-spacing:-1.3px;margin:9px 0 12px;max-width:720px}.hero p{max-width:720px;color:#bdc9d9;font-size:13px;line-height:1.75;margin:0}.hero-actions{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}.hero-side{position:relative;z-index:1;align-self:stretch;display:flex;flex-direction:column;justify-content:center;gap:10px}.mini-stat{padding:13px;border:1px solid #91a2b92b;border-radius:12px;background:#07101d80}.mini-stat small{display:block;color:var(--muted);font-size:9px;letter-spacing:1px;text-transform:uppercase}.mini-stat strong{display:block;font-size:17px;margin-top:4px}.section{margin-top:24px;scroll-margin-top:85px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:12px}.section-head h2{margin:3px 0 0;font-size:19px;letter-spacing:-.4px}.section-head p{margin:0;color:var(--muted);font-size:11px}.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.card{min-width:0;padding:17px;border:1px solid var(--line);border-radius:15px;background:linear-gradient(155deg,#152238f2,#0c1626f5);box-shadow:0 12px 32px #0002}.card-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.icon{width:37px;height:37px;display:grid;place-items:center;border-radius:11px;background:#f3c86b16;color:var(--gold);font-size:17px}.tag{padding:5px 8px;border-radius:99px;background:#69d9ed12;color:var(--cyan);font-size:9px;font-weight:900;letter-spacing:.5px}.card h3{margin:0 0 6px;font-size:14px}.card p{margin:0;color:var(--muted);font-size:11px;line-height:1.65}.card .link{display:inline-flex;margin-top:13px;color:var(--gold);font-size:11px;font-weight:850}.broker{display:grid;grid-template-columns:1fr 1fr;gap:14px}.broker-main{padding:22px;border:1px solid #f3c86b44;border-radius:17px;background:linear-gradient(130deg,#1a2a42,#101b2c 70%,#211d16)}.broker-brand{display:flex;align-items:center;gap:10px;margin-bottom:16px}.broker-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:#f3c86b;color:#17130b;font-weight:950;font-size:20px}.broker-brand strong{display:block;font-size:17px}.broker-brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:1px}.broker-main h3{font-size:23px;letter-spacing:-.6px;margin:0 0 8px}.broker-main p{max-width:600px;color:#bdc9d9;font-size:12px;line-height:1.7}.broker-benefits{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:16px 0}.benefit{padding:10px;border:1px solid #91a2b926;border-radius:10px;background:#07101d66;color:#dce5f1;font-size:10px}.offer{padding:19px;border:1px solid var(--line);border-radius:17px;background:linear-gradient(150deg,#111e31,#0b1422)}.offer .offer-label{color:var(--gold);font-size:9px;font-weight:900;letter-spacing:1.3px;text-transform:uppercase}.offer h3{font-size:19px;margin:8px 0}.offer p{color:var(--muted);font-size:11px;line-height:1.65}.offer-note{margin-top:12px;padding:10px;border-radius:9px;background:#f3c86b10;color:#d9c99e;font-size:10px;line-height:1.6}.connect{margin-top:13px;padding:15px;border:1px solid var(--line);border-radius:13px;background:#07101d70}.connect-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.connect-head strong{font-size:12px}.connect-state{color:#f3c86b;font-size:9px;font-weight:900}.connect p{margin:7px 0 12px;color:var(--muted);font-size:10px;line-height:1.6}.course{display:flex;flex-direction:column;min-height:190px}.course .course-meta{display:flex;gap:7px;flex-wrap:wrap;margin:11px 0}.course-meta span{font-size:9px;color:var(--muted);border:1px solid var(--line);border-radius:99px;padding:4px 7px}.course .link{margin-top:auto;padding-top:13px}.course-open{margin-top:auto}.callout{margin-top:20px;padding:15px 17px;border:1px solid var(--line);border-radius:13px;background:#0d1929;color:var(--muted);font-size:10px;line-height:1.7}.callout strong{color:var(--text)}footer{padding:24px 0 8px;text-align:center;color:var(--muted);font-size:10px}.modal{position:fixed;inset:0;z-index:60;display:none;place-items:center;padding:18px;background:#02060bd9}.modal.open{display:grid}.modal-box{width:min(100%,480px);padding:21px;border:1px solid var(--line);border-radius:16px;background:#111d30;box-shadow:0 25px 90px #0009}.modal-box h3{margin:0 0 8px}.modal-box p{color:var(--muted);font-size:12px;line-height:1.7}.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.mobile-nav{display:none}
+@media(max-width:850px){.hero{grid-template-columns:1fr}.hero-side{display:grid;grid-template-columns:repeat(2,1fr)}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.broker{grid-template-columns:1fr}}
+@media(max-width:600px){.shell{padding:13px 12px 100px}.top{align-items:flex-start}.brand strong{font-size:16px}.top-actions .user-pill{display:none}.nav{top:0;margin:0 -12px 14px;padding:10px 12px}.hero{padding:19px;border-radius:16px}.hero h1{font-size:29px}.hero-side{grid-template-columns:1fr 1fr}.cards{grid-template-columns:1fr}.card{padding:15px}.broker-main,.offer{padding:17px}.section-head{align-items:flex-start;flex-direction:column}.mobile-nav{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;position:fixed;z-index:40;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));padding:7px;border:1px solid #69d9ed35;border-radius:15px;background:#070e1af2;backdrop-filter:blur(16px);box-shadow:0 12px 42px #0009}.mobile-nav a{text-align:center;padding:8px 2px;color:var(--muted);font-size:9px;font-weight:850}.mobile-nav a:first-child{color:var(--gold)}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="top">
+ <a class="brand" href="/portal.html"><span class="logo">T</span><span><strong>TradePilot AI</strong><small>CLIENT EXPERIENCE</small></span></a>
+ <div class="top-actions"><span class="user-pill">ESPACE PERSONNEL</span><a class="btn ghost" href="/auth.html">Connexion / compte</a><a class="btn gold" href="/">Ouvrir le terminal</a></div>
+</header>
+<nav class="nav" aria-label="Navigation espace client">
+ <a class="active" href="#home">Accueil</a><a href="#account">Mon compte</a><a href="#tools">Trading Tools</a><a href="/academy.html">Academy</a><a href="#broker">My Broker</a><a href="#promotions">Promotions</a><a href="/bots.html">Mes bots</a><a href="/builder.html">Créer un bot</a>
+</nav>
+<section class="hero" id="home">
+ <div>
+  <div class="eyebrow">TON ESPACE TRADING · UNE SEULE PLATEFORME</div>
+  <h1>Apprends, analyse et progresse avec TradePilot.</h1>
+  <p>Retrouve tes outils de trading, construis tes stratégies, développe tes compétences et prépare la connexion de ton compte broker dans un espace unique.</p>
+  <div class="hero-actions"><a class="btn gold" href="#tools">Explorer mes outils <span>→</span></a><a class="btn" href="/academy.html">Découvrir l'Academy</a></div>
+ </div>
+ <div class="hero-side">
+  <div class="mini-stat"><small>Market intelligence</small><strong>XAUUSD · Multi-timeframe</strong></div>
+  <div class="mini-stat"><small>Trading engine</small><strong>Alertes & stratégies</strong></div>
+  <div class="mini-stat"><small>Broker workspace</small><strong>VT Markets · Connexion à venir</strong></div>
+  <div class="mini-stat"><small>Mode d'exécution</small><strong style="color:var(--green)">Analyse uniquement · Pas d'ordre réel</strong></div>
+ </div>
+</section>
+
+
+<section class="section" id="account">
+ <div class="section-head"><div><div class="eyebrow">00 · MON COMPTE</div><h2>Mon espace personnel</h2></div><p id="accountState">Chargement de ton espace sécurisé…</p></div>
+ <div class="cards">
+  <article class="card"><div class="card-top"><span class="icon">◉</span><span class="tag">MON PROFIL</span></div>
+   <h3 id="welcomeName">Bienvenue sur TradePilot</h3><p id="accountEmail">Compte authentifié</p>
+   <label for="profileName" style="display:block;margin:13px 0 5px;color:var(--muted);font-size:10px">Nom affiché</label>
+   <input id="profileName" maxlength="80" placeholder="Ton nom" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:#07101d;color:var(--text)">
+   <label for="profileCountry" style="display:block;margin:10px 0 5px;color:var(--muted);font-size:10px">Pays (code ISO à 2 lettres)</label>
+   <input id="profileCountry" maxlength="2" placeholder="FR" style="width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;background:#07101d;color:var(--text);text-transform:uppercase">
+   <button class="btn gold" id="saveProfile" style="margin-top:12px">Enregistrer mon profil</button><p id="profileMessage" aria-live="polite"></p>
+  </article>
+  <article class="card"><div class="card-top"><span class="icon">▤</span><span class="tag">MON ACTIVITÉ</span></div><h3>Mon activité TradePilot</h3>
+   <div class="broker-benefits" style="margin-top:13px">
+    <div class="benefit"><small style="color:var(--muted)">BOTS</small><strong id="statBots" style="display:block;font-size:21px">—</strong></div>
+    <div class="benefit"><small style="color:var(--muted)">SIGNAUX</small><strong id="statSignals" style="display:block;font-size:21px">—</strong></div>
+    <div class="benefit"><small style="color:var(--muted)">CLICS PARTENAIRE</small><strong id="statClicks" style="display:block;font-size:21px">—</strong></div>
+    <div class="benefit"><small style="color:var(--muted)">FORMULE</small><strong id="statPlan" style="display:block;font-size:15px">—</strong></div>
+   </div><p id="accountSecurity">Données rattachées à ton espace personnel.</p>
+  </article>
+  <article class="card"><div class="card-top"><span class="icon">◎</span><span class="tag">SUIVI BROKER</span></div><h3 id="brokerStatusTitle">VT Markets · Non connecté</h3>
+   <p id="brokerStatusText">Aucune connexion MT5 active. Tu peux demander à être informé lorsque le parcours de connexion autorisé sera disponible.</p>
+   <label style="display:flex;align-items:flex-start;gap:8px;margin-top:13px;color:var(--muted);font-size:10px"><input type="checkbox" id="brokerConsent" style="margin-top:2px">J’accepte que TradePilot enregistre ma demande de mise en relation / activation du parcours VT Markets. Cela ne connecte pas mon compte et ne transmet aucun identifiant MT5.</label><button class="btn" id="brokerRequest" style="margin-top:13px">Demander l'activation du parcours</button><p id="brokerRequestMessage" aria-live="polite"></p>
+  </article>
+ </div>
+</section>
+
+<section class="section" id="tools">
+ <div class="section-head"><div><div class="eyebrow">01 · TRADING TOOLS</div><h2>Tous tes outils, au même endroit</h2></div><p>Les fonctionnalités existantes restent au cœur de TradePilot.</p></div>
+ <div class="cards">
+  <article class="card"><div class="card-top"><span class="icon">◈</span><span class="tag">MARKET INTELLIGENCE</span></div><h3>Analyse des marchés</h3><p>Analyse XAUUSD, lecture multi-timeframe, indicateurs techniques, structure de marché et contexte macro.</p><a class="link" href="/">Ouvrir le dashboard →</a></article>
+  <article class="card"><div class="card-top"><span class="icon">⚙</span><span class="tag">BOT BUILDER</span></div><h3>Créer mon bot</h3><p>Configure tes stratégies, sélectionne tes indicateurs et ajuste les paramètres de risque.</p><a class="link" href="/builder.html">Lancer le Bot Builder →</a></article>
+  <article class="card"><div class="card-top"><span class="icon">▤</span><span class="tag">MY STRATEGIES</span></div><h3>Mes bots</h3><p>Retrouve tes stratégies enregistrées, leur statut et les signaux associés à ton espace.</p><a class="link" href="/bots.html">Consulter mes bots →</a></article>
+ </div>
+</section>
+
+<section class="section" id="academy">
+ <div class="section-head"><div><div class="eyebrow">02 · TRADEPILOT ACADEMY</div><h2>Ton école de trading</h2></div><p>Quatre niveaux · douze leçons · quiz et progression sauvegardée</p></div>
+ <article class="card" style="display:flex;flex-direction:column;gap:12px">
+  <div class="card-top"><span class="icon">🎓</span><span class="tag">FORMATION MEMBRE</span></div>
+  <h3>Progresse des fondamentaux à l’automatisation</h3>
+  <p>Découvre les marchés, apprends l’analyse technique, maîtrise la gestion du risque puis construis et testes tes propres stratégies. Chaque leçon se termine par un quiz et ta progression est enregistrée dans ton compte.</p>
+  <div class="course-meta"><span>Débutant</span><span>Intermédiaire</span><span>Avancé</span><span>Expert</span></div>
+  <a class="btn gold" href="/academy.html" style="width:max-content">Entrer dans l’Academy →</a>
+ </article>
+</section>
+
+<section class="section" id="broker">
+ <div class="section-head"><div><div class="eyebrow">03 · MY BROKER</div><h2>Ton espace broker</h2></div><p>Un parcours pensé pour une future intégration VT Markets.</p></div>
+ <div class="broker">
+  <article class="broker-main">
+   <div class="broker-brand"><span class="broker-mark">V</span><span><strong>VT Markets</strong><small>BROKER À DÉCOUVRIR</small></span></div>
+   <h3>Connecte ton expérience de trading.</h3>
+   <p>Découvre l'environnement VT Markets et prépare le suivi de ton compte dans TradePilot. L'ouverture de compte et la connexion MT5 seront deux étapes distinctes.</p>
+   <div class="broker-benefits"><div class="benefit">↗ Accès à MT5 selon le compte proposé</div><div class="benefit">◎ Plusieurs marchés et instruments</div><div class="benefit">▤ Outils d'analyse TradePilot</div><div class="benefit">⌁ Suivi de compte en lecture seule prévu</div></div>
+   <a class="btn gold" href="https://www.vtmarkets.com/" target="_blank" rel="noopener noreferrer">Découvrir VT Markets ↗</a>
+   <div class="offer-note">Cette page présente une piste d'intégration commerciale. TradePilot n'affirme pas être partenaire officiel de VT Markets à ce stade.</div>
+  </article>
+  <article class="offer">
+   <div class="offer-label">OFFRE PARTENAIRE · EMPLACEMENT PRÉVU</div>
+   <h3>Les avantages VT Markets, directement dans TradePilot.</h3>
+   <p>Un emplacement dédié permettra d'afficher une offre de bienvenue, un lien d'inscription attribué à TradePilot et les conditions officielles validées par le broker.</p>
+   <div class="connect">
+    <div class="connect-head"><strong>Connexion de ton compte MT5</strong><span class="connect-state">NON CONNECTÉ</span></div>
+    <p>La connexion sera activée après validation d'une méthode d'intégration autorisée par VT Markets. Elle sera conçue en lecture seule : aucun mot de passe MT5 ne sera demandé dans cette page et aucun ordre ne sera envoyé.</p>
+    <button class="btn" type="button" id="connectInfo">Comprendre la connexion MT5</button>
+   </div>
+   <div class="offer-note"><strong>Bonus de dépôt :</strong> aucun montant ni pourcentage n'est affiché avant confirmation écrite de l'offre, des pays éligibles, des dates et des conditions par VT Markets.</div>
+  </article>
+ </div>
+</section>
+
+<section class="section" id="promotions">
+ <div class="section-head"><div><div class="eyebrow">04 · PROMOTIONS</div><h2>Offres VT Markets</h2></div><p id="promotionsChecked">Vérification selon ton pays et ton compte.</p></div>
+ <div class="cards" id="promotionCards" aria-live="polite"><article class="card"><h3>Chargement des offres</h3><p>Seules les offres vérifiées et encore valides seront affichées.</p></article></div>
+ <div class="callout"><strong>Important :</strong> les promotions varient selon le pays, l’entité VT Markets, le type de compte et les conditions propres à chaque campagne. Les conditions générales européennes consultées excluent notamment les comptes PAMM/MAM et le copy trading ; elles interdisent aussi l’utilisation d’un bonus pour couvrir des positions entre plusieurs comptes et prévoient des sanctions en cas de churning. Vérifie toujours les conditions affichées dans ton Client Portal avant tout dépôt.</div>
+ <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px"><a class="btn gold" href="https://www.vtmarkets.com/en-eu/promotions/" target="_blank" rel="noopener noreferrer">Voir les promotions officielles ↗</a><a class="btn" href="https://get.vtmarkets.help/hc/en-us/articles/37317566609049-How-do-I-participate-in-the-promotions" target="_blank" rel="noopener noreferrer">Centre d’aide VT Markets ↗</a></div>
+</section>
+
+<div class="callout"><strong>Transparence & sécurité.</strong> Les liens commerciaux, les conditions promotionnelles et les intégrations broker devront être validés avant activation. Les données de compte ne seront affichées qu'après authentification et autorisation explicite. Les outils TradePilot fournissent des analyses informatives et ne garantissent aucun résultat de trading.</div>
+<footer>TRADEPILOT AI · CLIENT PLATFORM · VERSION DE PRÉVISUALISATION</footer>
+</main>
+<nav class="mobile-nav" aria-label="Navigation rapide"><a href="#home">Accueil</a><a href="#account">Compte</a><a href="#tools">Outils</a><a href="#academy">Academy</a><a href="#promotions">Offres</a></nav>
+<div class="modal" id="academyModal" role="dialog" aria-modal="true" aria-labelledby="academyTitle"><div class="modal-box"><div class="eyebrow">TRADEPILOT ACADEMY</div><h3 id="academyTitle">Parcours pédagogique</h3><div id="academyContent"></div><div class="modal-actions"><button class="btn" id="academyClose" type="button">Fermer</button><button class="btn gold" id="academyComplete" type="button">Valider le parcours</button></div><p id="academyMessage" aria-live="polite"></p></div></div>
+<div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-box"><h3 id="modalTitle">Connexion MT5 sécurisée</h3><p>La connexion réelle nécessite une méthode d'accès fournie ou autorisée par VT Markets (API, interface Manager ou fournisseur compatible). Cette prévisualisation ne collecte aucun identifiant, mot de passe ou numéro de compte.</p><p>La première intégration sera limitée à la lecture des informations autorisées : solde, positions et historique, avec révocation possible par le client.</p><div class="modal-actions"><button class="btn" id="closeModal" type="button">Fermer</button></div></div></div>
+<script src="/session.js"></script>
+<script>
+const modal=document.getElementById('connectModal');
+const academyModal=document.getElementById('academyModal');
+const academyCourses={
+ basics:{title:'Les bases du trading',intro:'Comprendre les mécanismes essentiels avant de prendre une position.',lessons:['Marchés et instruments : forex, indices, matières premières et XAUUSD.','Types d’ordres : marché, limite, stop et fonctionnement de l’exécution.','Spread, pip, lot, marge et effet de levier : ce que chaque notion change réellement.','Risque : taille de position, stop-loss, perte maximale et journal de trading.'],quiz:'Pourquoi définir le risque avant d’ouvrir une position ?',answers:['Pour connaître la perte maximale acceptable','Pour garantir un trade gagnant','Pour augmenter automatiquement le levier'],correct:0},
+ technical:{title:'Lire les marchés',intro:'Construire une lecture structurée plutôt que multiplier les indicateurs.',lessons:['Identifier tendance, range et phases de transition.','Tracer supports, résistances et zones de liquidité sans surcharger le graphique.','Comprendre EMA, RSI, MACD et ATR : rôle, limites et complémentarité.','Utiliser plusieurs timeframes et attendre une confirmation à la clôture.'],quiz:'Quel est le principal intérêt de combiner plusieurs timeframes ?',answers:['Confirmer le contexte général et affiner le timing','Multiplier le nombre de signaux','Supprimer le risque de marché'],correct:0},
+ mt5:{title:'Maîtriser MT5 et TradePilot',intro:'Organiser son terminal et exploiter les outils TradePilot de manière disciplinée.',lessons:['Découvrir Market Watch, les graphiques, la boîte à outils et les comptes.','Configurer un graphique, les unités de temps et les indicateurs.','Comprendre les alertes, les stratégies et le Bot Builder TradePilot.','Contrôler les résultats, vérifier les données et tenir un journal.'],quiz:'Que faut-il vérifier avant de se fier à une alerte ?',answers:['Le contexte, la fraîcheur des données et les règles de risque','Uniquement la couleur du signal','Qu’elle annonce un gain certain'],correct:0}
+};
+let activeAcademyCourse=null;
+function openAcademy(courseKey){
+ const course=academyCourses[courseKey];if(!course)return;activeAcademyCourse=courseKey;
+ document.getElementById('academyTitle').textContent=course.title;
+ document.getElementById('academyContent').innerHTML='<p>'+course.intro+'</p><ol>'+course.lessons.map(item=>'<li style="margin:8px 0;color:var(--muted)">'+item+'</li>').join('')+'</ol><div class="callout"><strong>Question de validation</strong><p>'+course.quiz+'</p>'+course.answers.map((answer,index)=>'<label style="display:block;margin:10px 0;color:var(--text)"><input type="radio" name="academyAnswer" value="'+index+'" style="margin-right:8px">'+answer+'</label>').join('')+'</div>';
+ document.getElementById('academyMessage').textContent='Lis les quatre étapes puis réponds à la question pour valider le parcours.';
+ academyModal.classList.add('open');
+ portalApi.api('/api/portal/academy-progress',{method:'POST',body:JSON.stringify({courseKey,progressPercent:10})}).then(loadPortal).catch(()=>{});
+}
+document.querySelectorAll('.course-open').forEach(button=>button.addEventListener('click',()=>openAcademy(button.dataset.course)));
+document.getElementById('academyClose').addEventListener('click',()=>academyModal.classList.remove('open'));
+document.getElementById('academyComplete').addEventListener('click',async()=>{
+ const course=academyCourses[activeAcademyCourse];const selected=document.querySelector('input[name="academyAnswer"]:checked');
+ if(!selected){document.getElementById('academyMessage').textContent='Sélectionne une réponse avant de valider.';return;}
+ if(Number(selected.value)!==course.correct){document.getElementById('academyMessage').textContent='Pas tout à fait. Relis les étapes et réessaie.';return;}
+ const button=document.getElementById('academyComplete');button.disabled=true;
+ try{await portalApi.api('/api/portal/academy-progress',{method:'POST',body:JSON.stringify({courseKey:activeAcademyCourse,progressPercent:100})});document.getElementById('academyMessage').textContent='Bravo ! Parcours validé et progression enregistrée.';await loadPortal();}
+ catch(error){document.getElementById('academyMessage').textContent=error.message;}
+ finally{button.disabled=false;}
+});
+
+const portalApi=window.TradePilotSession;
+const accountState=document.getElementById('accountState');
+const showPortalMessage=(id,message)=>{const node=document.getElementById(id);if(node)node.textContent=message;};
+async function loadPromotions(){
+ const container=document.getElementById("promotionCards"), checked=document.getElementById("promotionsChecked");
+ if(!container)return;
+ try{
+  const data=await portalApi.api("/api/portal/promotions");
+  checked.textContent="Pays du profil : "+(data.countryCode||"non renseigné")+" · vérifié le "+new Date(data.checkedAt).toLocaleString("fr-FR");
+  container.replaceChildren();
+  if(!data.promotions?.length){
+   const card=document.createElement("article");card.className="card";
+   const tag=document.createElement("span");tag.className="tag";tag.textContent="AUCUNE OFFRE VALIDÉE";
+   const title=document.createElement("h3");title.textContent="Consulte les offres dans ton espace VT Markets";
+   const copy=document.createElement("p");copy.textContent="Aucune promotion n’est actuellement publiée dans TradePilot pour le pays renseigné. Cela ne signifie pas qu’aucune offre n’existe : les campagnes peuvent dépendre de ton entité et de ton compte.";
+   card.append(tag,title,copy);container.append(card);return;
+  }
+  for(const offer of data.promotions){
+   const card=document.createElement("article");card.className="card";
+   const tag=document.createElement("span");tag.className="tag";tag.textContent=offer.status==="published"?"OFFRE VÉRIFIÉE":"À CONFIRMER DANS LE PORTAIL";
+   const title=document.createElement("h3");title.textContent=offer.title||"Promotion VT Markets";
+   const copy=document.createElement("p");copy.textContent=offer.summary||"Consulte les conditions officielles avant toute participation.";
+   card.append(tag,title,copy);
+   if(offer.bonusPercent!==null&&offer.bonusPercent!==undefined){const detail=document.createElement("p");detail.textContent="Bonus annoncé : "+offer.bonusPercent+" %";card.append(detail);}
+   if(offer.endsAt){const end=document.createElement("p");end.textContent="Fin prévue : "+new Date(offer.endsAt).toLocaleDateString("fr-FR");card.append(end);}
+   const link=document.createElement("a");link.className="link";link.href=offer.termsUrl||offer.sourceUrl||"https://www.vtmarkets.com/en-eu/promotions/";link.target="_blank";link.rel="noopener noreferrer";link.textContent="Lire les conditions officielles →";card.append(link);
+   const verified=document.createElement("p");verified.textContent=offer.status==="published"?"Dernière vérification : "+(offer.verifiedAt?new Date(offer.verifiedAt).toLocaleDateString("fr-FR"):"non précisée"):"Catégorie repérée sur la page officielle ; disponibilité, pays et conditions à confirmer dans le Client Portal.";card.append(verified);
+   container.append(card);
+  }
+ }catch(error){
+  checked.textContent="Catalogue temporairement indisponible";container.replaceChildren();
+  const card=document.createElement("article");card.className="card";
+  const title=document.createElement("h3");title.textContent="Consulte directement VT Markets";
+  const copy=document.createElement("p");copy.textContent="TradePilot ne peut pas confirmer les offres en direct. Consulte le Client Portal pour connaître les campagnes actives et ton éligibilité.";
+  card.append(title,copy);container.append(card);
+ }
+}
+
+async function loadPortal(){
+ try{
+  const data=await portalApi.api('/api/portal');
+  const displayName=data.profile?.display_name||'';
+  document.getElementById('welcomeName').textContent=displayName?'Bienvenue, '+displayName:'Bienvenue sur TradePilot';
+  document.getElementById('accountEmail').textContent=data.user?.email||'Compte authentifié';
+  document.getElementById('profileName').value=displayName;
+  document.getElementById('profileCountry').value=data.profile?.country_code||'';
+  document.getElementById('statBots').textContent=data.stats?.bots??0;
+  document.getElementById('statSignals').textContent=data.stats?.signals??0;
+  document.getElementById('statClicks').textContent=data.stats?.partnerClicks??0;
+  document.getElementById('statPlan').textContent=(data.subscription?.plan_key||'free').toUpperCase();
+  const status=data.broker?.status||'not_connected';
+  document.getElementById('brokerStatusTitle').textContent='VT Markets · '+(status==='connected'?'Connecté':status==='pending'?'Demande en attente':'Non connecté');
+  document.getElementById('brokerStatusText').textContent=status==='connected'?'Une connexion autorisée est enregistrée en lecture seule.':status==='pending'?'Ta demande est enregistrée. La connexion MT5 n’est pas encore active.':'Aucune connexion MT5 active. Demande à être informé lorsque le parcours autorisé sera disponible.';
+  document.getElementById('brokerRequest').disabled=status==='pending'||status==='connected';
+  document.getElementById('brokerRequest').textContent=status==='pending'?'Demande déjà enregistrée':status==='connected'?'Compte déjà connecté':'Demander l’activation du parcours';
+  const progressByCourse=Object.fromEntries((data.academyProgress||[]).map(item=>[item.course_key,item]));
+  document.querySelectorAll('.course-open').forEach(button=>{const progress=progressByCourse[button.dataset.course];button.textContent=progress?.status==='completed'?'Parcours terminé ✓':progress?.progress_percent>0?'Reprendre le parcours →':'Ouvrir le parcours →';});
+  accountState.textContent='Espace sécurisé chargé · '+(data.workspace?.name||'Mon espace');
+ }catch(error){
+  accountState.textContent='Connexion requise';
+  if(String(error.message).includes('Connexion requise')||String(error.message).includes('Session'))location.replace('/auth.html?next=portal');
+  else showPortalMessage('profileMessage',error.message);
+ }
+}
+document.getElementById('saveProfile').addEventListener('click',async()=>{
+ const button=document.getElementById('saveProfile');button.disabled=true;
+ try{
+  await portalApi.api('/api/portal/profile',{method:'POST',body:JSON.stringify({displayName:document.getElementById('profileName').value,countryCode:document.getElementById('profileCountry').value.toUpperCase(),language:'fr'})});
+  showPortalMessage('profileMessage','Profil enregistré.');document.getElementById('welcomeName').textContent=document.getElementById('profileName').value.trim()?'Bienvenue, '+document.getElementById('profileName').value.trim():'Bienvenue sur TradePilot';
+ }catch(error){showPortalMessage('profileMessage',error.message);}finally{button.disabled=false;}
+});
+document.getElementById('brokerRequest').addEventListener('click',async()=>{
+ const button=document.getElementById('brokerRequest');
+ if(!document.getElementById('brokerConsent').checked){showPortalMessage('brokerRequestMessage','Coche la case de consentement pour enregistrer ta demande.');return;}
+ button.disabled=true;
+ try{
+  const data=await portalApi.api('/api/portal/broker-request',{method:'POST',body:JSON.stringify({consent:document.getElementById('brokerConsent').checked,regionCode:document.getElementById('profileCountry').value.toUpperCase()})});
+  showPortalMessage('brokerRequestMessage',data.message||'Demande enregistrée. Aucune connexion MT5 n’est encore établie.');
+  await loadPortal();
+ }catch(error){showPortalMessage('brokerRequestMessage',error.message);button.disabled=false;}
+});
+const attributionParams=new URLSearchParams(location.search);
+const trackedSource=attributionParams.get('utm_source')||'client_portal';
+const trackedCampaign=attributionParams.get('utm_campaign')||attributionParams.get('campaign')||'organic';
+document.querySelectorAll('a[href^="https://www.vtmarkets.com/"]').forEach(link=>link.addEventListener('click',()=>{
+ portalApi.api('/api/portal/partner-click',{method:'POST',body:JSON.stringify({source:trackedSource,campaign:trackedCampaign})}).catch(()=>{});
+}));
+loadPortal();
+loadPromotions();
+
+document.getElementById('connectInfo').addEventListener('click',()=>modal.classList.add('open'));
+document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('open'));
+modal.addEventListener('click',event=>{if(event.target===modal)modal.classList.remove('open')});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){modal.classList.remove('open');academyModal.classList.remove('open')}});
+</script>
+</body>
+</html>

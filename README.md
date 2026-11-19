@@ -45,7 +45,7 @@ Hébergé sur Cloudflare Workers. Analyse technique multi-timeframe, alertes Tel
 ```
 src/index.js          → Worker principal (Cron + API + Assets)
 public/               → Interface (dashboard, builder, bots)
-migrations/           → Schéma D1 (SaaS + bots)
+migrations/           → Schéma D1 (SaaS + bots + portail client)
 docs/                 → Documentation technique
 ```
 
@@ -58,6 +58,14 @@ docs/                 → Documentation technique
 | `GET /dashboard-data` | Données agrégées pour l'interface |
 | `GET /analyze` | Analyse technique on-demand |
 | `GET /edge-stats` | Performance observée des alertes |
+| `GET /api/portal` | Synthèse de l’espace client (auth) |
+| `GET /api/portal/promotions` | Offres broker publiées, valides et filtrées par pays (auth) |
+| `POST /api/portal/profile` | Mise à jour du profil client (auth) |
+| `POST /api/portal/partner-click` | Attribution des clics partenaires (auth, retourne un click ID) |
+| `POST /api/partner/webhook` | Réception de conversions VT Markets signées HMAC (secret serveur) |
+| `GET /api/partner/dashboard` | Funnel, clics, campagnes et conversions (clé serveur, 7 à 365 jours) |
+| `POST /api/portal/academy-progress` | Progression Academy (auth) |
+| `POST /api/portal/broker-request` | Demande de parcours broker (auth + consentement) |
 | `POST /api/bot-analyze` | Analyse d'une config bot |
 | `GET/POST /api/bots` | Liste / création de bots (auth) |
 | `POST /api/bots/:id` | Modifier un bot (auth + espace propriétaire) |
@@ -103,6 +111,14 @@ Avant d'ouvrir les inscriptions :
 
 Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots tournants de 20 bots maximum pour préserver les limites CPU du Worker gratuit. Les signaux confirmés sont enregistrés dans D1, par espace. Les signaux propres aux clients ne sont pas envoyés au canal Telegram global.
 
+### Portail client (migration 0004)
+- Profil personnel lié au workspace authentifié
+- Synthèse bots, signaux, plan et suivi broker
+- Attribution des clics vers VT Markets et suivi de campagne
+- Progression Academy stockée par utilisateur/espace
+- Demandes de connexion broker enregistrées en attente, avec consentement
+- Aucune donnée d’identification MT5 n’est collectée ; aucune connexion broker réelle n’est simulée
+
 ## Philosophie & limites
 
 - Tout score est **heuristique**, jamais une probabilité de gain.
@@ -124,3 +140,28 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 ---
 
 **TradePilot AI** — analyse, discipline, transparence.
+
+
+### Catalogue des promotions broker (migration 0005)
+- Catalogue VT Markets structuré avec pays inclus/exclus, entité, types de compte, seuils, plafonds, dates, sources et date de vérification.
+- L’API authentifiée GET /api/portal/promotions expose les catégories en revue comme pistes à confirmer ; seules les offres publiées, vérifiées depuis moins de 30 jours, non expirées et explicitement éligibles au pays, à l’entité et au type de compte sont présentées comme validées.
+- Les catégories repérées publiquement sont préchargées en statut review : elles ne sont donc jamais présentées comme actives ou garanties.
+- La page client renvoie vers les pages officielles et rappelle que l’éligibilité finale se confirme dans le Client Portal VT Markets.
+
+
+### Attribution et conversions broker (migration 0006)
+- Chaque clic VT Markets authentifié génère un `clickId` pseudonyme ; `utm_source` et `utm_campaign` sont conservés pour l'analyse par campagne. Le paramètre sub-ID sortant reste à confirmer par le broker.
+- `POST /api/partner/webhook` accepte uniquement les événements signés HMAC-SHA256 via l’en-tête `x-vt-signature` (`sha256=<hex>`), avec déduplication par identifiant d’événement.
+- Événements acceptés : `registration`, `account_approved`, `first_deposit`, `first_trade`, `active_trader`, `commission`.
+- `GET /api/partner/dashboard` expose le funnel, les clics uniques par workspace, les séries quotidiennes, les campagnes, les conversions attribuées et les commissions séparées par devise. Paramètre `days` : 7 à 365 (défaut 30). Protégé par `PARTNER_DASHBOARD_KEY` dans l’en-tête `x-partner-dashboard-key`.
+- Secrets Cloudflare à configurer avant activation : `VT_PARTNER_WEBHOOK_SECRET` et `PARTNER_DASHBOARD_KEY`. Le broker doit accepter/configurer le postback HMAC et transmettre le click ID ; tant que ce n’est pas fait, aucune conversion broker ne sera disponible.
+- Aucune donnée personnelle du client n’est stockée dans le journal de postbacks.
+
+- Contrat technique de postback VT Markets : [docs/partner-postbacks.md](docs/partner-postbacks.md).
+
+- Le dashboard partenaire fournit désormais un funnel et des ventilations par campagne/source, avec des taux bruts explicitement signalés comme non-cohortes et des commissions regroupées par devise.
+
+### Dashboard partenaire privé
+- Interface `public/partner-dashboard.html` pour visualiser les clics, inscriptions, premiers trades, traders actifs, campagnes, conversions quotidiennes et commissions par devise.
+- Accès aux données protégé par la clé `PARTNER_DASHBOARD_KEY`, saisie manuellement à chaque session et non stockée dans le navigateur.
+- Ouvrir `/partner-dashboard.html` ; les données restent indisponibles tant que les postbacks broker et les secrets Cloudflare ne sont pas configurés.

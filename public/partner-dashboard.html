@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080d17"><title>Partner Analytics · TradePilot</title>
+<style>
+:root{color-scheme:dark;--bg:#080e18;--panel:#111d2e;--line:#29394e;--text:#eef4fc;--muted:#9aabc0;--gold:#f3c86b;--green:#48d6a1;--red:#ff8293}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,sans-serif}.shell{max-width:1180px;margin:auto;padding:24px 16px 60px}header{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:18px}h1{font-size:26px;margin:0}h2{font-size:16px;margin:0 0 13px}.muted,small{color:var(--muted)}.panel{margin-top:18px;padding:17px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}form{display:flex;gap:9px;flex-wrap:wrap;align-items:end}label{display:grid;gap:5px;color:var(--muted);font-size:11px}input,select,button{font:inherit;border-radius:9px;padding:10px 12px;border:1px solid var(--line);background:#091321;color:var(--text)}input{min-width:240px}button{background:var(--gold);border-color:var(--gold);color:#20180a;font-weight:800;cursor:pointer}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.metric{padding:14px;border:1px solid var(--line);border-radius:11px;background:#0b1524}.metric small{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.7px}.metric strong{display:block;font-size:24px;margin-top:5px}.metric span{display:block;color:var(--muted);font-size:10px;margin-top:3px}.tables{display:grid;grid-template-columns:1fr 1fr;gap:14px}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);white-space:nowrap}th{color:var(--muted);font-weight:700}.status{color:var(--green)}.error{color:var(--red);font-size:12px}.empty{color:var(--muted);font-size:12px;padding:10px 0}.note{font-size:11px;color:var(--muted);line-height:1.7}@media(max-width:800px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.tables{grid-template-columns:1fr}}@media(max-width:430px){.grid{grid-template-columns:1fr 1fr}.metric strong{font-size:19px}input{min-width:180px;flex:1}}
+</style>
+</head>
+<body><main class="shell">
+<header><div><small>TRADEPILOT AI · PARTNER INTELLIGENCE</small><h1>VT Markets · Conversion analytics</h1></div><a href="/portal.html" class="muted">Retour au portail ↗</a></header>
+<section class="panel"><form id="loadForm">
+<label>Clé dashboard (non sauvegardée)<input id="apiKey" type="password" autocomplete="off" required placeholder="PARTNER_DASHBOARD_KEY"></label>
+<label>Période<select id="days"><option value="30">30 derniers jours</option><option value="7">7 derniers jours</option><option value="90">90 derniers jours</option><option value="180">180 derniers jours</option><option value="365">365 derniers jours</option></select></label>
+<button type="submit" id="loadButton">Charger les statistiques</button>
+</form><p id="message" class="note" aria-live="polite">Les données ne s'affichent qu'après authentification par la clé serveur. La clé reste uniquement dans cette page et n'est pas stockée.</p></section>
+<section class="panel"><h2>Vue d'ensemble</h2><div class="grid" id="metrics"><div class="empty">Aucune donnée chargée.</div></div></section>
+<div class="tables">
+<section class="panel"><h2>Performance par campagne</h2><div class="scroll" id="campaignTable"><p class="empty">En attente des données.</p></div></section>
+<section class="panel"><h2>Étapes de conversion</h2><div class="scroll" id="funnelTable"><p class="empty">En attente des données.</p></div></section>
+<section class="panel"><h2>Conversions par jour</h2><div class="scroll" id="dailyTable"><p class="empty">En attente des données.</p></div></section>
+<section class="panel"><h2>Commissions reçues</h2><div class="scroll" id="commissionTable"><p class="empty">En attente des données.</p></div></section>
+</div>
+<section class="panel"><h2>Événements récents</h2><div class="scroll" id="recentTable"><p class="empty">En attente des données.</p></div><p class="note">Les statistiques reflètent uniquement les postbacks authentifiés effectivement transmis par VT Markets. Les ratios sont des ratios bruts clics/événements, pas des conversions de cohortes clients. Les commissions restent séparées par devise.</p></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function node(tag,value){const el=document.createElement(tag);el.textContent=value===null||value===undefined?"—":String(value);return el;}
+function table(target,headers,rows){const root=$(target);root.replaceChildren();if(!rows.length){root.append(node("p","Aucune donnée reçue sur cette période."));root.firstChild.className="empty";return;}const t=document.createElement("table"),head=document.createElement("thead"),hr=document.createElement("tr");headers.forEach(h=>hr.append(node("th",h)));head.append(hr);t.append(head);const body=document.createElement("tbody");rows.forEach(row=>{const tr=document.createElement("tr");row.forEach(value=>tr.append(node("td",value)));body.append(tr);});t.append(body);root.append(t);}
+function metric(label,value,sub){const el=document.createElement("article");el.className="metric";el.append(node("small",label),node("strong",value),node("span",sub||""));return el;}
+$("loadForm").addEventListener("submit",async event=>{
+ event.preventDefault();const key=$("apiKey").value.trim();if(!key)return;
+ $("loadButton").disabled=true;$("message").textContent="Chargement des données…";$("message").className="note";
+ try{
+  const response=await fetch("/api/partner/dashboard?days="+encodeURIComponent($("days").value),{headers:{"x-partner-dashboard-key":key},cache:"no-store"});
+  const data=await response.json();if(!response.ok||!data.ok)throw new Error(data.error||"Accès impossible.");
+  const fmt=n=>Number(n||0).toLocaleString("fr-FR");
+  const funnel=data.funnel||{};
+  const metrics=$("metrics");metrics.replaceChildren(
+   metric("Clics broker",fmt(data.clicks?.total),fmt(data.clicks?.uniqueWorkspaces)+" espaces distincts"),
+   metric("Inscriptions reçues",fmt(funnel.registrations),fmt(funnel.registrationRate)+" % des clics"),
+   metric("Premiers trades",fmt(funnel.firstTrades),fmt(funnel.firstTradeRate)+" % des clics"),
+   metric("Traders actifs",fmt(funnel.activeTraders),fmt(funnel.activeTraderRate)+" % des clics")
+  );
+  const campaignMap=new Map();
+  (data.campaignClicks||[]).forEach(c=>campaignMap.set(c.source+"|"+c.campaign,{source:c.source,campaign:c.campaign,clicks:Number(c.clicks||0),workspaces:Number(c.unique_workspaces||0),registrations:0,firstTrades:0,activeTraders:0}));
+  (data.campaignConversions||[]).forEach(c=>{const key=c.source+"|"+c.campaign;if(!campaignMap.has(key))campaignMap.set(key,{source:c.source,campaign:c.campaign,clicks:0,workspaces:0,registrations:0,firstTrades:0,activeTraders:0});const row=campaignMap.get(key);if(c.event_type==="registration")row.registrations+=Number(c.events||0);if(c.event_type==="first_trade")row.firstTrades+=Number(c.events||0);if(c.event_type==="active_trader")row.activeTraders+=Number(c.events||0);});
+  table("campaignTable",["Source","Campagne","Clics","Inscriptions","1ers trades","Actifs"],Array.from(campaignMap.values()).map(c=>[c.source,c.campaign,fmt(c.clicks),fmt(c.registrations),fmt(c.firstTrades),fmt(c.activeTraders)]));
+  table("funnelTable",["Événement","Événements","Clics attribués"],(data.conversions||[]).map(x=>[x.event_type,fmt(x.total),fmt(x.attributed_clicks)]));
+  table("dailyTable",["Date","Événement","Nombre"],(data.dailyConversions||[]).slice(-60).map(x=>[x.day,x.event_type,fmt(x.total)]));
+  table("commissionTable",["Devise","Total commissions","Événements"],(data.commissionsByCurrency||[]).map(x=>[x.currency||"Non précisée",fmt(x.total_commission),fmt(x.commission_events)]));
+  table("recentTable",["Date","Événement","Pays","Source","Campagne","Attribué"],(data.recentEvents||[]).map(x=>[new Date(x.occurred_at).toLocaleString("fr-FR"),x.event_type,x.country_code,x.source,x.tracked_campaign,x.attributed?"Oui":"Non"]));
+  $("message").textContent="Données chargées · période "+data.periodDays+" jours · génération "+new Date(data.generatedAt).toLocaleString("fr-FR");$("message").className="status";
+ }catch(error){$("message").textContent=error.message;$("message").className="error";}
+ finally{$("loadButton").disabled=false;}
+});
+</script></body></html>

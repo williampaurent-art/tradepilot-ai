@@ -2,7 +2,7 @@ name: Bot engine tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/saas-foundation]
   pull_request:
     branches: [main]
 
@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: 22
       - name: Run deterministic bot engine tests
-        run: node --test tests/bot-engine.test.mjs
+        run: node --test tests/*.test.mjs
