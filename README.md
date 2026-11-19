@@ -58,6 +58,11 @@ docs/                 → Documentation technique
 | `GET /dashboard-data` | Données agrégées pour l'interface |
 | `GET /analyze` | Analyse technique on-demand |
 | `GET /edge-stats` | Performance observée des alertes |
+| `GET /api/portal` | Synthèse de l’espace client (auth) |
+| `POST /api/portal/profile` | Mise à jour du profil client (auth) |
+| `POST /api/portal/partner-click` | Attribution des clics partenaires (auth) |
+| `POST /api/portal/academy-progress` | Progression Academy (auth) |
+| `POST /api/portal/broker-request` | Demande de parcours broker (auth + consentement) |
 | `POST /api/bot-analyze` | Analyse d'une config bot |
 | `GET/POST /api/bots` | Liste / création de bots (auth) |
 | `POST /api/bots/:id` | Modifier un bot (auth + espace propriétaire) |
@@ -103,7 +108,13 @@ Avant d'ouvrir les inscriptions :
 
 Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots tournants de 20 bots maximum pour préserver les limites CPU du Worker gratuit. Les signaux confirmés sont enregistrés dans D1, par espace. Les signaux propres aux clients ne sont pas envoyés au canal Telegram global.
 
-### Portail client (migration 0004)\n- Profil personnel lié au workspace authentifié\n- Synthèse bots, signaux, plan et suivi broker\n- Attribution des clics vers VT Markets et suivi de campagne\n- Progression Academy stockée par utilisateur/espace\n- Demandes de connexion broker enregistrées en attente, avec consentement\n- Aucune donnée d’identification MT5 n’est collectée ; aucune connexion broker réelle n’est simulée\n\n## Philosophie & limites
+### Portail client (migration 0004)
+- Profil personnel lié au workspace authentifié
+- Synthèse bots, signaux, plan et suivi broker
+- Attribution des clics vers VT Markets et suivi de campagne
+- Progression Academy stockée par utilisateur/espace
+- Demandes de connexion broker enregistrées en attente, avec consentement
+- Aucune donnée d’identification MT5 n’est collectée ; aucune connexion broker réelle n’est simulée\n\n## Philosophie & limites
 
 - Tout score est **heuristique**, jamais une probabilité de gain.
 - Les résultats Edge n'incluent pas spread, slippage ni commissions.
