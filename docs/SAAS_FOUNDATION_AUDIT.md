@@ -85,7 +85,17 @@ The following routes remain public because they expose shared platform market/st
 
 ### Rate-limit limitation
 
-The current limiter uses a per-workspace fixed-window counter in Cloudflare KV. KV counters are eventually consistent and are not atomic under high concurrency; they provide an abuse-control layer, not a strict financial quota. Before a public paid launch, add Cloudflare Rate Limiting or another atomic quota service at the edge. The application fails closed when KV is missing or errors.
+Authenticated compute and customer-bot operations still use per-workspace fixed-window counters in Cloudflare KV. KV counters are eventually consistent and are not atomic under high concurrency; they provide an abuse-control layer, not a strict financial quota.
+
+Anonymous public GET endpoints now also use Cloudflare's native Worker Rate Limiting bindings:
+- `PUBLIC_API_LIMITER`: 120 requests per 60 seconds per route/IP key.
+- `UPSTREAM_API_LIMITER`: 30 requests per 60 seconds per route/IP key for routes that can trigger upstream market/data work.
+- Exceeding the threshold returns HTTP 429; a configured limiter failure returns HTTP 503.
+- Cloudflare's native counters are approximate and local to each Cloudflare location. They are not strict global quotas and should not be used as billing or financial enforcement.
+- The binding namespace IDs `912341001` and `912341002` must be unique within the Cloudflare account; verify they are not already assigned to another rate-limit binding before production deployment.
+- Local development without the bindings skips edge limiting; production must deploy the Wrangler bindings for these protections to be active.
+
+The application fails closed when authenticated KV-based quota checks are missing or error.
 
 ### Deployment
 
