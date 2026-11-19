@@ -1,4 +1,4 @@
--- VT Markets promotion catalogue. Only published, verified and date-valid offers are exposed.
+-- VT Markets promotion catalogue. Published offers require fresh verification; review leads are clearly labelled as unconfirmed.
 PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS broker_promotions (
  id TEXT PRIMARY KEY,
