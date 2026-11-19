@@ -42,17 +42,28 @@ jobs:
             for (const script of scripts) new vm.Script(script, { filename: file });
           }
           NODE
+      - name: Require deployment secrets on trusted branch push
+        if: github.event_name == 'push'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          missing=()
+          [[ -n "$CLOUDFLARE_API_TOKEN" ]] || missing+=("CLOUDFLARE_API_TOKEN")
+          [[ -n "$CLOUDFLARE_ACCOUNT_ID" ]] || missing+=("CLOUDFLARE_ACCOUNT_ID")
+          [[ -n "$SUPABASE_PUBLISHABLE_KEY" ]] || missing+=("SUPABASE_PUBLISHABLE_KEY")
+          if (( ${#missing[@]} > 0 )); then
+            printf '::error::Missing required GitHub Actions secrets: %s\\n' "${missing[*]}"
+            exit 1
+          fi
+          echo "All required deployment secrets are present (values are never printed)."
       - name: Verify Cloudflare rate-limit namespaces (read-only)
         if: github.event_name == 'push'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          if [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]]; then
-            echo "Cloudflare account preflight skipped: deployment credentials are not configured."
-          else
-            node scripts/cloudflare-preflight.mjs
-          fi
+        run: node scripts/cloudflare-preflight.mjs
       - name: Validate Cloudflare Worker bundle without deploying
         run: npx --yes wrangler@latest deploy --dry-run
       - name: Run tests
