@@ -10,6 +10,7 @@ on:
       - "migrations/**"
       - "wrangler.toml"
       - ".github/workflows/deploy-worker.yml"
+      - "scripts/cloudflare-preflight.mjs"
 
 permissions:
   contents: read
@@ -46,25 +47,21 @@ jobs:
           fi
 
       - name: Verify rate-limit namespace uniqueness (read-only)
-                run: node scripts/cloudflare-preflight.mjs
+        run: node scripts/cloudflare-preflight.mjs
 
       - name: Validate Worker bundle without deploying
-        if: steps.credentials.outputs.configured == 'true'
         run: npx --yes wrangler@latest deploy --dry-run --var "SUPABASE_PUBLISHABLE_KEY:$SUPABASE_PUBLISHABLE_KEY"
 
       - name: Inspect remote D1 migration state (read-only)
-        if: steps.credentials.outputs.configured == 'true'
         run: npx --yes wrangler@latest d1 migrations list tradepilot-ai-db --remote
 
       - name: Apply D1 migrations and deploy Worker
-        if: steps.credentials.outputs.configured == 'true'
         shell: bash
         run: |
           npx --yes wrangler@latest d1 migrations apply tradepilot-ai-db --remote
           npx --yes wrangler@latest deploy --var "SUPABASE_PUBLISHABLE_KEY:$SUPABASE_PUBLISHABLE_KEY"
 
       - name: Verify deployed Worker
-        if: steps.credentials.outputs.configured == 'true'
         shell: bash
         run: |
           node --input-type=module <<'NODE'
@@ -87,4 +84,3 @@ jobs:
             execution: health.execution
           }));
           NODE
-
