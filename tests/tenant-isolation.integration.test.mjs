@@ -52,7 +52,6 @@ function d1FromSqlite(db) {
 test("D1 migrations apply and authenticated customers cannot read or mutate another workspace", async () => {
   const db = new DatabaseSync(":memory:");
   const originalFetch = globalThis.fetch;
-  const originalCrypto = globalThis.crypto;
   const keyPair = await crypto.subtle.generateKey({
     name: "RSASSA-PKCS1-v1_5", modulusLength: 2048,
     publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256"
@@ -136,7 +135,6 @@ test("D1 migrations apply and authenticated customers cannot read or mutate anot
     assert.equal(db.prepare("SELECT COUNT(*) AS total FROM trading_bots WHERE id = ?").get("bot-tenant-b").total, 1);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalCrypto !== undefined) globalThis.crypto = originalCrypto;
     db.close();
   }
 });
