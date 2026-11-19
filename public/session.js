@@ -18,7 +18,7 @@
   async function accessToken() {
     let session = read();
     if (!session?.access_token) {
-      const next = location.pathname.includes("builder") ? "builder" : location.pathname.includes("portal") ? "portal" : "bots";
+      const next = location.pathname.includes("builder") ? "builder" : location.pathname.includes("portal") ? "portal" : location.pathname.includes("academy") ? "academy" : "bots";
       location.replace("/auth.html?next=" + next);
       throw new Error("Connexion requise.");
     }
