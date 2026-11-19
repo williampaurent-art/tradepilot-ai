@@ -142,6 +142,6 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 
 ### Catalogue des promotions broker (migration 0005)
 - Catalogue VT Markets structuré avec pays inclus/exclus, entité, types de compte, seuils, plafonds, dates, sources et date de vérification.
-- L’API authentifiée GET /api/portal/promotions n’expose que les offres publiées, vérifiées, non expirées et compatibles avec le pays renseigné.
+- L’API authentifiée GET /api/portal/promotions expose les catégories en revue comme pistes à confirmer ; seules les offres publiées, vérifiées depuis moins de 30 jours, non expirées et explicitement éligibles au pays, à l’entité et au type de compte sont présentées comme validées.
 - Les catégories repérées publiquement sont préchargées en statut review : elles ne sont donc jamais présentées comme actives ou garanties.
 - La page client renvoie vers les pages officielles et rappelle que l’éligibilité finale se confirme dans le Client Portal VT Markets.
