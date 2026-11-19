@@ -417,3 +417,16 @@ test("every customer bot read and mutation is scoped by workspace_id", () => {
     assert.match(block, /access\.workspace\.id/, name + " must bind the authenticated workspace");
   }
 });
+
+
+test("anonymous public endpoints use Cloudflare-native rate-limit bindings", () => {
+  assert.match(workerSource, /async function enforcePublicRateLimit\\(request, env, route, tier = "standard"\\)/);
+  assert.match(workerSource, /env\\.PUBLIC_API_LIMITER/);
+  assert.match(workerSource, /env\\.UPSTREAM_API_LIMITER/);
+  assert.match(workerSource, /"RATE_LIMITED"/);
+  assert.match(workerSource, /"RATE_LIMIT_UNAVAILABLE"/);
+  for (const route of ["/api/bot-market", "/gold", "/calendar", "/analyze", "/scalp", "/api/public-config", "/signal-history"]) {
+    assert.ok(workerSource.includes('"' + route + '"'), route + " must be covered by an edge rate limit");
+  }
+  assert.match(workerSource, /cf-connecting-ip/);
+});
