@@ -28,9 +28,15 @@ jobs:
           import vm from "node:vm";
           for (const file of ["public/auth.html", "public/portal.html", "public/session.js"]) {
             const source = readFileSync(file, "utf8");
-            const scripts = file.endsWith(".js")
-              ? [source]
-              : [...source.matchAll(/<script\\b(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(match => match[1]);
+            const scripts = [];
+            if (file.endsWith(".js")) scripts.push(source);
+            else {
+              for (const chunk of source.split("<script").slice(1)) {
+                const tagEnd = chunk.indexOf(">");
+                if (tagEnd < 0 || chunk.slice(0, tagEnd).includes("src=")) continue;
+                scripts.push(chunk.slice(tagEnd + 1).split("</script>")[0]);
+              }
+            }
             for (const script of scripts) new vm.Script(script, { filename: file });
           }
           NODE
