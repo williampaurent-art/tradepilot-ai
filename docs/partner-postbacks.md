@@ -43,7 +43,7 @@ Supported `event_type` values:
 
 Required header: `x-partner-dashboard-key: <PARTNER_DASHBOARD_KEY>`
 
-Returns 30-day click totals, conversion counts by event type, daily counts, and the 50 most recent event summaries. It does not estimate missing events and does not expose client PII.
+Returns click totals, unique workspaces, a stage funnel (registration, first trade, active trader), daily click and conversion series, source/campaign breakdowns, commission totals grouped by currency, and the 50 most recent pseudonymous event summaries. The optional days query parameter accepts 7–365 days (default 30). Ratios are raw event-to-click ratios, not deduplicated customer cohort conversion rates. Unmatched postbacks are labelled unattributed. It does not estimate missing events and does not expose client PII.
 
 ## Cloudflare configuration
 
@@ -65,3 +65,14 @@ Use a long, random value for each secret. Never place either secret in frontend 
 5. Test duplicate events, unknown click IDs, invalid signatures, and each event type in a non-production environment.
 
 Until the broker confirms and configures this contract, the dashboard will show only the events actually received (normally zero). A TradePilot click is not proof of account registration, deposit, trading activity, or commission.
+
+
+## Attribution and reporting additions
+
+TradePilot stores the portal's utm_source and utm_campaign values (or the fallback campaign value) with each authenticated broker click. The dashboard groups clicks by these values and attributes signed broker events to the matching click when the broker echoes its click ID.
+
+Examples:
+- Last 30 days: GET /api/partner/dashboard
+- Last 90 days: GET /api/partner/dashboard?days=90
+
+The dashboard reports event counts and raw click ratios. It cannot calculate unique registered clients or true customer-level conversion cohorts until VT Markets supplies a stable pseudonymous customer reference in the postback contract. Commission totals are kept separated by currency and are not combined.
