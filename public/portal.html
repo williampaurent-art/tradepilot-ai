@@ -58,7 +58,7 @@
   </article>
   <article class="card"><div class="card-top"><span class="icon">◎</span><span class="tag">SUIVI BROKER</span></div><h3 id="brokerStatusTitle">VT Markets · Non connecté</h3>
    <p id="brokerStatusText">Aucune connexion MT5 active. Tu peux demander à être informé lorsque le parcours de connexion autorisé sera disponible.</p>
-   <button class="btn" id="brokerRequest" style="margin-top:13px">Demander l'activation du parcours</button><p id="brokerRequestMessage" aria-live="polite"></p>
+   <label style="display:flex;align-items:flex-start;gap:8px;margin-top:13px;color:var(--muted);font-size:10px"><input type="checkbox" id="brokerConsent" style="margin-top:2px">J’accepte que TradePilot enregistre ma demande de mise en relation / activation du parcours VT Markets. Cela ne connecte pas mon compte et ne transmet aucun identifiant MT5.</label><button class="btn" id="brokerRequest" style="margin-top:13px">Demander l'activation du parcours</button><p id="brokerRequestMessage" aria-live="polite"></p>
   </article>
  </div>
 </section>
@@ -180,9 +180,11 @@ document.getElementById('saveProfile').addEventListener('click',async()=>{
  }catch(error){showPortalMessage('profileMessage',error.message);}finally{button.disabled=false;}
 });
 document.getElementById('brokerRequest').addEventListener('click',async()=>{
- const button=document.getElementById('brokerRequest');button.disabled=true;
+ const button=document.getElementById('brokerRequest');
+ if(!document.getElementById('brokerConsent').checked){showPortalMessage('brokerRequestMessage','Coche la case de consentement pour enregistrer ta demande.');return;}
+ button.disabled=true;
  try{
-  const data=await portalApi.api('/api/portal/broker-request',{method:'POST',body:JSON.stringify({consent:true,regionCode:document.getElementById('profileCountry').value.toUpperCase()})});
+  const data=await portalApi.api('/api/portal/broker-request',{method:'POST',body:JSON.stringify({consent:document.getElementById('brokerConsent').checked,regionCode:document.getElementById('profileCountry').value.toUpperCase()})});
   showPortalMessage('brokerRequestMessage',data.message||'Demande enregistrée. Aucune connexion MT5 n’est encore établie.');
   await loadPortal();
  }catch(error){showPortalMessage('brokerRequestMessage',error.message);button.disabled=false;}
