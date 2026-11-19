@@ -19,7 +19,7 @@
  <div class="top-actions"><span class="user-pill">ESPACE PERSONNEL</span><a class="btn ghost" href="/auth.html">Connexion / compte</a><a class="btn gold" href="/">Ouvrir le terminal</a></div>
 </header>
 <nav class="nav" aria-label="Navigation espace client">
- <a class="active" href="#home">Accueil</a><a href="#account">Mon compte</a><a href="#tools">Trading Tools</a><a href="#academy">Academy</a><a href="#broker">My Broker</a><a href="/bots.html">Mes bots</a><a href="/builder.html">Créer un bot</a>
+ <a class="active" href="#home">Accueil</a><a href="#account">Mon compte</a><a href="#tools">Trading Tools</a><a href="#academy">Academy</a><a href="#broker">My Broker</a><a href="#promotions">Promotions</a><a href="/bots.html">Mes bots</a><a href="/builder.html">Créer un bot</a>
 </nav>
 <section class="hero" id="home">
  <div>
@@ -107,6 +107,13 @@
  </div>
 </section>
 
+<section class="section" id="promotions">
+ <div class="section-head"><div><div class="eyebrow">04 · PROMOTIONS</div><h2>Offres VT Markets</h2></div><p id="promotionsChecked">Vérification selon ton pays et ton compte.</p></div>
+ <div class="cards" id="promotionCards" aria-live="polite"><article class="card"><h3>Chargement des offres</h3><p>Seules les offres vérifiées et encore valides seront affichées.</p></article></div>
+ <div class="callout"><strong>Important :</strong> les promotions varient selon le pays, l’entité VT Markets, le type de compte et les conditions propres à chaque campagne. Vérifie toujours les conditions affichées dans ton Client Portal avant tout dépôt.</div>
+ <div style="display:flex;gap:9px;flex-wrap:wrap;margin-top:12px"><a class="btn gold" href="https://www.vtmarkets.com/fr-eu/promotions/" target="_blank" rel="noopener noreferrer">Voir les promotions officielles ↗</a><a class="btn" href="https://get.vtmarkets.help/hc/fr" target="_blank" rel="noopener noreferrer">Centre d’aide VT Markets ↗</a></div>
+</section>
+
 <div class="callout"><strong>Transparence & sécurité.</strong> Les liens commerciaux, les conditions promotionnelles et les intégrations broker devront être validés avant activation. Les données de compte ne seront affichées qu'après authentification et autorisation explicite. Les outils TradePilot fournissent des analyses informatives et ne garantissent aucun résultat de trading.</div>
 <footer>TRADEPILOT AI · CLIENT PLATFORM · VERSION DE PRÉVISUALISATION</footer>
 </main>
@@ -146,6 +153,41 @@ document.getElementById('academyComplete').addEventListener('click',async()=>{
 const portalApi=window.TradePilotSession;
 const accountState=document.getElementById('accountState');
 const showPortalMessage=(id,message)=>{const node=document.getElementById(id);if(node)node.textContent=message;};
+async function loadPromotions(){
+ const container=document.getElementById("promotionCards"), checked=document.getElementById("promotionsChecked");
+ if(!container)return;
+ try{
+  const data=await portalApi.api("/api/portal/promotions");
+  checked.textContent="Pays du profil : "+(data.countryCode||"non renseigné")+" · vérifié le "+new Date(data.checkedAt).toLocaleString("fr-FR");
+  container.replaceChildren();
+  if(!data.promotions?.length){
+   const card=document.createElement("article");card.className="card";
+   const tag=document.createElement("span");tag.className="tag";tag.textContent="AUCUNE OFFRE VALIDÉE";
+   const title=document.createElement("h3");title.textContent="Consulte les offres dans ton espace VT Markets";
+   const copy=document.createElement("p");copy.textContent="Aucune promotion n’est actuellement publiée dans TradePilot pour le pays renseigné. Cela ne signifie pas qu’aucune offre n’existe : les campagnes peuvent dépendre de ton entité et de ton compte.";
+   card.append(tag,title,copy);container.append(card);return;
+  }
+  for(const offer of data.promotions){
+   const card=document.createElement("article");card.className="card";
+   const tag=document.createElement("span");tag.className="tag";tag.textContent="OFFRE VÉRIFIÉE";
+   const title=document.createElement("h3");title.textContent=offer.title||"Promotion VT Markets";
+   const copy=document.createElement("p");copy.textContent=offer.summary||"Consulte les conditions officielles avant toute participation.";
+   card.append(tag,title,copy);
+   if(offer.bonusPercent!==null&&offer.bonusPercent!==undefined){const detail=document.createElement("p");detail.textContent="Bonus annoncé : "+offer.bonusPercent+" %";card.append(detail);}
+   if(offer.endsAt){const end=document.createElement("p");end.textContent="Fin prévue : "+new Date(offer.endsAt).toLocaleDateString("fr-FR");card.append(end);}
+   const link=document.createElement("a");link.className="link";link.href=offer.termsUrl||offer.sourceUrl||"https://www.vtmarkets.com/fr-eu/promotions/";link.target="_blank";link.rel="noopener noreferrer";link.textContent="Lire les conditions officielles →";card.append(link);
+   const verified=document.createElement("p");verified.textContent="Dernière vérification : "+(offer.verifiedAt?new Date(offer.verifiedAt).toLocaleDateString("fr-FR"):"non précisée");card.append(verified);
+   container.append(card);
+  }
+ }catch(error){
+  checked.textContent="Catalogue temporairement indisponible";container.replaceChildren();
+  const card=document.createElement("article");card.className="card";
+  const title=document.createElement("h3");title.textContent="Consulte directement VT Markets";
+  const copy=document.createElement("p");copy.textContent="TradePilot ne peut pas confirmer les offres en direct. Consulte le Client Portal pour connaître les campagnes actives et ton éligibilité.";
+  card.append(title,copy);container.append(card);
+ }
+}
+
 async function loadPortal(){
  try{
   const data=await portalApi.api('/api/portal');
@@ -193,6 +235,7 @@ document.querySelectorAll('a[href="https://www.vtmarkets.com/"]').forEach(link=>
  portalApi.api('/api/portal/partner-click',{method:'POST',body:JSON.stringify({source:'client_portal',campaign:new URLSearchParams(location.search).get('campaign')||'organic'})}).catch(()=>{});
 }));
 loadPortal();
+loadPromotions();
 
 document.getElementById('connectInfo').addEventListener('click',()=>modal.classList.add('open'));
 document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('open'));
