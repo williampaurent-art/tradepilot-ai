@@ -63,7 +63,7 @@ docs/                 → Documentation technique
 | `POST /api/portal/profile` | Mise à jour du profil client (auth) |
 | `POST /api/portal/partner-click` | Attribution des clics partenaires (auth, retourne un click ID) |
 | `POST /api/partner/webhook` | Réception de conversions VT Markets signées HMAC (secret serveur) |
-| `GET /api/partner/dashboard` | Statistiques agrégées partenaires (clé serveur) |
+| `GET /api/partner/dashboard` | Funnel, clics, campagnes et conversions (clé serveur, 7 à 365 jours) |
 | `POST /api/portal/academy-progress` | Progression Academy (auth) |
 | `POST /api/portal/broker-request` | Demande de parcours broker (auth + consentement) |
 | `POST /api/bot-analyze` | Analyse d'une config bot |
@@ -150,11 +150,13 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 
 
 ### Attribution et conversions broker (migration 0006)
-- Chaque clic VT Markets authentifié génère un `clickId` pseudonyme réutilisable comme identifiant de sous-campagne lorsque le broker confirme le format de tracking accepté.
+- Chaque clic VT Markets authentifié génère un `clickId` pseudonyme ; `utm_source` et `utm_campaign` sont conservés pour l'analyse par campagne. Le paramètre sub-ID sortant reste à confirmer par le broker.
 - `POST /api/partner/webhook` accepte uniquement les événements signés HMAC-SHA256 via l’en-tête `x-vt-signature` (`sha256=<hex>`), avec déduplication par identifiant d’événement.
 - Événements acceptés : `registration`, `account_approved`, `first_deposit`, `first_trade`, `active_trader`, `commission`.
-- `GET /api/partner/dashboard` expose des statistiques agrégées sur 30 jours et les 50 derniers événements, protégé par `PARTNER_DASHBOARD_KEY` dans l’en-tête `x-partner-dashboard-key`.
+- `GET /api/partner/dashboard` expose le funnel, les clics uniques par workspace, les séries quotidiennes, les campagnes, les conversions attribuées et les commissions séparées par devise. Paramètre `days` : 7 à 365 (défaut 30). Protégé par `PARTNER_DASHBOARD_KEY` dans l’en-tête `x-partner-dashboard-key`.
 - Secrets Cloudflare à configurer avant activation : `VT_PARTNER_WEBHOOK_SECRET` et `PARTNER_DASHBOARD_KEY`. Le broker doit accepter/configurer le postback HMAC et transmettre le click ID ; tant que ce n’est pas fait, aucune conversion broker ne sera disponible.
 - Aucune donnée personnelle du client n’est stockée dans le journal de postbacks.
 
 - Contrat technique de postback VT Markets : [docs/partner-postbacks.md](docs/partner-postbacks.md).
+
+- Le dashboard partenaire fournit désormais un funnel et des ventilations par campagne/source, avec des taux bruts explicitement signalés comme non-cohortes et des commissions regroupées par devise.
