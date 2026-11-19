@@ -175,7 +175,7 @@ async function loadPromotions(){
    card.append(tag,title,copy);
    if(offer.bonusPercent!==null&&offer.bonusPercent!==undefined){const detail=document.createElement("p");detail.textContent="Bonus annoncé : "+offer.bonusPercent+" %";card.append(detail);}
    if(offer.endsAt){const end=document.createElement("p");end.textContent="Fin prévue : "+new Date(offer.endsAt).toLocaleDateString("fr-FR");card.append(end);}
-   const link=document.createElement("a");link.className="link";link.href=offer.termsUrl||offer.sourceUrl||"https://www.vtmarkets.com/fr-eu/promotions/";link.target="_blank";link.rel="noopener noreferrer";link.textContent="Lire les conditions officielles →";card.append(link);
+   const link=document.createElement("a");link.className="link";link.href=offer.termsUrl||offer.sourceUrl||"https://www.vtmarkets.com/en-eu/promotions/";link.target="_blank";link.rel="noopener noreferrer";link.textContent="Lire les conditions officielles →";card.append(link);
    const verified=document.createElement("p");verified.textContent=offer.status==="published"?"Dernière vérification : "+(offer.verifiedAt?new Date(offer.verifiedAt).toLocaleDateString("fr-FR"):"non précisée"):"Catégorie repérée sur la page officielle ; disponibilité, pays et conditions à confirmer dans le Client Portal.";card.append(verified);
    container.append(card);
   }
