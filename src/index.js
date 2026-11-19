@@ -6176,11 +6176,12 @@ async function handlePortalApi(request, env, action) {
 
   if (action === "summary" && request.method === "GET") {
     try {
-      const [profile, botCount, signalCount, broker, progress, clicks, subscription] = await Promise.all([
+      const [profile, botCount, signalCount, broker, brokerRequest, progress, clicks, subscription] = await Promise.all([
         env.DB.prepare("SELECT display_name, country_code, preferred_language FROM workspace_profiles WHERE workspace_id = ?").bind(workspaceId).first(),
         env.DB.prepare("SELECT COUNT(*) AS total FROM trading_bots WHERE workspace_id = ?").bind(workspaceId).first(),
         env.DB.prepare("SELECT COUNT(*) AS total FROM bot_signal_events WHERE workspace_id = ?").bind(workspaceId).first(),
         env.DB.prepare("SELECT provider, display_label, status, access_mode, last_checked_at FROM broker_connections WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first(),
+        env.DB.prepare("SELECT provider, status, created_at FROM broker_connection_requests WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first(),
         env.DB.prepare("SELECT course_key, status, progress_percent, updated_at FROM academy_progress WHERE workspace_id = ? ORDER BY updated_at DESC").bind(workspaceId).all(),
         env.DB.prepare("SELECT COUNT(*) AS total FROM partner_click_events WHERE workspace_id = ?").bind(workspaceId).first(),
         env.DB.prepare("SELECT plan_key, status, current_period_end FROM subscriptions WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first()
@@ -6191,7 +6192,7 @@ async function handlePortalApi(request, env, action) {
         workspace: access.workspace,
         profile: profile || { display_name: null, country_code: null, preferred_language: "fr" },
         stats: { bots: Number(botCount?.total || 0), signals: Number(signalCount?.total || 0), partnerClicks: Number(clicks?.total || 0) },
-        broker: broker || { provider: "vt_markets", status: "not_connected", access_mode: "READ_ONLY" },
+        broker: broker || { provider: "vt_markets", status: brokerRequest?.status || "not_connected", access_mode: "READ_ONLY", requestedAt: brokerRequest?.created_at || null },
         academyProgress: progress.results || [],
         subscription: subscription || { plan_key: "free", status: "active", current_period_end: null },
         liveTrading: false
