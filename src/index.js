@@ -4657,6 +4657,23 @@ function buildAssistantMarketContext(raw) {
 }
 
 async function handleAssistantChat(request, env) {
+  if (action === "promotions" && request.method === "GET") {
+    try {
+      const profile = await env.DB.prepare("SELECT country_code FROM workspace_profiles WHERE workspace_id = ?").bind(workspaceId).first();
+      const countryCode = typeof profile?.country_code === "string" ? profile.country_code.toUpperCase() : null;
+      const now = new Date().toISOString();
+      const result = await env.DB.prepare("SELECT id, slug, title, summary, promotion_type, entity_label, eligible_countries_json, excluded_countries_json, eligible_account_types_json, bonus_percent, bonus_cap_amount, bonus_cap_currency, min_deposit_amount, min_deposit_currency, starts_at, ends_at, terms_url, source_url, source_label, verified_at FROM broker_promotions WHERE provider = ? AND status = ? AND (starts_at IS NULL OR starts_at <= ?) AND (ends_at IS NULL OR ends_at >= ?) ORDER BY published_at DESC, title ASC").bind("vt_markets", "published", now, now).all();
+      const parseList = (value) => { try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed.map((v) => String(v).toUpperCase()) : []; } catch { return []; } };
+      const promotions = (result.results || []).filter((item) => {
+        const eligible = parseList(item.eligible_countries_json), excluded = parseList(item.excluded_countries_json);
+        if (countryCode && excluded.includes(countryCode)) return false;
+        if (eligible.length && (!countryCode || !eligible.includes(countryCode))) return false;
+        if (!countryCode && (eligible.length || excluded.length)) return false;
+        return true;
+      }).map((item) => ({ id:item.id, slug:item.slug, title:item.title, summary:item.summary, promotionType:item.promotion_type, entity:item.entity_label, eligibleAccountTypes:parseList(item.eligible_account_types_json), bonusPercent:item.bonus_percent, bonusCapAmount:item.bonus_cap_amount, bonusCapCurrency:item.bonus_cap_currency, minDepositAmount:item.min_deposit_amount, minDepositCurrency:item.min_deposit_currency, startsAt:item.starts_at, endsAt:item.ends_at, termsUrl:item.terms_url, sourceUrl:item.source_url, sourceLabel:item.source_label, verifiedAt:item.verified_at }));
+      return json({ ok:true, countryCode, promotions, checkedAt:now, eligibilityNote:"L’éligibilité finale dépend du pays, de l’entité contractante, du type de compte et de la validation dans le portail VT Markets." });
+    } catch (error) { return json({ ok:false, error:"Catalogue promotionnel indisponible.", detail:error.message },503); }
+  }
   if (request.method !== "POST") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
   const access = await getAuthenticatedWorkspace(request, env);
   if (!access.ok) return access.response;
@@ -6351,6 +6368,7 @@ async function handleWorkerRequest(request, env) {
       if (path === "/api/portal" && request.method === "GET") {
         return await handlePortalApi(request, env, "summary");
       }
+      if (path === "/api/portal/promotions" && request.method === "GET") return await handlePortalApi(request, env, "promotions");
       if (path === "/api/portal/profile" && request.method === "POST") {
         return await handlePortalApi(request, env, "profile");
       }
