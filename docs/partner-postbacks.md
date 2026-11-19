@@ -76,3 +76,8 @@ Examples:
 - Last 90 days: GET /api/partner/dashboard?days=90
 
 The dashboard reports event counts and raw click ratios. It cannot calculate unique registered clients or true customer-level conversion cohorts until VT Markets supplies a stable pseudonymous customer reference in the postback contract. Commission totals are kept separated by currency and are not combined.
+
+
+## Internal dashboard UI
+
+Open `/partner-dashboard.html` on the TradePilot deployment. The page asks for the dashboard key on each session and does not save it in browser storage. It shows campaign-level clicks and conversion events, funnel metrics, daily conversion counts and commission totals by currency. Access to the underlying API remains protected by the server-side dashboard key.
