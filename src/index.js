@@ -6306,8 +6306,11 @@ async function verifyPartnerWebhookSignature(rawBody, signature, secret) {
 async function handlePartnerWebhook(request, env) {
   const secret = env.VT_PARTNER_WEBHOOK_SECRET;
   if (!secret) return json({ ok:false, error:"Webhook partenaire non configuré." },503);
-  const rawBody = await request.text();
-  if (new TextEncoder().encode(rawBody).byteLength > 8000) return json({ok:false,error:"Événement trop volumineux."},413);
+  let rawBytes;
+  try { rawBytes = await request.arrayBuffer(); } catch { return json({ok:false,error:"Corps illisible."},400); }
+  if (rawBytes.byteLength > 8000) return json({ok:false,error:"Événement trop volumineux."},413);
+  let rawBody;
+  try { rawBody = new TextDecoder("utf-8",{fatal:true}).decode(rawBytes); } catch { return json({ok:false,error:"Encodage invalide."},400); }
   const valid = await verifyPartnerWebhookSignature(rawBody, request.headers.get("x-vt-signature"), secret);
   if (!valid) return json({ok:false,error:"Signature invalide."},401);
   let event;
