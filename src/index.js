@@ -6392,6 +6392,34 @@ async function handleSaasAccount(request, env) {
   }
 }
 
+// Cloudflare-native rate limits for anonymous endpoints that can trigger upstream work.
+async function enforcePublicRateLimit(request, env, route, tier = "standard") {
+  const limiter = tier === "upstream" ? env.UPSTREAM_API_LIMITER : env.PUBLIC_API_LIMITER;
+  // Local tests and Wrangler dev may not provide the optional binding.
+  if (!limiter || typeof limiter.limit !== "function") return null;
+
+  const clientIp = request.headers.get("cf-connecting-ip") || "unknown";
+  try {
+    const { success } = await limiter.limit({ key: route + ":" + clientIp });
+    if (!success) {
+      return json({
+        ok: false,
+        error: "Trop de requêtes. Réessaie dans une minute.",
+        code: "RATE_LIMITED",
+        retryAfter: 60
+      }, 429);
+    }
+    return null;
+  } catch (error) {
+    console.error("Cloudflare rate limiter unavailable:", error.message);
+    return json({
+      ok: false,
+      error: "Protection anti-abus temporairement indisponible.",
+      code: "RATE_LIMIT_UNAVAILABLE"
+    }, 503);
+  }
+}
+
 // --------------------------------------------------
 // CLOUDFLARE WORKER
 // --------------------------------------------------
@@ -6399,6 +6427,22 @@ async function handleSaasAccount(request, env) {
 async function handleWorkerRequest(request, env) {
     const url = new URL(request.url);
     const path = url.pathname.toLowerCase();
+
+    const upstreamRoutes = new Set([
+      "/api/bot-market", "/gold", "/calendar", "/calendar-key-check",
+      "/analyze", "/scalp"
+    ]);
+    const publicApiRoutes = new Set([
+      "/api/public-config", "/signal-history", "/x10",
+      "/dashboard-data", "/edge-stats", "/sniper-stats"
+    ]);
+    if (request.method === "GET" && upstreamRoutes.has(path)) {
+      const limited = await enforcePublicRateLimit(request, env, path, "upstream");
+      if (limited) return limited;
+    } else if (request.method === "GET" && publicApiRoutes.has(path)) {
+      const limited = await enforcePublicRateLimit(request, env, path, "standard");
+      if (limited) return limited;
+    }
 
     const customerBotPost = /^\/api\/bots\/[a-z0-9_-]+(?:\/(?:status|analyze|delete))?$/i.test(path);
     if (
