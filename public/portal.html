@@ -231,8 +231,11 @@ document.getElementById('brokerRequest').addEventListener('click',async()=>{
   await loadPortal();
  }catch(error){showPortalMessage('brokerRequestMessage',error.message);button.disabled=false;}
 });
+const attributionParams=new URLSearchParams(location.search);
+const trackedSource=attributionParams.get('utm_source')||'client_portal';
+const trackedCampaign=attributionParams.get('utm_campaign')||attributionParams.get('campaign')||'organic';
 document.querySelectorAll('a[href^="https://www.vtmarkets.com/"]').forEach(link=>link.addEventListener('click',()=>{
- portalApi.api('/api/portal/partner-click',{method:'POST',body:JSON.stringify({source:'client_portal',campaign:new URLSearchParams(location.search).get('campaign')||'organic'})}).catch(()=>{});
+ portalApi.api('/api/portal/partner-click',{method:'POST',body:JSON.stringify({source:trackedSource,campaign:trackedCampaign})}).catch(()=>{});
 }));
 loadPortal();
 loadPromotions();
