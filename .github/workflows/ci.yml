@@ -21,5 +21,18 @@ jobs:
           node-version: 22
       - name: Check Worker syntax
         run: node --input-type=module --check < src/index.js
+      - name: Check frontend JavaScript syntax
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import vm from "node:vm";
+          for (const file of ["public/auth.html", "public/portal.html", "public/session.js"]) {
+            const source = readFileSync(file, "utf8");
+            const scripts = file.endsWith(".js")
+              ? [source]
+              : [...source.matchAll(/<script\\b(?![^>]*\\bsrc=)[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(match => match[1]);
+            for (const script of scripts) new vm.Script(script, { filename: file });
+          }
+          NODE
       - name: Run tests
         run: node --test tests/*.test.mjs
