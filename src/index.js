@@ -6315,6 +6315,10 @@ async function handlePartnerWebhook(request, env) {
   if (!event || typeof event !== "object" || Array.isArray(event)) return json({ok:false,error:"Objet événement requis."},400);
   const eventId = typeof event.event_id === "string" ? event.event_id.trim().slice(0,120) : "";
   const clickId = typeof event.click_id === "string" && /^[a-zA-Z0-9_-]{8,100}$/.test(event.click_id) ? event.click_id : null;
+  if (clickId) {
+    const knownClick = await env.DB.prepare("SELECT id FROM partner_click_events WHERE id = ? AND provider = 'vt_markets' LIMIT 1").bind(clickId).first();
+    if (!knownClick) return json({ok:false,error:"Click ID inconnu pour ce programme partenaire."},400);
+  }
   const allowedTypes = new Set(["registration","account_approved","first_deposit","first_trade","active_trader","commission"]);
   const eventType = typeof event.event_type === "string" ? event.event_type : "";
   const occurredAt = typeof event.occurred_at === "string" ? Date.parse(event.occurred_at) : NaN;
