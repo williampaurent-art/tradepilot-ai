@@ -26,7 +26,7 @@ jobs:
           node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           import vm from "node:vm";
-          for (const file of ["public/auth.html", "public/portal.html", "public/session.js"]) {
+          for (const file of ["public/auth.html", "public/portal.html", "public/partner-dashboard.html", "public/session.js"]) {
             const source = readFileSync(file, "utf8");
             const scripts = [];
             if (file.endsWith(".js")) scripts.push(source);
