@@ -6436,7 +6436,9 @@ async function handleWorkerRequest(request, env) {
         return await handleUpdateBot(request, env, botId);
       }
 
-      if (path === "/api/partner/webhook" && request.method === "POST") return await handlePartnerWebhook(request, env);\n      if (path === "/api/partner/dashboard" && request.method === "GET") return await handlePartnerDashboard(request, env);\n      if (path === "/api/portal" && request.method === "GET") {
+      if (path === "/api/partner/webhook" && request.method === "POST") return await handlePartnerWebhook(request, env);
+      if (path === "/api/partner/dashboard" && request.method === "GET") return await handlePartnerDashboard(request, env);
+      if (path === "/api/portal" && request.method === "GET") {
         return await handlePortalApi(request, env, "summary");
       }
       if (path === "/api/portal/promotions" && request.method === "GET") return await handlePortalApi(request, env, "promotions");
