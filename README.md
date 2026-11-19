@@ -160,3 +160,8 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 - Contrat technique de postback VT Markets : [docs/partner-postbacks.md](docs/partner-postbacks.md).
 
 - Le dashboard partenaire fournit désormais un funnel et des ventilations par campagne/source, avec des taux bruts explicitement signalés comme non-cohortes et des commissions regroupées par devise.
+
+### Dashboard partenaire privé
+- Interface `public/partner-dashboard.html` pour visualiser les clics, inscriptions, premiers trades, traders actifs, campagnes, conversions quotidiennes et commissions par devise.
+- Accès aux données protégé par la clé `PARTNER_DASHBOARD_KEY`, saisie manuellement à chaque session et non stockée dans le navigateur.
+- Ouvrir `/partner-dashboard.html` ; les données restent indisponibles tant que les postbacks broker et les secrets Cloudflare ne sont pas configurés.
