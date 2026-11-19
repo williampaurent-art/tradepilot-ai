@@ -6167,6 +6167,109 @@ async function provisionSaasAccount(user, env) {
   };
 }
 
+
+async function handlePortalApi(request, env, action) {
+  const access = await getAuthenticatedWorkspace(request, env);
+  if (!access.ok) return access.response;
+  const workspaceId = access.workspace.id;
+  const userId = access.user.id;
+
+  if (action === "summary" && request.method === "GET") {
+    try {
+      const [profile, botCount, signalCount, broker, progress, clicks, subscription] = await Promise.all([
+        env.DB.prepare("SELECT display_name, country_code, preferred_language FROM workspace_profiles WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT COUNT(*) AS total FROM trading_bots WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT COUNT(*) AS total FROM bot_signal_events WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT provider, display_label, status, access_mode, last_checked_at FROM broker_connections WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first(),
+        env.DB.prepare("SELECT course_key, status, progress_percent, updated_at FROM academy_progress WHERE workspace_id = ? ORDER BY updated_at DESC").bind(workspaceId).all(),
+        env.DB.prepare("SELECT COUNT(*) AS total FROM partner_click_events WHERE workspace_id = ?").bind(workspaceId).first(),
+        env.DB.prepare("SELECT plan_key, status, current_period_end FROM subscriptions WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 1").bind(workspaceId).first()
+      ]);
+      return json({
+        ok: true,
+        user: { id: access.user.id, email: access.user.email, emailVerified: access.user.emailVerified },
+        workspace: access.workspace,
+        profile: profile || { display_name: null, country_code: null, preferred_language: "fr" },
+        stats: { bots: Number(botCount?.total || 0), signals: Number(signalCount?.total || 0), partnerClicks: Number(clicks?.total || 0) },
+        broker: broker || { provider: "vt_markets", status: "not_connected", access_mode: "READ_ONLY" },
+        academyProgress: progress.results || [],
+        subscription: subscription || { plan_key: "free", status: "active", current_period_end: null },
+        liveTrading: false
+      });
+    } catch (error) {
+      return json({ ok: false, error: "Espace client indisponible. Vérifie les migrations D1 0001 à 0004.", detail: error.message }, 503);
+    }
+  }
+
+  if (request.method !== "POST") return json({ ok: false, error: "Méthode non prise en charge." }, 405);
+  const parsed = await readBoundedJson(request, 4000);
+  if (!parsed.ok) return json({ ok: false, error: parsed.error }, parsed.status);
+  const input = parsed.value;
+
+  try {
+    if (action === "profile") {
+      const displayName = typeof input.displayName === "string" ? input.displayName.trim().slice(0, 80) : "";
+      const countryCode = typeof input.countryCode === "string" && /^[A-Z]{2}$/.test(input.countryCode.toUpperCase()) ? input.countryCode.toUpperCase() : null;
+      const language = input.language === "en" ? "en" : "fr";
+      await env.DB.prepare(`
+        INSERT INTO workspace_profiles (workspace_id, display_name, country_code, preferred_language)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(workspace_id) DO UPDATE SET display_name = excluded.display_name,
+          country_code = excluded.country_code, preferred_language = excluded.preferred_language,
+          updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      `).bind(workspaceId, displayName || null, countryCode, language).run();
+      await env.DB.prepare("INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type) VALUES (?, ?, ?, 'profile.updated')")
+        .bind(createId("evt"), workspaceId, userId).run();
+      return json({ ok: true, saved: true });
+    }
+
+    if (action === "partner-click") {
+      const source = typeof input.source === "string" ? input.source.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 40) : "portal";
+      const campaign = typeof input.campaign === "string" ? input.campaign.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) : null;
+      await env.DB.prepare("INSERT INTO partner_click_events (id, workspace_id, provider, source, campaign) VALUES (?, ?, 'vt_markets', ?, ?)")
+        .bind(createId("clk"), workspaceId, source, campaign).run();
+      await env.DB.prepare(`
+        INSERT INTO partner_attributions (workspace_id, first_source, first_campaign, last_source, last_campaign)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(workspace_id) DO UPDATE SET last_source = excluded.last_source,
+          last_campaign = excluded.last_campaign, last_touch_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      `).bind(workspaceId, source, campaign, source, campaign).run();
+      return json({ ok: true, tracked: true });
+    }
+
+    if (action === "academy-progress") {
+      const courseKey = typeof input.courseKey === "string" && /^[a-z0-9_-]{2,50}$/.test(input.courseKey) ? input.courseKey : null;
+      if (!courseKey) return json({ ok: false, error: "Identifiant de cours invalide." }, 400);
+      const percent = Number.isFinite(Number(input.progressPercent)) ? Math.max(0, Math.min(100, Math.round(Number(input.progressPercent)))) : 0;
+      const status = percent >= 100 ? "completed" : percent > 0 ? "in_progress" : "not_started";
+      await env.DB.prepare(`
+        INSERT INTO academy_progress (workspace_id, course_key, status, progress_percent)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(workspace_id, course_key) DO UPDATE SET status = excluded.status,
+          progress_percent = excluded.progress_percent, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      `).bind(workspaceId, courseKey, status, percent).run();
+      return json({ ok: true, courseKey, status, progressPercent: percent });
+    }
+
+    if (action === "broker-request") {
+      const regionCode = typeof input.regionCode === "string" && /^[A-Z]{2}$/.test(input.regionCode.toUpperCase()) ? input.regionCode.toUpperCase() : null;
+      const accountLabel = typeof input.accountLabel === "string" ? input.accountLabel.trim().slice(0, 60) : null;
+      if (input.consent !== true) return json({ ok: false, error: "Le consentement explicite est requis." }, 400);
+      const existing = await env.DB.prepare("SELECT id, status FROM broker_connection_requests WHERE workspace_id = ? AND provider = 'vt_markets' AND status = 'pending' LIMIT 1").bind(workspaceId).first();
+      if (existing) return json({ ok: true, requestId: existing.id, status: existing.status, alreadyPending: true });
+      const id = createId("brq");
+      await env.DB.prepare("INSERT INTO broker_connection_requests (id, workspace_id, provider, region_code, account_label, consent_at) VALUES (?, ?, 'vt_markets', ?, ?, ?)")
+        .bind(id, workspaceId, regionCode, accountLabel, new Date().toISOString()).run();
+      await env.DB.prepare("INSERT INTO audit_events (id, workspace_id, actor_user_id, event_type, target_ref) VALUES (?, ?, ?, 'broker.connection_requested', ?)")
+        .bind(createId("evt"), workspaceId, userId, id).run();
+      return json({ ok: true, requestId: id, status: "pending", message: "Demande enregistrée. Aucune connexion MT5 n'est encore établie." }, 201);
+    }
+    return json({ ok: false, error: "Action portail inconnue." }, 404);
+  } catch (error) {
+    return json({ ok: false, error: "Opération portail impossible.", detail: error.message }, 503);
+  }
+}
+
 async function handleSaasAccount(request, env) {
   if (request.method !== "GET") {
     return json({ ok: false, error: "Méthode non prise en charge." }, 405);
@@ -6193,7 +6296,7 @@ async function handleWorkerRequest(request, env) {
     if (
       request.method !== "GET" &&
       !(request.method === "POST" &&
-        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || customerBotPost))
+        (path === "/telegram-test" || path === "/assistant-chat" || path === "/api/bots" || path === "/api/bot-analyze" || path === "/api/portal/profile" || path === "/api/portal/partner-click" || path === "/api/portal/academy-progress" || path === "/api/portal/broker-request" || customerBotPost))
     ) {
       return json({
         ok: false,
@@ -6242,6 +6345,22 @@ async function handleWorkerRequest(request, env) {
         if (action === "analyze") return await handleAnalyzeStoredBot(request, env, botId);
         if (action === "delete") return await handleDeleteBot(request, env, botId);
         return await handleUpdateBot(request, env, botId);
+      }
+
+      if (path === "/api/portal" && request.method === "GET") {
+        return await handlePortalApi(request, env, "summary");
+      }
+      if (path === "/api/portal/profile" && request.method === "POST") {
+        return await handlePortalApi(request, env, "profile");
+      }
+      if (path === "/api/portal/partner-click" && request.method === "POST") {
+        return await handlePortalApi(request, env, "partner-click");
+      }
+      if (path === "/api/portal/academy-progress" && request.method === "POST") {
+        return await handlePortalApi(request, env, "academy-progress");
+      }
+      if (path === "/api/portal/broker-request" && request.method === "POST") {
+        return await handlePortalApi(request, env, "broker-request");
       }
 
       if (path === "/api/account") {
