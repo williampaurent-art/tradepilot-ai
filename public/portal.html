@@ -75,11 +75,11 @@
 <section class="section" id="academy">
  <div class="section-head"><div><div class="eyebrow">02 · TRADEPILOT ACADEMY</div><h2>Développe tes compétences</h2></div><p>Un espace pédagogique pour accompagner les traders.</p></div>
  <div class="cards">
-  <article class="card course"><div class="card-top"><span class="icon">01</span><span class="tag">FONDAMENTAUX</span></div><h3>Les bases du trading</h3><p>Comprendre les marchés, les ordres, le spread, le levier et les principaux risques.</p><div class="course-meta"><span>Débutant</span><span>Parcours pédagogique</span></div><a class="link" href="#academy-note">Programme en préparation →</a></article>
-  <article class="card course"><div class="card-top"><span class="icon">02</span><span class="tag">ANALYSE TECHNIQUE</span></div><h3>Lire les marchés</h3><p>EMA, RSI, MACD, ATR, supports, résistances et structure de marché.</p><div class="course-meta"><span>Intermédiaire</span><span>Ateliers pratiques</span></div><a class="link" href="#academy-note">Programme en préparation →</a></article>
-  <article class="card course"><div class="card-top"><span class="icon">03</span><span class="tag">OUTILS TRADEPILOT</span></div><h3>Maîtriser MT5 et TradePilot</h3><p>Découvrir le terminal, configurer un bot, interpréter les alertes et suivre ses résultats.</p><div class="course-meta"><span>Pratique</span><span>Guides pas à pas</span></div><a class="link" href="#academy-note">Programme en préparation →</a></article>
+  <article class="card course"><div class="card-top"><span class="icon">01</span><span class="tag">FONDAMENTAUX</span></div><h3>Les bases du trading</h3><p>Comprendre les marchés, les ordres, le spread, le levier et les principaux risques.</p><div class="course-meta"><span>Débutant</span><span>Parcours pédagogique</span></div><button class="btn course-open" type="button" data-course="basics">Ouvrir le parcours →</button></article>
+  <article class="card course"><div class="card-top"><span class="icon">02</span><span class="tag">ANALYSE TECHNIQUE</span></div><h3>Lire les marchés</h3><p>EMA, RSI, MACD, ATR, supports, résistances et structure de marché.</p><div class="course-meta"><span>Intermédiaire</span><span>Ateliers pratiques</span></div><button class="btn course-open" type="button" data-course="technical">Ouvrir le parcours →</button></article>
+  <article class="card course"><div class="card-top"><span class="icon">03</span><span class="tag">OUTILS TRADEPILOT</span></div><h3>Maîtriser MT5 et TradePilot</h3><p>Découvrir le terminal, configurer un bot, interpréter les alertes et suivre ses résultats.</p><div class="course-meta"><span>Pratique</span><span>Guides pas à pas</span></div><button class="btn course-open" type="button" data-course="mt5">Ouvrir le parcours →</button></article>
  </div>
- <div class="callout" id="academy-note"><strong>Academy en cours de construction.</strong> Cette première version pose la structure des parcours. Les vidéos, le suivi de progression, les quiz et les webinaires seront ajoutés dans une prochaine étape.</div>
+ <div class="callout" id="academy-note"><strong>Progression personnelle.</strong> Tes parcours et leur état d’avancement sont enregistrés dans ton espace sécurisé. Les leçons interactives constituent la première version pédagogique ; les vidéos et webinaires seront ajoutés ensuite.</div>
 </section>
 
 <section class="section" id="broker">
@@ -111,10 +111,38 @@
 <footer>TRADEPILOT AI · CLIENT PLATFORM · VERSION DE PRÉVISUALISATION</footer>
 </main>
 <nav class="mobile-nav" aria-label="Navigation rapide"><a href="#home">Accueil</a><a href="#account">Mon compte</a><a href="#tools">Outils</a><a href="#academy">Academy</a><a href="#broker">Broker</a></nav>
+<div class="modal" id="academyModal" role="dialog" aria-modal="true" aria-labelledby="academyTitle"><div class="modal-box"><div class="eyebrow">TRADEPILOT ACADEMY</div><h3 id="academyTitle">Parcours pédagogique</h3><div id="academyContent"></div><div class="modal-actions"><button class="btn" id="academyClose" type="button">Fermer</button><button class="btn gold" id="academyComplete" type="button">Valider le parcours</button></div><p id="academyMessage" aria-live="polite"></p></div></div>
 <div class="modal" id="connectModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"><div class="modal-box"><h3 id="modalTitle">Connexion MT5 sécurisée</h3><p>La connexion réelle nécessite une méthode d'accès fournie ou autorisée par VT Markets (API, interface Manager ou fournisseur compatible). Cette prévisualisation ne collecte aucun identifiant, mot de passe ou numéro de compte.</p><p>La première intégration sera limitée à la lecture des informations autorisées : solde, positions et historique, avec révocation possible par le client.</p><div class="modal-actions"><button class="btn" id="closeModal" type="button">Fermer</button></div></div></div>
 <script src="/session.js"></script>
 <script>
 const modal=document.getElementById('connectModal');
+const academyModal=document.getElementById('academyModal');
+const academyCourses={
+ basics:{title:'Les bases du trading',intro:'Comprendre les mécanismes essentiels avant de prendre une position.',lessons:['Marchés et instruments : forex, indices, matières premières et XAUUSD.','Types d’ordres : marché, limite, stop et fonctionnement de l’exécution.','Spread, pip, lot, marge et effet de levier : ce que chaque notion change réellement.','Risque : taille de position, stop-loss, perte maximale et journal de trading.'],quiz:'Pourquoi définir le risque avant d’ouvrir une position ?',answers:['Pour connaître la perte maximale acceptable','Pour garantir un trade gagnant','Pour augmenter automatiquement le levier'],correct:0},
+ technical:{title:'Lire les marchés',intro:'Construire une lecture structurée plutôt que multiplier les indicateurs.',lessons:['Identifier tendance, range et phases de transition.','Tracer supports, résistances et zones de liquidité sans surcharger le graphique.','Comprendre EMA, RSI, MACD et ATR : rôle, limites et complémentarité.','Utiliser plusieurs timeframes et attendre une confirmation à la clôture.'],quiz:'Quel est le principal intérêt de combiner plusieurs timeframes ?',answers:['Confirmer le contexte général et affiner le timing','Multiplier le nombre de signaux','Supprimer le risque de marché'],correct:0},
+ mt5:{title:'Maîtriser MT5 et TradePilot',intro:'Organiser son terminal et exploiter les outils TradePilot de manière disciplinée.',lessons:['Découvrir Market Watch, les graphiques, la boîte à outils et les comptes.','Configurer un graphique, les unités de temps et les indicateurs.','Comprendre les alertes, les stratégies et le Bot Builder TradePilot.','Contrôler les résultats, vérifier les données et tenir un journal.'],quiz:'Que faut-il vérifier avant de se fier à une alerte ?',answers:['Le contexte, la fraîcheur des données et les règles de risque','Uniquement la couleur du signal','Qu’elle annonce un gain certain'],correct:0}
+};
+let activeAcademyCourse=null;
+function openAcademy(courseKey){
+ const course=academyCourses[courseKey];if(!course)return;activeAcademyCourse=courseKey;
+ document.getElementById('academyTitle').textContent=course.title;
+ document.getElementById('academyContent').innerHTML='<p>'+course.intro+'</p><ol>'+course.lessons.map(item=>'<li style="margin:8px 0;color:var(--muted)">'+item+'</li>').join('')+'</ol><div class="callout"><strong>Question de validation</strong><p>'+course.quiz+'</p>'+course.answers.map((answer,index)=>'<label style="display:block;margin:10px 0;color:var(--text)"><input type="radio" name="academyAnswer" value="'+index+'" style="margin-right:8px">'+answer+'</label>').join('')+'</div>';
+ document.getElementById('academyMessage').textContent='Lis les quatre étapes puis réponds à la question pour valider le parcours.';
+ academyModal.classList.add('open');
+ portalApi.api('/api/portal/academy-progress',{method:'POST',body:JSON.stringify({courseKey,progressPercent:10})}).then(loadPortal).catch(()=>{});
+}
+document.querySelectorAll('.course-open').forEach(button=>button.addEventListener('click',()=>openAcademy(button.dataset.course)));
+document.getElementById('academyClose').addEventListener('click',()=>academyModal.classList.remove('open'));
+document.getElementById('academyComplete').addEventListener('click',async()=>{
+ const course=academyCourses[activeAcademyCourse];const selected=document.querySelector('input[name="academyAnswer"]:checked');
+ if(!selected){document.getElementById('academyMessage').textContent='Sélectionne une réponse avant de valider.';return;}
+ if(Number(selected.value)!==course.correct){document.getElementById('academyMessage').textContent='Pas tout à fait. Relis les étapes et réessaie.';return;}
+ const button=document.getElementById('academyComplete');button.disabled=true;
+ try{await portalApi.api('/api/portal/academy-progress',{method:'POST',body:JSON.stringify({courseKey:activeAcademyCourse,progressPercent:100})});document.getElementById('academyMessage').textContent='Bravo ! Parcours validé et progression enregistrée.';await loadPortal();}
+ catch(error){document.getElementById('academyMessage').textContent=error.message;}
+ finally{button.disabled=false;}
+});
+
 const portalApi=window.TradePilotSession;
 const accountState=document.getElementById('accountState');
 const showPortalMessage=(id,message)=>{const node=document.getElementById(id);if(node)node.textContent=message;};
@@ -165,7 +193,7 @@ loadPortal();
 document.getElementById('connectInfo').addEventListener('click',()=>modal.classList.add('open'));
 document.getElementById('closeModal').addEventListener('click',()=>modal.classList.remove('open'));
 modal.addEventListener('click',event=>{if(event.target===modal)modal.classList.remove('open')});
-document.addEventListener('keydown',event=>{if(event.key==='Escape')modal.classList.remove('open')});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'){modal.classList.remove('open');academyModal.classList.remove('open')}});
 </script>
 </body>
 </html>
