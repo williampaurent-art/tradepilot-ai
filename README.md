@@ -58,7 +58,8 @@ docs/                 → Documentation technique
 | `GET /dashboard-data` | Données agrégées pour l'interface |
 | `GET /analyze` | Analyse technique on-demand |
 | `GET /edge-stats` | Performance observée des alertes |
-| `GET /api/portal` | Synthèse de l’espace client (auth) |\n| `GET /api/portal/promotions` | Offres broker publiées, valides et filtrées par pays (auth) |
+| `GET /api/portal` | Synthèse de l’espace client (auth) |
+| `GET /api/portal/promotions` | Offres broker publiées, valides et filtrées par pays (auth) |
 | `POST /api/portal/profile` | Mise à jour du profil client (auth) |
 | `POST /api/portal/partner-click` | Attribution des clics partenaires (auth) |
 | `POST /api/portal/academy-progress` | Progression Academy (auth) |
@@ -114,7 +115,9 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 - Attribution des clics vers VT Markets et suivi de campagne
 - Progression Academy stockée par utilisateur/espace
 - Demandes de connexion broker enregistrées en attente, avec consentement
-- Aucune donnée d’identification MT5 n’est collectée ; aucune connexion broker réelle n’est simulée\n\n## Philosophie & limites
+- Aucune donnée d’identification MT5 n’est collectée ; aucune connexion broker réelle n’est simulée
+
+## Philosophie & limites
 
 - Tout score est **heuristique**, jamais une probabilité de gain.
 - Les résultats Edge n'incluent pas spread, slippage ni commissions.
