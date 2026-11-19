@@ -43,8 +43,10 @@ $("loadForm").addEventListener("submit",async event=>{
    metric("Premiers trades",fmt(funnel.firstTrades),fmt(funnel.firstTradeRate)+" % des clics"),
    metric("Traders actifs",fmt(funnel.activeTraders),fmt(funnel.activeTraderRate)+" % des clics")
   );
-  const campaigns=(data.campaignClicks||[]).map(c=>[c.source,c.campaign,fmt(c.clicks),fmt(c.unique_workspaces)]);
-  table("campaignTable",["Source","Campagne","Clics","Espaces"],campaigns);
+  const campaignMap=new Map();
+  (data.campaignClicks||[]).forEach(c=>campaignMap.set(c.source+"|"+c.campaign,{source:c.source,campaign:c.campaign,clicks:Number(c.clicks||0),workspaces:Number(c.unique_workspaces||0),registrations:0,firstTrades:0,activeTraders:0}));
+  (data.campaignConversions||[]).forEach(c=>{const key=c.source+"|"+c.campaign;if(!campaignMap.has(key))campaignMap.set(key,{source:c.source,campaign:c.campaign,clicks:0,workspaces:0,registrations:0,firstTrades:0,activeTraders:0});const row=campaignMap.get(key);if(c.event_type==="registration")row.registrations+=Number(c.events||0);if(c.event_type==="first_trade")row.firstTrades+=Number(c.events||0);if(c.event_type==="active_trader")row.activeTraders+=Number(c.events||0);});
+  table("campaignTable",["Source","Campagne","Clics","Inscriptions","1ers trades","Actifs"],Array.from(campaignMap.values()).map(c=>[c.source,c.campaign,fmt(c.clicks),fmt(c.registrations),fmt(c.firstTrades),fmt(c.activeTraders)]));
   table("funnelTable",["Événement","Événements","Clics attribués"],(data.conversions||[]).map(x=>[x.event_type,fmt(x.total),fmt(x.attributed_clicks)]));
   table("dailyTable",["Date","Événement","Nombre"],(data.dailyConversions||[]).slice(-60).map(x=>[x.day,x.event_type,fmt(x.total)]));
   table("commissionTable",["Devise","Total commissions","Événements"],(data.commissionsByCurrency||[]).map(x=>[x.currency||"Non précisée",fmt(x.total_commission),fmt(x.commission_events)]));
