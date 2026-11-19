@@ -288,7 +288,7 @@ test("partner webhook validates its secret, payload size and signature before pe
 
 test("partner dashboard requires its server key and performs a full character comparison", () => {
   const start = workerSource.indexOf("async function handlePartnerDashboard");
-  const end = workerSource.indexOf("\\nasync function ", start + 1);
+  const end = workerSource.indexOf("\nasync function ", start + 1);
   const block = workerSource.slice(start, end);
   assert.notEqual(start, -1, "partner dashboard handler should exist");
   assert.ok(block.includes("env.PARTNER_DASHBOARD_KEY"));
@@ -412,8 +412,8 @@ test("every customer bot read and mutation is scoped by workspace_id", () => {
     assert.notEqual(start, -1, name + " must exist");
     const next = workerSource.indexOf("\\nasync function ", start + 1);
     const block = workerSource.slice(start, next < 0 ? workerSource.length : next);
-    assert.match(block, /getAuthenticatedWorkspace\\(request, env\\)/, name + " must authenticate");
+    assert.match(block, /getAuthenticatedWorkspace\(request, env\)/, name + " must authenticate");
     assert.ok(block.includes(requiredScope), name + " must include a workspace predicate/column");
-    assert.match(block, /access\\.workspace\\.id/, name + " must bind the authenticated workspace");
+    assert.match(block, /access\.workspace\.id/, name + " must bind the authenticated workspace");
   }
 });
