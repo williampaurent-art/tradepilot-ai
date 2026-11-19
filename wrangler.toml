@@ -49,5 +49,21 @@ run_worker_first = [
   "/telegram-test"
 ]
 
+[[ratelimits]]
+name = "PUBLIC_API_LIMITER"
+namespace_id = "912341001"
+
+[ratelimits.simple]
+limit = 120
+period = 60
+
+[[ratelimits]]
+name = "UPSTREAM_API_LIMITER"
+namespace_id = "912341002"
+
+[ratelimits.simple]
+limit = 30
+period = 60
+
 [ai]
 binding = "AI"
