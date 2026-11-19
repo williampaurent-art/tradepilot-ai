@@ -6355,17 +6355,29 @@ async function handlePartnerDashboard(request, env) {
   let mismatch = 0;
   for (let i=0;i<secret.length;i++) mismatch |= secret.charCodeAt(i) ^ supplied.charCodeAt(i);
   if (mismatch) return json({ok:false,error:"Accès refusé."},401);
+  const requestedDays = Number(new URL(request.url).searchParams.get("days"));
+  const periodDays = Number.isInteger(requestedDays) ? Math.min(365,Math.max(7,requestedDays)) : 30;
+  const since = new Date(Date.now()-periodDays*24*60*60*1000).toISOString();
   try {
-    const [clicks, totals, recent, daily] = await Promise.all([
-      env.DB.prepare("SELECT COUNT(*) AS total, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days')").first(),
-      env.DB.prepare("SELECT event_type, COUNT(*) AS total, COUNT(DISTINCT click_id) AS attributed_clicks, SUM(value_amount) AS value_total, MAX(value_currency) AS currency FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days') GROUP BY event_type").all(),
-      env.DB.prepare("SELECT event_type, occurred_at, country_code, campaign, value_amount, value_currency FROM partner_conversion_events WHERE provider = 'vt_markets' ORDER BY occurred_at DESC LIMIT 50").all(),
-      env.DB.prepare("SELECT substr(occurred_at,1,10) AS day, event_type, COUNT(*) AS total FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= strftime('%Y-%m-%dT%H:%M:%fZ','now','-30 days') GROUP BY day,event_type ORDER BY day ASC").all()
+    const [clicks, totals, recent, dailyConversions, dailyClicks, campaignClicks, campaignConversions, commissions] = await Promise.all([
+      env.DB.prepare("SELECT COUNT(*) AS total, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= ?").bind(since).first(),
+      env.DB.prepare("SELECT event_type, COUNT(*) AS total, COUNT(DISTINCT click_id) AS attributed_clicks, COUNT(DISTINCT external_event_id) AS unique_events FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= ? GROUP BY event_type ORDER BY CASE event_type WHEN 'registration' THEN 1 WHEN 'account_approved' THEN 2 WHEN 'first_deposit' THEN 3 WHEN 'first_trade' THEN 4 WHEN 'active_trader' THEN 5 ELSE 6 END").bind(since).all(),
+      env.DB.prepare("SELECT e.event_type, e.occurred_at, e.country_code, e.campaign AS broker_campaign, e.value_amount, e.value_currency, c.source, c.campaign AS tracked_campaign, CASE WHEN c.id IS NULL THEN 0 ELSE 1 END AS attributed FROM partner_conversion_events e LEFT JOIN partner_click_events c ON c.id = e.click_id WHERE e.provider = 'vt_markets' ORDER BY e.occurred_at DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT substr(occurred_at,1,10) AS day, event_type, COUNT(*) AS total FROM partner_conversion_events WHERE provider = 'vt_markets' AND occurred_at >= ? GROUP BY day,event_type ORDER BY day ASC").bind(since).all(),
+      env.DB.prepare("SELECT substr(created_at,1,10) AS day, COUNT(*) AS total, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= ? GROUP BY day ORDER BY day ASC").bind(since).all(),
+      env.DB.prepare("SELECT COALESCE(source,'unknown') AS source, COALESCE(campaign,'organic') AS campaign, COUNT(*) AS clicks, COUNT(DISTINCT workspace_id) AS unique_workspaces FROM partner_click_events WHERE provider = 'vt_markets' AND created_at >= ? GROUP BY source,campaign ORDER BY clicks DESC LIMIT 100").bind(since).all(),
+      env.DB.prepare("SELECT COALESCE(c.source,'unattributed') AS source, COALESCE(c.campaign,e.campaign,'unattributed') AS campaign, e.event_type, COUNT(*) AS events, COUNT(DISTINCT e.click_id) AS attributed_clicks FROM partner_conversion_events e LEFT JOIN partner_click_events c ON c.id = e.click_id WHERE e.provider = 'vt_markets' AND e.occurred_at >= ? GROUP BY source,campaign,e.event_type ORDER BY events DESC LIMIT 200").bind(since).all(),
+      env.DB.prepare("SELECT value_currency AS currency, SUM(value_amount) AS total_commission, COUNT(*) AS commission_events FROM partner_conversion_events WHERE provider = 'vt_markets' AND event_type = 'commission' AND occurred_at >= ? AND value_amount IS NOT NULL GROUP BY value_currency ORDER BY total_commission DESC").bind(since).all()
     ]);
-    return json({ok:true,periodDays:30,clicks:{total:Number(clicks?.total||0),uniqueWorkspaces:Number(clicks?.unique_workspaces||0)},conversions:totals.results||[],daily:daily.results||[],recentEvents:recent.results||[],generatedAt:new Date().toISOString(),note:"Les conversions reflètent uniquement les postbacks reçus et authentifiés de VT Markets. Les événements non transmis par le broker ne sont pas estimés."});
+    const clickTotal = Number(clicks?.total||0);
+    const conversionRows = totals.results||[];
+    const registration = conversionRows.find(row=>row.event_type==='registration');
+    const firstTrade = conversionRows.find(row=>row.event_type==='first_trade');
+    const activeTrader = conversionRows.find(row=>row.event_type==='active_trader');
+    const attributedEvents = conversionRows.reduce((sum,row)=>sum+Number(row.attributed_clicks||0),0);
+    return json({ok:true,periodDays,since,clicks:{total:clickTotal,uniqueWorkspaces:Number(clicks?.unique_workspaces||0)},funnel:{registrations:Number(registration?.total||0),firstTrades:Number(firstTrade?.total||0),activeTraders:Number(activeTrader?.total||0),registrationRate:clickTotal?Number(((Number(registration?.total||0)/clickTotal)*100).toFixed(2)):0,firstTradeRate:clickTotal?Number(((Number(firstTrade?.total||0)/clickTotal)*100).toFixed(2)):0,activeTraderRate:clickTotal?Number(((Number(activeTrader?.total||0)/clickTotal)*100).toFixed(2)):0,attributedConversionEvents:attributedEvents},conversions:conversionRows,dailyConversions:dailyConversions.results||[],dailyClicks:dailyClicks.results||[],campaignClicks:campaignClicks.results||[],campaignConversions:campaignConversions.results||[],commissionsByCurrency:commissions.results||[],recentEvents:recent.results||[],generatedAt:new Date().toISOString(),note:"Les taux sont des ratios bruts entre événements reçus et clics TradePilot sur la période ; ils ne constituent pas une attribution de cohorte. Les postbacks reflètent uniquement les événements transmis et authentifiés par VT Markets. Les conversions non transmises ne sont pas estimées."});
   } catch(error) { return json({ok:false,error:"Statistiques partenaire indisponibles."},503); }
 }
-
 async function handleSaasAccount(request, env) {
   if (request.method !== "GET") {
     return json({ ok: false, error: "Méthode non prise en charge." }, 405);
