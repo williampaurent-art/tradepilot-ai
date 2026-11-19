@@ -271,3 +271,35 @@ test("Ultra Precision blocks stale quotes and unconfirmed risk checks", () => {
   assert.ok(result.ultraPrecision.blockers.some(x => x.includes("trop ancienne")));
   assert.ok(result.ultraPrecision.blockers.some(x => x.includes("Spread non validé")));
 });
+
+
+test("partner webhook rejects missing secrets, oversized payloads and invalid signatures before persistence", () => {
+  const start = workerSource.indexOf("async function handlePartnerWebhook");
+  const end = workerSource.indexOf("\\nasync function handlePartnerDashboard", start);
+  const block = workerSource.slice(start, end);
+  assert.notEqual(start, -1, "partner webhook handler should exist");
+  assert.match(block, /env\\.VT_PARTNER_WEBHOOK_SECRET/);
+  assert.match(block, /if \\(!secret\\) return json\\([\\s\\S]*?503/);
+  assert.match(block, /rawBytes\\.byteLength > 8000/);
+  assert.match(block, /verifyPartnerWebhookSignature\\(rawBody, request\\.headers\\.get\\("x-vt-signature"\\), secret\\)/);
+  assert.match(block, /if \\(!valid\\) return json\\([\\s\\S]*?401/);
+  assert.ok(block.indexOf("if (!valid)") < block.indexOf("JSON.parse(rawBody)"), "signature must be checked before parsing event data");
+  assert.ok(block.indexOf("if (!valid)") < block.indexOf("INSERT OR IGNORE"), "signature must be checked before database writes");
+});
+
+test("partner dashboard requires its server key and compares the supplied key without early character exit", () => {
+  const start = workerSource.indexOf("async function handlePartnerDashboard");
+  const end = workerSource.indexOf("\\nasync function ", start + 1);
+  const block = workerSource.slice(start, end);
+  assert.notEqual(start, -1, "partner dashboard handler should exist");
+  assert.match(block, /env\\.PARTNER_DASHBOARD_KEY/);
+  assert.match(block, /x-partner-dashboard-key/);
+  assert.match(block, /if \\(!secret\\) return json\\([\\s\\S]*?503/);
+  assert.match(block, /if \\(supplied\\.length !== secret\\.length\\)/);
+  assert.match(block, /for \\(let i=0;i<secret\\.length;i\\+\\+\\) mismatch \\|= secret\\.charCodeAt\\(i\\) \\^ supplied\\.charCodeAt\\(i\\)/);
+});
+
+test("partner webhook and dashboard routes are explicitly registered on the Worker", () => {
+  assert.match(workerSource, /path === "\\/api\\/partner\\/webhook" && request\\.method === "POST"/);
+  assert.match(workerSource, /path === "\\/api\\/partner\\/dashboard" && request\\.method === "GET"/);
+});
