@@ -45,7 +45,7 @@ Hébergé sur Cloudflare Workers. Analyse technique multi-timeframe, alertes Tel
 ```
 src/index.js          → Worker principal (Cron + API + Assets)
 public/               → Interface (dashboard, builder, bots)
-migrations/           → Schéma D1 (SaaS + bots)
+migrations/           → Schéma D1 (SaaS + bots + portail client)
 docs/                 → Documentation technique
 ```
 
@@ -103,7 +103,7 @@ Avant d'ouvrir les inscriptions :
 
 Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots tournants de 20 bots maximum pour préserver les limites CPU du Worker gratuit. Les signaux confirmés sont enregistrés dans D1, par espace. Les signaux propres aux clients ne sont pas envoyés au canal Telegram global.
 
-## Philosophie & limites
+### Portail client (migration 0004)\n- Profil personnel lié au workspace authentifié\n- Synthèse bots, signaux, plan et suivi broker\n- Attribution des clics vers VT Markets et suivi de campagne\n- Progression Academy stockée par utilisateur/espace\n- Demandes de connexion broker enregistrées en attente, avec consentement\n- Aucune donnée d’identification MT5 n’est collectée ; aucune connexion broker réelle n’est simulée\n\n## Philosophie & limites
 
 - Tout score est **heuristique**, jamais une probabilité de gain.
 - Les résultats Edge n'incluent pas spread, slippage ni commissions.
