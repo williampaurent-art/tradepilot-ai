@@ -76,6 +76,34 @@ if (collisions.length) {
   throw new Error("Refusing deployment: configured rate-limit namespace IDs are not unique to the expected bindings.");
 }
 
+const failedBuildId = process.env.CLOUDFLARE_FAILED_BUILD_ID;
+if (failedBuildId) {
+  const buildPath = "/accounts/" + encodeURIComponent(accountId) + "/builds/builds/" + encodeURIComponent(failedBuildId);
+  try {
+    const build = await cloudflareGet(buildPath);
+    const item = build.result || {};
+    console.log("Historical Cloudflare build: " + JSON.stringify({
+      build_uuid: item.build_uuid,
+      build_outcome: item.build_outcome,
+      created_on: item.created_on,
+      modified_on: item.modified_on,
+      commit_hash: item.build_trigger_metadata?.commit_hash,
+      branch: item.build_trigger_metadata?.branch,
+      build_command: item.build_trigger_metadata?.build_command,
+      deploy_command: item.build_trigger_metadata?.deploy_command
+    }));
+    const logs = await cloudflareGet(buildPath + "/logs");
+    const rows = logs.result?.lines || [];
+    const messages = rows.map(row => Array.isArray(row) ? row[row.length - 1] : row).map(String);
+    const diagnostics = messages.filter(line => /error|failed|failure|exception|not found|invalid|denied|unauthorized/i.test(line)).slice(-30);
+    console.log("Historical Cloudflare build diagnostic lines:");
+    for (const line of diagnostics) console.log(line.slice(0, 1200));
+    if (!diagnostics.length) console.log("No error-like log lines returned; inspect the full build in Cloudflare if needed.");
+  } catch (error) {
+    console.warn("Historical Cloudflare build logs unavailable with this token: " + error.message);
+  }
+}
+
 console.log("Cloudflare preflight passed.");
 console.log("Worker found: " + workerName);
 for (const item of expectedNamespaces) {
