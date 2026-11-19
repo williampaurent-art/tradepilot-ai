@@ -4666,6 +4666,7 @@ async function handleAssistantChat(request, env) {
       const parseList = (value) => { try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed.map((v) => String(v).toUpperCase()) : []; } catch { return []; } };
       const promotions = (result.results || []).filter((item) => {
         const eligible = parseList(item.eligible_countries_json), excluded = parseList(item.excluded_countries_json);
+        if (item.status === "published" && (!countryCode || !eligible.includes(countryCode) || !item.entity_label || !parseList(item.eligible_account_types_json).length)) return false;
         if (countryCode && excluded.includes(countryCode)) return false;
         if (eligible.length && (!countryCode || !eligible.includes(countryCode))) return false;
         if (!countryCode && (eligible.length || excluded.length)) return false;
