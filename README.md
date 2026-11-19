@@ -58,7 +58,7 @@ docs/                 → Documentation technique
 | `GET /dashboard-data` | Données agrégées pour l'interface |
 | `GET /analyze` | Analyse technique on-demand |
 | `GET /edge-stats` | Performance observée des alertes |
-| `GET /api/portal` | Synthèse de l’espace client (auth) |
+| `GET /api/portal` | Synthèse de l’espace client (auth) |\n| `GET /api/portal/promotions` | Offres broker publiées, valides et filtrées par pays (auth) |
 | `POST /api/portal/profile` | Mise à jour du profil client (auth) |
 | `POST /api/portal/partner-click` | Attribution des clics partenaires (auth) |
 | `POST /api/portal/academy-progress` | Progression Academy (auth) |
@@ -135,3 +135,10 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 ---
 
 **TradePilot AI** — analyse, discipline, transparence.
+
+
+### Catalogue des promotions broker (migration 0005)
+- Catalogue VT Markets structuré avec pays inclus/exclus, entité, types de compte, seuils, plafonds, dates, sources et date de vérification.
+- L’API authentifiée GET /api/portal/promotions n’expose que les offres publiées, vérifiées, non expirées et compatibles avec le pays renseigné.
+- Les catégories repérées publiquement sont préchargées en statut review : elles ne sont donc jamais présentées comme actives ou garanties.
+- La page client renvoie vers les pages officielles et rappelle que l’éligibilité finale se confirme dans le Client Portal VT Markets.
