@@ -40,5 +40,7 @@ jobs:
             for (const script of scripts) new vm.Script(script, { filename: file });
           }
           NODE
+      - name: Validate Cloudflare Worker bundle without deploying
+        run: npx --yes wrangler@latest deploy --dry-run
       - name: Run tests
         run: node --test tests/*.test.mjs
