@@ -61,7 +61,9 @@ docs/                 → Documentation technique
 | `GET /api/portal` | Synthèse de l’espace client (auth) |
 | `GET /api/portal/promotions` | Offres broker publiées, valides et filtrées par pays (auth) |
 | `POST /api/portal/profile` | Mise à jour du profil client (auth) |
-| `POST /api/portal/partner-click` | Attribution des clics partenaires (auth, retourne un click ID) |\n| `POST /api/partner/webhook` | Réception de conversions VT Markets signées HMAC (secret serveur) |\n| `GET /api/partner/dashboard` | Statistiques agrégées partenaires (clé serveur) |
+| `POST /api/portal/partner-click` | Attribution des clics partenaires (auth, retourne un click ID) |
+| `POST /api/partner/webhook` | Réception de conversions VT Markets signées HMAC (secret serveur) |
+| `GET /api/partner/dashboard` | Statistiques agrégées partenaires (clé serveur) |
 | `POST /api/portal/academy-progress` | Progression Academy (auth) |
 | `POST /api/portal/broker-request` | Demande de parcours broker (auth + consentement) |
 | `POST /api/bot-analyze` | Analyse d'une config bot |
