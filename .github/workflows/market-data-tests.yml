@@ -1,0 +1,30 @@
+name: Market Data Foundation Tests
+
+on:
+  push:
+    branches: [feature/market-intelligence-foundation]
+    paths:
+      - "src/market-data/**"
+      - "src/api/market-data.mjs"
+      - "tests/market-data.test.mjs"
+      - ".github/workflows/market-data-tests.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/market-data/**"
+      - "src/api/market-data.mjs"
+      - "tests/market-data.test.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run Market Data tests
+        run: node --test tests/market-data.test.mjs
