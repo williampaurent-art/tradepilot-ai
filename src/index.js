@@ -6438,7 +6438,8 @@ async function handleWorkerRequest(request, env) {
       "/dashboard-data", "/edge-stats", "/sniper-stats"
     ]);
     const marketCandlesRoute = /^\/api\/v1\/markets\/[^/]+\/candles$/.test(path);
-    if (request.method === "GET" && (upstreamRoutes.has(path) || marketCandlesRoute)) {
+    const marketAnalysisRoute = /^\/api\/v1\/markets\/[^/]+\/analysis$/.test(path);
+    if (request.method === "GET" && (upstreamRoutes.has(path) || marketCandlesRoute || marketAnalysisRoute)) {
       const limited = await enforcePublicRateLimit(request, env, path, "upstream");
       if (limited) return limited;
     } else if (request.method === "GET" && (publicApiRoutes.has(path) || path === "/api/v1/markets")) {
@@ -6469,7 +6470,7 @@ async function handleWorkerRequest(request, env) {
 
       if (
         request.method === "GET" &&
-        (path === "/api/v1/markets" || /^\/api\/v1\/markets\/[^/]+\/candles$/.test(path))
+        (path === "/api/v1/markets" || /^\/api\/v1\/markets\/[^/]+\/(?:candles|analysis)$/.test(path))
       ) {
         return await handleMarketDataRequest(request);
       }
