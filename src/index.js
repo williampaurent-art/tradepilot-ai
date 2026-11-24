@@ -6437,7 +6437,7 @@ async function handleWorkerRequest(request, env) {
       "/api/public-config", "/signal-history", "/x10",
       "/dashboard-data", "/edge-stats", "/sniper-stats"
     ]);
-    const marketCandlesRoute = /^\\/api\\/v1\\/markets\\/[^/]+\\/candles$/.test(path);
+    const marketCandlesRoute = /^\/api\/v1\/markets\/[^/]+\/candles$/.test(path);
     if (request.method === "GET" && (upstreamRoutes.has(path) || marketCandlesRoute)) {
       const limited = await enforcePublicRateLimit(request, env, path, "upstream");
       if (limited) return limited;
@@ -6469,7 +6469,7 @@ async function handleWorkerRequest(request, env) {
 
       if (
         request.method === "GET" &&
-        (path === "/api/v1/markets" || /^\\/api\\/v1\\/markets\\/[^/]+\\/candles$/.test(path))
+        (path === "/api/v1/markets" || /^\/api\/v1\/markets\/[^/]+\/candles$/.test(path))
       ) {
         return await handleMarketDataRequest(request);
       }
