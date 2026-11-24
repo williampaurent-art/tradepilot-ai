@@ -1,3 +1,4 @@
+import { handleMarketDataRequest } from "./api/market-data.mjs";
 const CONFIG = {
   SERVICE: "TradePilot AI",
   SYMBOL: "XAUUSD",
@@ -6436,10 +6437,11 @@ async function handleWorkerRequest(request, env) {
       "/api/public-config", "/signal-history", "/x10",
       "/dashboard-data", "/edge-stats", "/sniper-stats"
     ]);
-    if (request.method === "GET" && upstreamRoutes.has(path)) {
+    const marketCandlesRoute = /^\\/api\\/v1\\/markets\\/[^/]+\\/candles$/.test(path);
+    if (request.method === "GET" && (upstreamRoutes.has(path) || marketCandlesRoute)) {
       const limited = await enforcePublicRateLimit(request, env, path, "upstream");
       if (limited) return limited;
-    } else if (request.method === "GET" && publicApiRoutes.has(path)) {
+    } else if (request.method === "GET" && (publicApiRoutes.has(path) || path === "/api/v1/markets")) {
       const limited = await enforcePublicRateLimit(request, env, path, "standard");
       if (limited) return limited;
     }
@@ -6463,6 +6465,13 @@ async function handleWorkerRequest(request, env) {
 
       if (path === "/status") {
         return await handleStatus(env);
+      }
+
+      if (
+        request.method === "GET" &&
+        (path === "/api/v1/markets" || /^\\/api\\/v1\\/markets\\/[^/]+\\/candles$/.test(path))
+      ) {
+        return await handleMarketDataRequest(request);
       }
 
       if (path === "/api/bot-analyze" && request.method === "POST") {
