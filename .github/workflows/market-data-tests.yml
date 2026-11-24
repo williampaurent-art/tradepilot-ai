@@ -7,6 +7,8 @@ on:
       - "src/market-data/**"
       - "src/api/market-data.mjs"
       - "tests/market-data.test.mjs"
+      - "src/engines/technical/**"
+      - "tests/technical-engine.test.mjs"
       - ".github/workflows/market-data-tests.yml"
   pull_request:
     branches: [main]
@@ -27,4 +29,4 @@ jobs:
         with:
           node-version: 22
       - name: Run Market Data tests
-        run: node --test tests/market-data.test.mjs
+        run: node --test tests/market-data.test.mjs tests/technical-engine.test.mjs
