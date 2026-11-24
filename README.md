@@ -165,3 +165,17 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 - Interface `public/partner-dashboard.html` pour visualiser les clics, inscriptions, premiers trades, traders actifs, campagnes, conversions quotidiennes et commissions par devise.
 - Accès aux données protégé par la clé `PARTNER_DASHBOARD_KEY`, saisie manuellement à chaque session et non stockée dans le navigateur.
 - Ouvrir `/partner-dashboard.html` ; les données restent indisponibles tant que les postbacks broker et les secrets Cloudflare ne sont pas configurés.
+---
+
+## Market Data API v1 (branche de fondation)
+
+- `GET /api/v1/markets` : catalogue initial de 10 instruments.
+- `GET /api/v1/markets/:symbol/candles?timeframe=M15&limit=100` : chandeliers normalisés.
+- Timeframes autorisés : M1, M5, M15, H1, H4, D1.
+- Limite : 30 à 250 chandeliers par requête.
+- Source initiale : BiQuote, derrière un adaptateur isolé.
+- Les instruments autres que XAUUSD restent marqués `not-yet-verified` jusqu'à validation effective de la couverture fournisseur.
+- Les erreurs de fournisseur renvoient `signalEligible: false` ; aucune donnée de remplacement n'est inventée.
+- Cette API ne crée aucun signal et n'exécute aucun ordre.
+
+Les tests isolés se lancent avec `node --test tests/market-data.test.mjs`. Le workflow `Market Data Foundation Tests` ne fait que lancer ces tests ; il ne déploie pas le Worker.
