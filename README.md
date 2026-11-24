@@ -177,5 +177,10 @@ Les bots actifs sont évalués par le Cron toutes les trois minutes, par lots to
 - Les instruments autres que XAUUSD restent marqués `not-yet-verified` jusqu'à validation effective de la couverture fournisseur.
 - Les erreurs de fournisseur renvoient `signalEligible: false` ; aucune donnée de remplacement n'est inventée.
 - Cette API ne crée aucun signal et n'exécute aucun ordre.
+- `GET /api/v1/markets/:symbol/analysis?limit=150` : analyse multi-timeframe M1, M5, M15, H1 et H4, avec score de consensus pondéré (10/15/25/25/25 %).
+- Le consensus n'est calculé que sur les timeframes dont les bougies sont réellement disponibles ; les timeframes manquants sont explicitement listés.
+- `signalEligible` reste faux si une timeframe manque ou si la couverture fournisseur de l'instrument n'est pas vérifiée.
+- Le moteur technique expose EMA 9/20/50, RSI 14, MACD, Bollinger, ATR, ADX et niveaux de support/résistance. Le score est heuristique, non probabiliste.
+- Le champ `execution` vaut toujours `NO_ORDERS` : l'API ne transmet aucun ordre au broker.
 
 Les tests isolés se lancent avec `node --test tests/market-data.test.mjs`. Le workflow `Market Data Foundation Tests` ne fait que lancer ces tests ; il ne déploie pas le Worker.
