@@ -287,10 +287,68 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 }
 
 .mainnav a.bot-builder-tab{color:#1b160d;background:linear-gradient(135deg,#ffe09a,#e6b957);border-color:#f3c86b;box-shadow:0 5px 18px rgba(243,200,107,.16)}.mainnav a.bot-builder-tab:hover{color:#1b160d;background:#ffe09a;border-color:#ffe09a}
+
+/* UI REFRESH · 2026-11-27 — presentation-only, no trading logic changes */
+:root{--line:rgba(143,169,204,.19);--panel:#111d30;--focus-ring:rgba(105,217,237,.72)}
+html{scroll-padding-top:76px}
+.mainnav{position:sticky;top:0;z-index:80;align-items:center;padding:9px 10px 12px;margin:0 0 12px;border:1px solid rgba(143,169,204,.12);border-radius:0 0 14px 14px;background:rgba(8,14,24,.88);backdrop-filter:blur(18px);box-shadow:0 12px 30px rgba(0,0,0,.18)}
+.mainnav a{border-radius:999px;padding:8px 13px;font-size:10px;letter-spacing:.25px}
+.mainnav a.bot-builder-tab{margin-left:2px;box-shadow:0 5px 18px rgba(243,200,107,.14)}
+.card{border-color:rgba(143,169,204,.16);box-shadow:0 12px 34px rgba(0,0,0,.17);transition:border-color .2s ease,box-shadow .2s ease}
+.card:hover{border-color:rgba(143,169,204,.29);box-shadow:0 16px 38px rgba(0,0,0,.22)}
+.sectionhead{gap:14px;margin-bottom:14px}
+.sectionhead h2{font-size:15px;letter-spacing:-.15px}
+#bot-builder-entry{padding:13px 17px!important;margin:0 0 15px;border-radius:14px!important}
+#bot-builder-entry h2{font-size:16px!important;letter-spacing:-.3px}
+#bot-builder-entry .btn{border-radius:999px}
+.executive{border-radius:22px}
+.exec-kpi{background:rgba(4,11,20,.48);border-color:rgba(160,181,211,.16)}
+.exec-kpi strong,.scalp-cell strong,.metric strong{font-variant-numeric:tabular-nums}
+#market-view .card:first-child{box-shadow:0 18px 48px rgba(0,0,0,.24),inset 0 1px rgba(255,255,255,.035)}
+.btn,.chart-toggle,.select{border-radius:10px}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus-ring);outline-offset:3px}
+@media(min-width:651px){
+ .mainnav{top:0}
+ .mainnav a{flex:0 0 auto}
+}
+@media(max-width:650px){
+ main.wrap{padding-top:12px}
+ .top{padding-bottom:13px;margin-bottom:12px}
+ .mainnav{display:none}
+ .executive{padding:16px;border-radius:17px}
+ .exec-head{display:block}
+ .exec-state{display:inline-flex;margin-top:11px}
+ .exec-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:13px}
+ .exec-kpi{padding:10px}
+ .exec-kpi label{font-size:8px;letter-spacing:.8px}
+ .exec-foot{gap:6px}
+ .exec-tag{font-size:9px}
+ .mobile-dock{grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;left:7px;right:7px;padding:7px 4px;border-radius:15px}
+ .mobile-dock a{font-size:8px;letter-spacing:-.15px;padding:7px 1px;white-space:nowrap}
+ .mobile-dock a:before{font-size:15px}
+ .mobile-dock a:nth-child(4):before{content:"✧"}
+ .mobile-dock a:nth-child(5):before{content:"＋"}
+ .mobile-dock a:nth-child(6):before{content:"▣"}
+ .mobile-dock a:nth-child(7):before{content:"≡"}
+ .mobile-dock a.bot-builder-tab{color:#1b160d;background:linear-gradient(135deg,#ffe09a,#e6b957);box-shadow:0 4px 14px rgba(243,200,107,.18)}
+ .mobile-dock a.bot-builder-tab:before{color:#1b160d}
+ #bot-builder-entry{gap:10px!important}
+ #bot-builder-entry>div{min-width:0!important}
+ #bot-builder-entry .btn{width:100%;padding:10px 13px!important}
+ .card{border-radius:14px}
+ .section{margin:12px 0}
+ .sectionhead{align-items:flex-start}
+ .scalp-command{border-radius:16px}
+}
+@media(max-width:370px){
+ .mobile-dock a{font-size:7px}
+ .mobile-dock a:before{font-size:14px}
+}
+
 </style></head>
 <body><main class="wrap">
 <header class="top"><div class="brand"><div class="logo">T</div><div><h1>TradePilot AI</h1><div class="sub">MARKET INTELLIGENCE · XAUUSD</div></div></div><div class="topright"><span class="pill"><i id="statusDot" class="dot"></i><span id="marketStatus">Vérification du marché</span></span><button class="btn" id="focusToggle" type="button" aria-pressed="false">◈ Vue cockpit</button><button class="btn primary" id="refresh">↻ Actualiser</button></div></header>
-<nav class="mainnav" aria-label="Navigation principale"><a href="/portal.html">ESPACE CLIENT</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer un bot de trading" title="Créer un bot de trading">＋ CRÉER MON BOT</a><a href="/bots.html" aria-label="Consulter mes bots" title="Consulter mes bots">MES BOTS</a><a href="#market-view">Vue d’ensemble</a><a href="#marketAlert">Alertes marché</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Centre de contrôle</a></nav>
+<nav class="mainnav" aria-label="Navigation principale"><a href="/portal.html">ESPACE CLIENT</a><a href="/bots.html" aria-label="Consulter mes bots" title="Consulter mes bots">MES BOTS</a><a href="#market-view">Vue d’ensemble</a><a href="#marketAlert">Alertes marché</a><a href="#timeframe-view">Multi-timeframe</a><a href="#deep-analysis">Analyse technique</a><a href="#macro-view">Macro & actualités</a><a href="#assistantPanel">Assistant IA</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer un bot de trading" title="Créer un bot de trading">＋ CRÉER MON BOT</a><a href="#operations">Centre de contrôle</a></nav>
 <section class="section card" id="bot-builder-entry" style="display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap;border-color:rgba(243,200,107,.48);background:linear-gradient(110deg,rgba(39,33,22,.92),rgba(17,26,42,.98) 65%)">
  <div style="min-width:220px;flex:1">
   <div class="exec-kicker">NOUVEAU · BOT BUILDER</div>
@@ -375,11 +433,11 @@ body.focus-mode .mainnav a[href="#macro-view"]{opacity:.42}
 <article class="card"><div class="sectionhead"><h2>Indicateurs techniques</h2><span id="indicatorTf" class="hint">M15</span></div><table class="table"><tbody id="indicators"><tr><td>En attente de données.</td></tr></tbody></table><div class="warning" style="margin-top:13px">Une valeur manquante reste indisponible : aucune donnée n'est inventée.</div></article></section>
 <section id="macro-view" class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Retournements & structure</h2><span class="hint">Signes de vigilance</span></div><ul id="warnings" class="list muted"><li>En attente d'analyse.</li></ul><div id="explanation" class="warning" style="margin-top:14px">Explication automatique après réception des données.</div></article><article class="card"><div class="sectionhead"><h2>Calendrier économique</h2><span id="calendarStatus" class="hint">—</span></div><div id="calendar"><div class="muted">Vérification du calendrier…</div></div></article></section><section class="grid twocol section"><article class="card"><div class="sectionhead"><h2>Macro inter-marchés · Or</h2><span id="macroStatus" class="hint">—</span></div><div id="macroCrossAsset"><div class="muted">Analyse du dollar et des taux américains…</div></div></article><article class="card"><div class="sectionhead"><h2>Lecture macro</h2><span class="hint">Contexte, pas signal d’entrée</span></div><div id="macroExplanation" class="warning">En attente des données inter-marchés.</div><div id="macroSources" class="hint" style="margin-top:10px"></div></article></section>
 <section class="grid twocol section"><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario haussier</h2><div id="bullCase" class="muted">En attente des niveaux.</div></article><article class="card"><h2 style="font-size:15px;margin:0 0 10px">Scénario baissier</h2><div id="bearCase" class="muted">En attente des niveaux.</div></article></section>
-<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="/portal.html">Espace</a><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant IA</a><a href="#operations">Robot</a><a href="/bots.html" aria-label="Mes bots" title="Mes bots">Mes bots</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer mon bot" title="Créer mon bot">Créer bot</a></nav>
+<div id="error" class="error hide"></div><div class="warning">Mode analyse uniquement · Aucun ordre réel envoyé. Les prix BiQuote peuvent différer des cotations et conditions d'exécution du courtier.</div><nav id="mobileDock" class="mobile-dock" aria-label="Accès rapide TradePilot"><a href="/portal.html">Espace</a><a href="#market-view">Marché</a><a href="#timeframe-view">Unités</a><a href="#assistantPanel">Assistant</a><a class="bot-builder-tab" href="/builder.html" aria-label="Créer mon bot" title="Créer mon bot">Créer bot</a><a href="#operations">Contrôle</a><a href="/bots.html" aria-label="Mes bots" title="Mes bots">Mes bots</a></nav>
 <footer class="foot">TRADEPILOT AI · MARKET INTELLIGENCE · Interface <span id="uiVersion">2026.11.10.2</span> · Horodatages affichés selon disponibilité réelle.</footer>
 </main>
 <script src="/session.js"></script><script>
-const UI_VERSION="2026.11.10.9";
+const UI_VERSION="2026.11.27.1";
 const API=location.origin,$=id=>document.getElementById(id);let snapshot=null,selected="M15",chartWindow=90,chartLevelsOn=true,chartRangeOn=true,chartHoverIndex=null,chartGeometry=null;
 const versionNode=$("uiVersion");if(versionNode)versionNode.textContent=UI_VERSION;
 const fmt=(v,d=2)=>v!==null&&v!==undefined&&Number.isFinite(Number(v))?Number(v).toLocaleString("fr-FR",{minimumFractionDigits:d,maximumFractionDigits:d}):"Indisponible";
